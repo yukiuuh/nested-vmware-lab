@@ -1,0 +1,18 @@
+#cloud-config
+
+users:
+  - name: root
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: '${password}'
+
+bootcmd:
+  - systemctl disable --now systemd-networkd-wait-online
+
+runcmd:
+  - systemctl stop iptables
+  - systemctl disable iptables
+  - nohup python3 -m http.server -d /srv 80 &
+  - hostnamectl set-hostname kickstarter
+  - echo > /var/tmp/provisioned

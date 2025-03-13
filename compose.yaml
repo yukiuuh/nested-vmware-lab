@@ -1,0 +1,13 @@
+services:
+  bootstrap:
+    env_file:
+      - ./.env
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    volumes:
+      - .:/work:cached
+    working_dir: /work
+    platform: linux/amd64
+    tty: true
+    user: ubuntu

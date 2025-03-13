@@ -1,0 +1,70 @@
+vmaccepteula
+rootpw ${password}
+install --firstdisk --novmfsondisk --ignoreprereqwarnings --ignoreprereqerrors --forceunsupportedinstall
+entropy --sources=1
+network --bootproto=static --device=vmnic0 --ip=${ip} --netmask=${netmask} --vlanid=${vlan} --gateway=${gateway} --hostname=${hostname} --nameserver=${nameserver}
+reboot
+
+%firstboot --interpreter=busybox
+
+%{ if ssh_enabled  }
+vim-cmd hostsvc/enable_ssh
+vim-cmd hostsvc/start_ssh
+vim-cmd hostsvc/enable_esx_shell
+vim-cmd hostsvc/start_esx_shell
+esxcli system settings advanced set -o /UserVars/SuppressShellWarning -i 1
+%{ endif }
+
+esxcli network vswitch standard set --vswitch-name=vSwitch0 --mtu=${mtu}
+esxcli network ip interface set -i vmk0 -m ${mtu}
+esxcli network vswitch standard uplink add --vswitch-name=vSwitch0 --uplink-name=vmnic1
+esxcli network vswitch standard portgroup set -v ${vlan} -p "VM Network"
+
+%{ if storage1_vmknic != null ~}
+esxcli network vswitch standard add --vswitch-name=vSwitch1
+esxcli network vswitch standard set --vswitch-name=vSwitch1 --mtu=${mtu}
+esxcli network vswitch standard uplink add --vswitch-name=vSwitch1 --uplink-name=vmnic2
+esxcli network vswitch standard portgroup add --vswitch-name=vSwitch1 -p Storage1
+esxcli network vswitch standard portgroup set -p Storage1 -v ${storage1_vmknic.vlan}
+esxcli network ip interface add -p Storage1 -i vmk1 -m=${storage1_vmknic.mtu}
+esxcli network ip interface ipv4 set -i vmk1 -t=static -I=${storage1_vmknic.ip} -N=${storage1_vmknic.subnet}
+%{ endif }
+
+%{ if storage2_vmknic != null  ~}
+esxcli network vswitch standard add --vswitch-name=vSwitch2
+esxcli network vswitch standard set --vswitch-name=vSwitch2 --mtu=${mtu}
+esxcli network vswitch standard uplink add --vswitch-name=vSwitch2 --uplink-name=vmnic3
+esxcli network vswitch standard portgroup add --vswitch-name=vSwitch2 -p Storage2
+esxcli network vswitch standard portgroup set -p Storage2 -v ${storage2_vmknic.vlan}
+esxcli network ip interface add -p Storage2 -i vmk2 -m=${storage2_vmknic.mtu}
+esxcli network ip interface ipv4 set -i vmk2 -t=static -I=${storage2_vmknic.ip} -N=${storage2_vmknic.subnet}
+%{ endif }
+
+esxcli system ntp set -e true -s ${ntp}
+chkconfig ntpd on
+
+%{ for nfs_host in nfs_hosts ~}
+esxcli storage nfs add --share=${nfs_host.share} --volume-name=${nfs_host.datastore_name} --host=${nfs_host.ip}
+%{ endfor ~}
+
+%{ if length(iscsi_targets) > 0  }
+esxcli iscsi software set --enabled true
+%{ for iscsi_target in iscsi_targets ~}
+esxcli iscsi adapter discovery sendtarget add --address=${iscsi_target} -A `/bin/esxcli iscsi adapter list | grep vmhba | awk '{print $1}'`
+%{ endfor ~}
+sleep 15
+esxcli storage core adapter rescan -a
+%{ else }
+# NO iSCSI Target
+%{ endif }
+
+%{ for provision_datastore in provision_datastores ~}
+DEVICE_NAME=`esxcfg-mpath -P ${provision_datastore.path_name} -L | cut -d " " -f 3`
+END_SECTOR=`/bin/partedUtil get /vmfs/devices/disks/$DEVICE_NAME | awk '{print $1 * $2 * $3}'`
+/bin/partedUtil setptbl /vmfs/devices/disks/$DEVICE_NAME gpt "1 2048 $END_SECTOR AA31E02A400F11DB9590000C2911D1B8 0"
+vmkfstools -C vmfs6 -S ${provision_datastore.datastore_name} /vmfs/devices/disks/$DEVICE_NAME:1
+%{ endfor ~}
+
+/sbin/generate-certificates
+
+date > /var/tmp/finished.stamp

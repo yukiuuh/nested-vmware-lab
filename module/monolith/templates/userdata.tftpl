@@ -1,0 +1,287 @@
+#cloud-config
+
+users:
+  - name: ${user}
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    groups: sudo, adm, docker, cdrom, dip, lxd
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: '${password}'
+%{ if length(ssh_authorized_keys) > 0  }
+    ssh_authorized_keys:
+%{ for key in ssh_authorized_keys ~}
+      - ${key}
+%{ endfor ~}
+%{ else }
+# NO AUTHORIZED KEY
+%{ endif }
+
+packages:
+  - nfs-kernel-server
+  - apache2
+  - targetcli-fb
+  - chrony
+  - isc-dhcp-server
+  - zfsutils-linux
+  - unzip
+  - gnupg
+  - software-properties-common
+  - iptables-persistent
+
+write_files:
+  - content: |
+      /pool01/nfs *(rw,async,no_subtree_check,no_root_squash)
+    path: /etc/exports
+  - content: |
+      net.ipv4.ip_forward = 1
+      net.ipv6.conf.all.forwarding = 1
+      nf_conntrack_max = 131072
+    path: /etc/sysctl.d/99-routing.conf
+  - content: |
+      network:
+        version: 2
+        ethernets:
+          ens192:
+            addresses:
+              - ${ip_address}/${subnet_mask}
+            gateway4: ${gateway}
+            dhcp4: false
+            nameservers:
+              addresses:
+%{ for nameserver in nameservers ~}
+                - ${nameserver}
+%{ endfor ~}
+          ens224:
+            mtu: ${vlan_mtu}
+            dhcp4: false
+            dhcp6: false
+            addresses: [ "10.0.0.1/24" ]
+        vlans:
+          vlan.1001:
+            id: 1001
+            link: ens224
+            addresses: [ "10.0.1.1/24" ]
+            mtu: ${vlan_mtu}
+          vlan.1002:
+            id: 1002
+            link: ens224
+            addresses: [ "10.0.2.1/24" ]
+            mtu: ${vlan_mtu}
+          vlan.1003:
+            id: 1003
+            link: ens224
+            addresses: [ "10.0.3.1/24" ]
+            mtu: ${vlan_mtu}
+          vlan.1004:
+            id: 1004
+            link: ens224
+            addresses: [ "10.0.4.1/24" ]
+            mtu: ${vlan_mtu}
+          vlan.1005:
+            id: 1005
+            link: ens224
+            addresses: [ "10.0.5.1/24" ]
+            mtu: ${vlan_mtu}
+          vlan.1006:
+            id: 1006
+            link: ens224
+            addresses: [ "10.0.6.1/24" ]
+            mtu: ${vlan_mtu}
+    path: /etc/netplan/99-static.yaml
+    permission: '0600'
+  - content: |
+      . {
+        cache 30
+        errors
+        loop
+        reload
+        health
+        ready
+        hosts /etc/coredns/hosts ${domain} {
+          fallthrough
+        }
+        forward . ${nameservers[0]}
+      }
+    path: /etc/coredns/Corefile
+  - content: |
+      10.0.0.1 ${hostname}.${domain}
+      10.0.0.80 nsxm.${domain}
+      10.0.0.81 nsxm01.${domain}
+      10.0.0.82 nsxm02.${domain}
+      10.0.0.83 nsxm03.${domain}
+      10.0.0.84 nsxe01.${domain}
+      10.0.0.85 nsxe02.${domain}
+      10.0.0.86 nsxe03.${domain}
+      10.0.0.87 nsxe04.${domain}
+      10.0.0.88 avi.${domain}
+      10.0.0.89 avi01.${domain}
+      10.0.0.90 avi02.${domain}
+      10.0.0.91 avi03.${domain}
+      10.0.0.92 vrli.${domain}
+      10.0.0.93 vrli01.${domain}
+      10.0.0.94 vrli02.${domain}
+      10.0.0.95 vrli03.${domain}
+      10.0.0.96 vra.${domain}
+      10.0.0.97 vra01.${domain}
+      10.0.0.98 vra02.${domain}
+      10.0.0.99 vra03.${domain}
+      10.0.0.100 vcsa01.${domain}
+      10.0.0.101 esxi01.${domain}
+      10.0.0.102 esxi02.${domain}
+      10.0.0.103 esxi03.${domain}
+      10.0.0.104 esxi04.${domain}
+      10.0.0.105 esxi05.${domain}
+      10.0.0.106 esxi06.${domain}
+      10.0.0.107 esxi07.${domain}
+      10.0.0.108 esxi08.${domain}
+      10.0.0.109 esxi09.${domain}
+      10.0.0.110 vcsa-a01.${domain}
+      10.0.0.111 esxi-a01.${domain}
+      10.0.0.112 esxi-a02.${domain}
+      10.0.0.113 esxi-a03.${domain}
+      10.0.0.114 esxi-a04.${domain}
+      10.0.0.115 esxi-a05.${domain}
+      10.0.0.116 esxi-a06.${domain}
+      10.0.0.117 esxi-a07.${domain}
+      10.0.0.118 esxi-a08.${domain}
+      10.0.0.119 esxi-a09.${domain}
+
+    path: /etc/coredns/hosts
+  - content: |
+      [Unit]
+      Description=CoreDNS DNS server
+      Documentation=https://coredns.io
+      After=network.target
+      [Service]
+      PermissionsStartOnly=true
+      LimitNOFILE=1048576
+      LimitNPROC=512
+      CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      NoNewPrivileges=true
+      User=coredns
+      WorkingDirectory=/var/lib/coredns
+      ExecStart=/usr/bin/coredns -conf=/etc/coredns/Corefile
+      ExecReload=/bin/kill -SIGUSR1 $MAINPID
+      Restart=on-failure
+      StandardOutput=append:/var/log/coredns.log
+      StandardError=append:/var/log/coredns.err.log
+      [Install]
+      WantedBy=multi-user.target
+    path: /etc/systemd/system/coredns.service
+  - content: |
+      allow 0.0.0.0/0
+    path: /etc/chrony/conf.d/99-allow-all.conf
+  - content: |
+      DHCPDv4_CONF=/etc/dhcp/dhcpd.conf
+      INTERFACESv4="ens224"
+      INTERFACESv6=""
+    path: /etc/default/isc-dhcp-server
+  - content: |
+      option domain-name "${domain}";
+      option domain-name-servers 10.0.0.1;
+      default-lease-time 600;
+      max-lease-time 7200;
+      ddns-update-style none;
+      authoritative;
+      subnet 10.0.0.0 netmask 255.255.255.0 {
+        option routers 10.0.0.1;
+        option subnet-mask 255.255.255.0;
+        range dynamic-bootp 10.0.0.201 10.0.0.250;
+      }
+    path: /etc/dhcp/dhcpd.conf
+  - content: |
+      PasswordAuthentication yes
+    path: /etc/ssh/sshd_config.d/00-allow-password.conf
+
+runcmd:
+  # install python 3.11 for ansible_for_nsxt module
+  - add-apt-repository -y ppa:deadsnakes/ppa
+  - apt-get update
+  - apt-get install -y python3.11 python3.11-venv python3.11-dev
+  - systemctl restart ssh
+  - netplan apply
+  - hostnamectl set-hostname ${hostname}.${domain}
+  - iptables -A INPUT -j ACCEPT
+  - iptables -A FORWARD -j ACCEPT
+  - iptables -t nat -o ens192 -A POSTROUTING -j MASQUERADE
+  - iptables -t nat -A PREROUTING -p tcp -i ens192 --dport 10022 -j DNAT --to 10.0.0.2:22
+  - iptables -t nat -A PREROUTING -p tcp -i ens192 --dport 3389 -j DNAT --to 10.0.0.2
+  - iptables -t nat -A PREROUTING -p udp -i ens192 --dport 3389 -j DNAT --to 10.0.0.2
+  - iptables-save > /etc/iptables/rules.v4
+  - sysctl -p
+  - modprobe nf_conntrack
+  - python3.11 -m venv /home/${user}/ansible
+  - /home/${user}/ansible/bin/python3 -m pip install pyvmomi passlib netaddr git+https://github.com/vmware/vsphere-automation-sdk-python.git
+  # Docker
+  - curl -kfsSL https://get.docker.com -o get-docker.sh
+  - sh get-docker.sh
+  # Terraform
+  -  wget https://releases.hashicorp.com/terraform/1.10.3/terraform_1.10.3_linux_amd64.zip -O terraform.zip
+  - unzip terraform.zip -d /tmp
+  - mv /tmp/terraform /usr/local/bin/terraform
+  # DHCP
+  - systemctl restart  isc-dhcp-server
+  # DNS
+  - [ "sh" , "-c", "wget https://github.com/coredns/coredns/releases/download/v1.12.0/coredns_1.12.0_linux_amd64.tgz -O - | tar zxvf - -C /usr/bin/" ]
+  - mkdir /etc/coredns
+  - mkdir /var/lib/coredns
+  - useradd -l -r -s /usr/sbin/nologin -m -d /var/lib/coredns -c 'CoreDNS user' coredns
+  - systemctl stop systemd-resolved
+  - systemctl disable systemd-resolved
+  - systemctl start coredns
+  - systemctl enable coredns
+  # NTP
+  - systemctl restart chronyd
+  - systemctl enable chronyd
+  # NFS/iSCSI
+  - zpool create pool01 /dev/sdb -o autotrim=on -O compression=zstd 
+  # - zpool create pool01 /dev/sdb -o autotrim=on -O compression=off
+  - zfs create pool01/nfs -o recordsize=8k -o atime=off
+  # - zfs set dedup=on pool01/nfs
+  - systemctl restart nfs-server.service
+  - zfs create pool01/volumes -o recordsize=4k -o atime=off 
+  - zfs create -s -V 200g pool01/volumes/vol01
+  - zfs create -s -V 200g pool01/volumes/vol02
+  - zfs create -s -V 10g pool01/volumes/vol03
+  - zfs create -s -V 10g pool01/volumes/vol04
+  - zfs create -s -V 10g pool01/volumes/vol05
+  - targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol01 name=vol01
+  - targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol02 name=vol02
+  - targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol03 name=vol03
+  - targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol04 name=vol04
+  - targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol05 name=vol05
+  - targetcli /iscsi create iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/portals delete 0.0.0.0 ip_port=3260
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/portals create 10.0.4.1
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/portals create 10.0.5.1
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol01
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol02
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol03
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol04
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol05
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1 set attribute generate_node_acls=1 # disable acl
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1 set attribute demo_mode_write_protect=0 # disable write protect
+  - targetcli saveconfig
+  - systemctl start target
+  - systemctl enable target
+  - echo > /var/tmp/provisioned
+
+
+
+targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol01 name=vol01
+targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol02 name=vol02
+targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol03 name=vol03
+targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol04 name=vol04
+targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/vol05 name=vol05
+targetcli /iscsi create iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/portals delete 0.0.0.0 ip_port=3260
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/portals create 10.0.4.1
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/portals create 10.0.5.1
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol01
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol02
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol03
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol04
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/vol05
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1 set attribute generate_node_acls=1 # disable acl
+targetcli /iscsi/iqn.2003-01.org.linux-iscsi.monolith.x8664:sn.140b6f9d8753/tpg1 set attribute demo_mode_write_protect=0 # disable write protect

@@ -1,0 +1,15 @@
+#!/bin/bash
+
+govc vm.power -off -force ${vm_name}
+govc vm.destroy ${vm_name}
+govc import.ova --options=${photon_spec_path} ${photon_ovf_source}
+govc vm.change -vm ${vm_name} -c=2 -m=512
+
+govc vm.change -vm ${vm_name} -e guestinfo.userdata="${userdata_content}"
+govc vm.change -vm ${vm_name} -e guestinfo.userdata.encoding=base64
+govc vm.change -vm ${vm_name} -e guestinfo.metadata="${metadata_content}"
+govc vm.change -vm ${vm_name} -e guestinfo.metadata.encoding=base64
+
+govc vm.power -on ${vm_name}
+govc vm.info -waitip=true -t=true ${vm_name}
+govc vm.ip -v4 ${vm_name}
