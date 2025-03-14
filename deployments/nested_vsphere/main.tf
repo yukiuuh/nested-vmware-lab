@@ -51,3 +51,19 @@ module "esxi_cluster" {
   nested_esxi_shape           = var.nested_esxi_shape
   provision_datastores        = var.provision_datastores
 }
+
+module "vcsa_standalone" {
+  source         = "../../module/vcsa_standalone"
+  ip             = var.vcsa_ip
+  hostname       = var.vcsa_hostname
+  domain_name    = var.domain_name
+  subnet_mask    = var.subnet_mask
+  vi             = module.vi
+  remote_ovf_url = var.vcsa_remote_ovf_url
+  name           = "${local.name_prefix}-${var.vcsa_hostname}"
+  network_name   = var.network_name
+  gateway        = var.gateway
+  ntp            = var.ntp
+  nameservers    = var.nameservers
+  vm_password    = var.vm_password
+}

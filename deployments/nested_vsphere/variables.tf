@@ -89,3 +89,7 @@ variable "nested_esxi_shape" {
     }))
   })
 }
+
+variable "vcsa_ip" {}
+variable "vcsa_hostname" {}
+variable "vcsa_remote_ovf_url" {}

@@ -3,9 +3,9 @@ locals {
   cidr_prefix          = join(".", slice(split(".", var.nested_esxi_starting_ip), 0, 3))
   starting_host        = tonumber(element(split(".", var.nested_esxi_starting_ip), 3))
   storage1_ip_prefix   = var.storage_vmknics != null ? join(".", slice(split(".", var.storage_vmknics.storage1_starting_ip), 0, 3)) : ""
-  starting_storage1_ip = var.storage_vmknics != null ? tonumber(element(split(".", var.storage_vmknics.storage1_starting_ip), 3)) : ""
+  starting_storage1_ip = var.storage_vmknics != null ? tonumber(element(split(".", var.storage_vmknics.storage1_starting_ip), 3)) : 0
   storage2_ip_prefix   = var.storage_vmknics != null ? join(".", slice(split(".", var.storage_vmknics.storage2_starting_ip), 0, 3)) : ""
-  starting_storage2_ip = var.storage_vmknics != null ? tonumber(element(split(".", var.storage_vmknics.storage2_starting_ip), 3)) : ""
+  starting_storage2_ip = var.storage_vmknics != null ? tonumber(element(split(".", var.storage_vmknics.storage2_starting_ip), 3)) : 0
 
   ks_server_www_dir = var.create_ks_server ? "/srv" : var.ks_server_www_dir
   ks_server_user    = var.create_ks_server ? "root" : var.ks_server_user
@@ -14,8 +14,8 @@ locals {
       ip                   = format("%s.%d", local.cidr_prefix, local.starting_host + i)
       hostname             = format("%s%02d", var.nested_esxi_hostname_prefix, i + 1)
       fqdn                 = format("%s%02d.%s", var.nested_esxi_hostname_prefix, i + 1, var.domain_name)
-      storage1_ip          = format("%s.%d", local.storage1_ip_prefix, local.starting_storage1_ip + i)
-      storage2_ip          = format("%s.%d", local.storage2_ip_prefix, local.starting_storage2_ip + i)
+      storage1_ip          = var.storage_vmknics != null ? format("%s.%d", local.storage1_ip_prefix, local.starting_storage1_ip + i) : null
+      storage2_ip          = var.storage_vmknics != null ? format("%s.%d", local.storage2_ip_prefix, local.starting_storage2_ip + i) : null
       provision_datastores = i != 0 ? [] : var.provision_datastores
     })
   }
@@ -64,7 +64,6 @@ module "nested_esxi_scratch" {
   } : null
   tpm_enabled          = var.nested_esxi_shape.tpm_enabled
   provision_datastores = each.value.provision_datastores
-  domain_name          = var.domain_name
   ntp                  = var.ntp
 
   mem_gb   = var.nested_esxi_shape.mem_gb

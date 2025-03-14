@@ -20,6 +20,8 @@ data "vsphere_ovf_vm_template" "vcsa" {
 
 locals {
   cis_upgrade_import_directory = "/storage/seat/cis-export-folder"
+  sso_administrator            = "administrator@${var.sso_domain_name}"
+  vcsa_govc_url                = "https://${local.sso_administrator}:${urlencode(var.vm_password)}@${var.ip}/sdk"
 }
 
 resource "vsphere_virtual_machine" "vcsa" {
@@ -33,7 +35,7 @@ resource "vsphere_virtual_machine" "vcsa" {
   num_cores_per_socket = data.vsphere_ovf_vm_template.vcsa.num_cores_per_socket
   memory               = data.vsphere_ovf_vm_template.vcsa.memory
   guest_id             = data.vsphere_ovf_vm_template.vcsa.guest_id
-  scsi_type = data.vsphere_ovf_vm_template.vcsa.scsi_type
+  scsi_type            = data.vsphere_ovf_vm_template.vcsa.scsi_type
 
   dynamic "network_interface" {
     for_each = data.vsphere_ovf_vm_template.vcsa.ovf_network_map
@@ -64,11 +66,11 @@ resource "vsphere_virtual_machine" "vcsa" {
       "guestinfo.cis.appliance.net.gateway"     = var.gateway
       "guestinfo.cis.appliance.net.dns.servers" = join(",", var.nameservers)
       "guestinfo.cis.appliance.ntp.servers"     = var.ntp
-      "guestinfo.cis.appliance.ssh.enabled"     = var.ssh_enabled
+      "guestinfo.cis.appliance.ssh.enabled"     = var.ssh_enabled ? "True" : "False"
       "guestinfo.cis.appliance.root.passwd"     = var.vm_password
       "guestinfo.cis.appliance.root.shell"      = "/bin/appliancesh"
       "guestinfo.cis.vmdir.site-name"           = "Default-First-Site"
-      "guestinfo.cis.vmdir.username"            = "administrator@${var.sso_domain_name}"
+      "guestinfo.cis.vmdir.username"            = local.sso_administrator
       "guestinfo.cis.vmdir.domain-name"         = var.sso_domain_name
       "guestinfo.cis.vmdir.password"            = var.vm_password
       "guestinfo.cis.upgrade.import.directory"  = local.cis_upgrade_import_directory
@@ -79,7 +81,25 @@ resource "vsphere_virtual_machine" "vcsa" {
 
   lifecycle {
     ignore_changes = [
-      vapp[0].properties
+      num_cores_per_socket,
+      vapp[0].properties,
+      host_system_id
     ]
+  }
+
+  provisioner "local-exec" {
+    command = "until govc ls ; do sleep 60 ; done "
+    environment = {
+      GOVC_URL      = local.vcsa_govc_url
+      GOVC_INSECURE = "true"
+    }
+  }
+
+  provisioner "local-exec" {
+    command = "until govc guest.run -l 'root:${var.vm_password}' -vm ${var.name} grep succeeded /var/log/firstboot/status ; do sleep 60 ; done"
+    environment = {
+      GOVC_URL      = var.vi.govc_url
+      GOVC_INSECURE = "true"
+    }
   }
 }

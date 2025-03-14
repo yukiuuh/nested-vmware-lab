@@ -25,9 +25,6 @@ variable "hostname" {
 variable "dns" {
   type = string
 }
-variable "domain_name" {
-  default = ""
-}
 variable "ntp" {
   default = "time.vmware.com"
 }

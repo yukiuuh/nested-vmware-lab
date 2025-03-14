@@ -68,6 +68,7 @@ resource "vsphere_virtual_machine" "nested_esxi" {
   hardware_version      = var.hardware_version
   annotation            = "Provisioned from [${var.iso_datastore}] ${var.iso_path}"
   nvme_controller_count = 1
+  force_power_off       = true
 
   lifecycle {
     ignore_changes = [

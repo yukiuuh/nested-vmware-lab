@@ -31,7 +31,7 @@ resource "vsphere_virtual_machine" "photon_with_cloudinit" {
 
   lifecycle {
     ignore_changes = [
-      host_system_id,
+      host_system_id, power_state
     ]
   }
 
