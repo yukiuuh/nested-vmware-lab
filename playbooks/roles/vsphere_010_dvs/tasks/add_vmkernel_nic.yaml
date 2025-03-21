@@ -1,0 +1,25 @@
+- name: Add vmkernel port
+  community.vmware.vmware_vmkernel:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    dvswitch_name: "{{ dvs_name }}"
+    portgroup_name: "{{ portgroup.name }}"
+    mtu: "{{ vmknic.mtu | default(1500) }}"
+    network:
+      type: 'static'
+      ip_address: "{{ vmknic.starting_ip | ansible.utils.ipmath(esxi_index) }}"
+      subnet_mask: "{{ vmknic.subnet_mask }}"
+    state: present
+    enable_vmotion: "{{ vmknic.enable_vmotion | default(false) }}"
+    enable_vsan: "{{ vmknic.enable_vsan | default(false) }}"
+    enable_replication_nfc: "{{ vmknic.enable_replication_nfc | default(false) }}"
+    enable_provisioning: "{{ vmknic.enable_provisioning | default(false) }}"
+    enable_mgmt: "{{ vmknic.enable_mgmt | default(false) }}"
+    enable_ft: "{{ vmknic.enable_ft | default(false) }}"
+    enable_backup_nfc: "{{ vmknic.enable_backup_nfc | default(false) }}"
+    esxi_hostname: "{{ item }}"
+  loop: "{{ portgroup.vmknics }}"
+  loop_control:
+    loop_var: vmknic

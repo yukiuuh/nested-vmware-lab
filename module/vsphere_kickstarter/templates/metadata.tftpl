@@ -9,4 +9,10 @@ network:
       dhcp4: false
       addresses:
         - ${ip_address}/${subnet_prefix}
+      gateway4: ${gateway}
+      nameservers:
+        addresses:
+%{ for nameserver in nameservers ~}
+          - ${nameserver}
+%{ endfor ~}
 %{ endif }

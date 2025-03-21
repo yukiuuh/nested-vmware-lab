@@ -1,0 +1,61 @@
+#!/bin/bash
+
+OVFTOOL_CMD=/mnt/cdrom/vcsa/ovftool/lin64/ovftool
+VCSA_OVA_PATH=`ls /mnt/cdrom/vcsa/*.ova`
+
+MAX_RETRY=360
+INTERVAL=10
+
+for i in $(seq 1 $MAX_RETRY); do
+    echo "wait for ESXi (retries $i / $MAX_RETRY)"
+    $OVFTOOL_CMD --verifyOnly --skipManifestCheck --noSSLVerify --allowExtraConfig --acceptAllEulas --powerOn --sourceType=OVA --name="${vm_name}" \
+    --datastore="${datastore_name}" \
+    --deploymentOption=${deployment_size} \
+    --diskMode=thin \
+    --network="${network_name}" \
+    $VCSA_OVA_PATH \
+    vi://root:${esxi_password}@${esxi_host}:443/ && break
+    sleep $INTERVAL && /bin/false
+done
+
+if [ $? -eq 0 ]; then
+    echo "ESXi is ready"
+else
+    echo "ESXi timeout..."
+    echo 1 > /var/tmp/vcsa_deploy_status
+    exit 1
+fi
+
+$OVFTOOL_CMD --skipManifestCheck --noSSLVerify --allowExtraConfig --acceptAllEulas --powerOn --sourceType=OVA --overwrite \
+  --X:injectOvfEnv --X:enableHiddenProperties --X:logLevel=verbose --X:logTransferHeaderData --X:waitForIp \
+  --name="${vm_name}" \
+  --datastore="${datastore_name}" \
+  --deploymentOption=${deployment_size} \
+  --diskMode=thin \
+  --network="${network_name}" \
+  --prop:guestinfo.cis.deployment.autoconfig=True \
+  --prop:guestinfo.cis.deployment.node.type=embedded \
+  --prop:guestinfo.cis.system.vm0.port=443 \
+  --prop:guestinfo.cis.appliance.net.addr.family=ipv4 \
+  --prop:guestinfo.cis.appliance.net.mode=static \
+  --prop:guestinfo.cis.appliance.net.pnid=${pnid} \
+  --prop:guestinfo.cis.appliance.net.addr=${ip} \
+  --prop:guestinfo.cis.appliance.net.prefix=${prefix} \
+  --prop:guestinfo.cis.appliance.net.gateway=${gateway} \
+  --prop:guestinfo.cis.appliance.net.dns.servers=${nameserver} \
+  --prop:guestinfo.cis.appliance.ntp.servers=${ntp} \
+  --prop:guestinfo.cis.appliance.ssh.enabled=${ssh_enabled} \
+  --prop:guestinfo.cis.appliance.root.passwd=${vm_password} \
+  --prop:guestinfo.cis.appliance.root.shell=/bin/appliancesh \
+  --prop:guestinfo.cis.vmdir.site-name=Default-First-Site \
+  --prop:guestinfo.cis.vmdir.username=administrator@${sso_domain_name} \
+  --prop:guestinfo.cis.vmdir.domain-name=${sso_domain_name} \
+  --prop:guestinfo.cis.vmdir.password=${vm_password} \
+  --prop:guestinfo.cis.upgrade.import.directory.userConfigurable=True \
+  --prop:guestinfo.cis.upgrade.import.directory=${cis_upgrade_import_directory} \
+  --prop:guestinfo.cis.vmdir.first-instance=True \
+  --prop:guestinfo.cis.ceip_enabled=True \
+  $VCSA_OVA_PATH \
+  vi://root:${esxi_password}@${esxi_host}:443/
+
+echo $? > /var/tmp/vcsa_deploy_status

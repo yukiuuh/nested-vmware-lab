@@ -1,0 +1,37 @@
+---
+- name: Provision nested vSphere
+  gather_facts: false
+  hosts: all
+  vars:
+    validate_certs: false
+  tasks:
+    - name: Setup variables for vSphere
+      ansible.builtin.set_fact:
+        register_esxi_hostnames: '{{ esxi_hosts | from_json | list }}'
+        vc_address: '{{ vc_address }}'
+        vc_username: '{{ vc_username }}'
+        vc_password: '{{ vc_password }}'
+        datacenter_name: '{{ datacenter_name }}'
+        cluster_name: '{{ cluster_name }}'
+        esxi_password: '{{ esxi_password }}'
+
+    - name: Initialize nested vSphere
+      ansible.builtin.include_role:
+        name: vsphere_000_initialize
+
+    # - name: Set up Distributed Switch
+    #   ansible.builtin.include_role:
+    #     name: vsphere_010_dvs
+    #   vars:
+    #     dvs_name: '{{ dvs.name }}'
+    #     dvs_version: '{{ dvs.version }}'
+    #     dvs_mtu: '{{ dvs.mtu }}'
+    #     dvs_uplinks: '{{ dvs.uplinks }}'
+    #     portgroups: '{{ dvs.portgroups }}'
+    #   loop: '{{ nested_vsphere.dvs_list }}'
+    #   loop_control:
+    #     loop_var: "dvs"
+
+    # - name: Set up cluster
+    #   ansible.builtin.include_role:
+    #     name: vsphere_020_cluster

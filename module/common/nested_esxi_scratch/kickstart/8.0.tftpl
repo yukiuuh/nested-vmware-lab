@@ -66,5 +66,4 @@ vmkfstools -C vmfs6 -S ${provision_datastore.datastore_name} /vmfs/devices/disks
 %{ endfor ~}
 
 /sbin/generate-certificates
-
-date > /var/tmp/finished.stamp
+date > /var/tmp/provisioned

@@ -1,0 +1,30 @@
+#cloud-config
+
+users:
+  - name: root
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: '${password}'
+
+packages:
+  - python3-pip
+  - git
+  - sshpass
+
+write_files:
+  - path: /root/deploy_vcsa.sh
+    encoding: b64
+    content: ${deploy_vcsa_base64}
+
+runcmd:
+  - systemctl stop iptables
+  - systemctl disable iptables
+  - nohup python3 -m http.server -d /srv 80 &
+  - mount /dev/cdrom /mnt/cdrom
+  - ln -s /mnt/cdrom/vcsa/*.ova /srv
+  - vmtoolsd --cmd "info-set guestinfo.vcsaOvaUrl http://$(ip -f inet -o addr show dev eth0 | sed 's/  */ /g' | cut -d ' ' -f 4 | cut -d '/' -f 1)/$(basename $(ls /mnt/cdrom/vcsa/*.ova))"
+  - bash /root/deploy_vcsa.sh
+  - hostnamectl set-hostname vsphere-kickstarter
+  - pip install pyvmomi passlib netaddr git+https://github.com/vmware/vsphere-automation-sdk-python.git
+  - echo > /var/tmp/provisioned

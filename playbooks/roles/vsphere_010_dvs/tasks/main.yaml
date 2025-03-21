@@ -1,0 +1,41 @@
+- name: Create dvSwitch
+  community.vmware.vmware_dvswitch:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    datacenter: '{{ datacenter_name }}'
+    switch: "{{ dvs_name }}"
+    version: "{{ dvs_version }}"
+    mtu: "{{ dvs_mtu }}"
+    uplink_quantity: "{{ dvs_uplinks | length }}"
+    discovery_protocol: cdp
+    discovery_operation: listen
+    state: present
+  when: (not dvs_name is undefined) and dvs_name != ""
+
+- name: Add Host to dVS
+  community.vmware.vmware_dvs_host:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    esxi_hostname: "{{ item }}"
+    switch_name: "{{ dvs_name }}"
+    vmnics: "{{ dvs_uplinks }}"
+    state: present
+  loop: "{{ register_esxi_hostnames }}"
+  when: (not dvs_name is undefined) and dvs_name != ""
+
+- name: Add portgroups
+  ansible.builtin.include_tasks: add_distributed_portgroup.yaml
+  loop_control:
+    loop_var: portgroup
+  loop: "{{ portgroups }}"
+
+- name: Add VMKernel nics
+  ansible.builtin.include_tasks: add_vmkernel_nics.yaml
+  loop: "{{ register_esxi_hostnames }}"
+  loop_control:
+    index_var: esxi_index
+  when: (not dvs_name is undefined) and dvs_name != ""

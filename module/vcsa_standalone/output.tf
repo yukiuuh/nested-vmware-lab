@@ -9,7 +9,3 @@ output "hostname" {
 output "password" {
   value = var.vm_password
 }
-
-output "govc_url" {
-  value = local.vcsa_govc_url
-}

@@ -33,7 +33,9 @@ resource "vsphere_virtual_machine" "ubuntu" {
     ignore_changes = [
       host_system_id,
       disk[0].io_share_count,
-      disk[1].io_share_count
+      disk[1].io_share_count,
+      ovf_deploy[0].ovf_network_map,
+      cdrom[0],
     ]
   }
 

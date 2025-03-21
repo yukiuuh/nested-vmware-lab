@@ -28,10 +28,13 @@ resource "vsphere_virtual_machine" "photon_with_cloudinit" {
   guest_id             = data.vsphere_ovf_vm_template.photon.guest_id
   firmware             = data.vsphere_ovf_vm_template.photon.firmware
   scsi_type            = data.vsphere_ovf_vm_template.photon.scsi_type
+  annotation           = var.annotation != "" ? var.annotation : data.vsphere_ovf_vm_template.photon.annotation
 
   lifecycle {
     ignore_changes = [
-      host_system_id, power_state
+      host_system_id,
+      disk[0].io_share_count,
+      ovf_deploy[0].ovf_network_map
     ]
   }
 
@@ -50,7 +53,7 @@ resource "vsphere_virtual_machine" "photon_with_cloudinit" {
     }
   }
 
-  wait_for_guest_net_timeout  = 30
+  wait_for_guest_net_timeout  = 0
   wait_for_guest_ip_timeout   = 30
   wait_for_guest_net_routable = var.wait_for_guest_net_routable
 
@@ -70,4 +73,3 @@ resource "vsphere_virtual_machine" "photon_with_cloudinit" {
     "guestinfo.metadata.encoding" = "base64"
   }
 }
-

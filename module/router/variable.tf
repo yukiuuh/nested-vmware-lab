@@ -4,18 +4,18 @@ variable "subnet_mask" {
   type    = string
   default = "255.255.255.0"
 }
-variable "remote_ovf_url" { default = null }
+variable "ubuntu_ovf_url" { default = null }
 variable "vm_password" { default = "VMware123!" }
 
-variable "management_network" { type = string }
-variable "lab_network" { type = string }
+variable "wan_network_name" { type = string }
+variable "network_name" { type = string }
 
 variable "name" {}
 variable "ip" {
   nullable = true
   type     = string
 }
-variable "monolith_storage_size_gb" { type = number }
+variable "vi" {}
 
 variable "nested_network" {
   type = object({

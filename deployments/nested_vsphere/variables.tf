@@ -14,6 +14,7 @@ variable "vm_password" { default = "VMware123!" }
 variable "name_prefix" { type = string }
 
 variable "photon_ovf_url" { default = "https://packages.vmware.com/photon/5.0/GA/ova/photon-hw15-5.0-dde71ec57.x86_64.ova" }
+variable "ubuntu_ovf_url" { default = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.ova" }
 variable "esxi_iso_datastore" {}
 variable "esxi_iso_path" {}
 
@@ -30,7 +31,15 @@ variable "mtu" {
 variable "vlan" { default = 0 }
 variable "ntp" { default = "time.vmware.com" }
 
-variable "ks_server_ip" {}
+variable "ssh_authorized_keys" {
+  default = []
+  type    = list(string)
+}
+
+variable "ks_server_ip" {
+  nullable = true
+  default  = null
+}
 
 variable "nfs_hosts" {
   type = list(object({
@@ -90,6 +99,47 @@ variable "nested_esxi_shape" {
   })
 }
 
-variable "vcsa_ip" {}
-variable "vcsa_hostname" {}
-variable "vcsa_remote_ovf_url" {}
+variable "nested_vcsa" {
+  nullable = true
+  default  = null
+  type = object({
+    self_managed      = bool
+    ip                = string
+    hostname          = string
+    remote_ovf_url    = string
+    iso_path          = string
+    iso_datastore     = string
+    datastore         = string
+    deployment_option = string
+  })
+}
+
+variable "storage" {
+  nullable = true
+  default  = null
+  type = object({
+    ip            = string
+    storage1_ip   = string
+    storage2_ip   = string
+    storage1_vlan = number
+    storage2_vlan = number
+    mtu           = number
+    subnet_mask   = string
+    disk_size_gb  = number
+    lun_size_gb   = number
+    lun_count     = number
+  })
+}
+
+variable "external_network" {
+  nullable = true
+  default  = null
+  type = object({
+    name        = string
+    subnet_mask = string
+    gateway     = string
+    nameservers = list(string)
+    ntp         = string
+    ip          = string
+  })
+}

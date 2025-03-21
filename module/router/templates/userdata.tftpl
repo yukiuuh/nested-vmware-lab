@@ -1,0 +1,213 @@
+#cloud-config
+
+users:
+  - name: ${user}
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    groups: sudo, adm, docker, cdrom, dip, lxd
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: '${password}'
+%{ if length(ssh_authorized_keys) > 0  }
+    ssh_authorized_keys:
+%{ for key in ssh_authorized_keys ~}
+      - ${key}
+%{ endfor ~}
+%{ else }
+# NO AUTHORIZED KEY
+%{ endif }
+
+packages:
+  - apache2
+  - chrony
+  - isc-dhcp-server
+  - unzip
+  - gnupg
+  - software-properties-common
+  - iptables-persistent
+  - frr
+
+write_files:
+  - content: |
+      /pool01/nfs *(rw,async,no_subtree_check,no_root_squash)
+    path: /etc/exports
+  - content: |
+      net.ipv4.ip_forward=1
+      net.ipv6.conf.all.forwarding=1
+      nf_conntrack_max=131072
+    path: /etc/sysctl.d/99-routing.conf
+  - content: |
+      network:
+        version: 2
+        ethernets:
+          ens192:
+%{ if ip_address == "" || ip_address == null ~}
+            dhcp4: true
+%{ else ~}
+            addresses:
+              - ${ip_address}/${subnet_mask}
+            gateway4: ${gateway}
+            dhcp4: false
+            nameservers:
+              addresses:
+%{ for nameserver in nameservers ~}
+                - ${nameserver}
+%{ endfor ~}
+%{ endif ~}
+          ens224:
+            mtu: ${vlan_mtu}
+            dhcp4: false
+            dhcp6: false
+            addresses: [ "${cidrhost(management_network_address, 1)}/24" ]
+        vlans:
+%{ for vlan_network in vlan_networks ~}
+          vlan.${vlan_network.vlan}:
+            id: ${vlan_network.vlan}
+            link: ens224
+            dhcp6: false
+            addresses: [ "${cidrhost(vlan_network.address,1)}/24" ]
+            mtu: ${vlan_mtu}
+%{ endfor ~}
+    path: /etc/netplan/99-static.yaml
+    permission: '0600'
+  - content: |
+      . {
+        cache 30
+        errors
+        loop
+        reload
+        health
+        ready
+        hosts /etc/coredns/hosts ${domain} {
+          fallthrough
+        }
+        forward . ${nameservers[0]}
+      }
+    path: /etc/coredns/Corefile
+  - content: |
+      ${cidrhost(management_network_address, 1)} ${hostname}.${domain}
+      ${cidrhost(management_network_address, 80)} nsxm.${domain}
+      ${cidrhost(management_network_address, 81)} nsxm01.${domain}
+      ${cidrhost(management_network_address, 82)} nsxm02.${domain}
+      ${cidrhost(management_network_address, 83)} nsxm03.${domain}
+      ${cidrhost(management_network_address, 84)} nsxe01.${domain}
+      ${cidrhost(management_network_address, 85)} nsxe02.${domain}
+      ${cidrhost(management_network_address, 86)} nsxe03.${domain}
+      ${cidrhost(management_network_address, 87)} nsxe04.${domain}
+      ${cidrhost(management_network_address, 88)} avi.${domain}
+      ${cidrhost(management_network_address, 89)} avi01.${domain}
+      ${cidrhost(management_network_address, 90)} avi02.${domain}
+      ${cidrhost(management_network_address, 91)} avi03.${domain}
+      ${cidrhost(management_network_address, 92)} vrli.${domain}
+      ${cidrhost(management_network_address, 93)} vrli01.${domain}
+      ${cidrhost(management_network_address, 94)} vrli02.${domain}
+      ${cidrhost(management_network_address, 95)} vrli03.${domain}
+      ${cidrhost(management_network_address, 96)} vra.${domain}
+      ${cidrhost(management_network_address, 97)} vra01.${domain}
+      ${cidrhost(management_network_address, 98)} vra02.${domain}
+      ${cidrhost(management_network_address, 99)} vra03.${domain}
+      ${cidrhost(management_network_address, 100)} vcsa01.${domain}
+      ${cidrhost(management_network_address, 101)} esxi01.${domain}
+      ${cidrhost(management_network_address, 102)} esxi02.${domain}
+      ${cidrhost(management_network_address, 103)} esxi03.${domain}
+      ${cidrhost(management_network_address, 104)} esxi04.${domain}
+      ${cidrhost(management_network_address, 105)} esxi05.${domain}
+      ${cidrhost(management_network_address, 106)} esxi06.${domain}
+      ${cidrhost(management_network_address, 107)} esxi07.${domain}
+      ${cidrhost(management_network_address, 108)} esxi08.${domain}
+      ${cidrhost(management_network_address, 109)} esxi09.${domain}
+      ${cidrhost(management_network_address, 110)} wvcsa01.${domain}
+      ${cidrhost(management_network_address, 111)} wesxi01.${domain}
+      ${cidrhost(management_network_address, 112)} wesxi02.${domain}
+      ${cidrhost(management_network_address, 113)} wesxi03.${domain}
+      ${cidrhost(management_network_address, 114)} wesxi04.${domain}
+      ${cidrhost(management_network_address, 115)} wesxi05.${domain}
+      ${cidrhost(management_network_address, 116)} wesxi06.${domain}
+      ${cidrhost(management_network_address, 117)} wesxi07.${domain}
+      ${cidrhost(management_network_address, 118)} wesxi08.${domain}
+      ${cidrhost(management_network_address, 119)} wesxi09.${domain}
+      ${cidrhost(management_network_address, 120)} wnsxm.${domain}
+      ${cidrhost(management_network_address, 121)} wnsxm01.${domain}
+      ${cidrhost(management_network_address, 122)} wnsxm02.${domain}
+      ${cidrhost(management_network_address, 123)} wnsxm03.${domain}
+      ${cidrhost(management_network_address, 124)} wnsxe01.${domain}
+      ${cidrhost(management_network_address, 125)} wnsxe02.${domain}
+      ${cidrhost(management_network_address, 126)} wnsxe03.${domain}
+      ${cidrhost(management_network_address, 127)} wnsxe04.${domain}
+    path: /etc/coredns/hosts
+  - content: |
+      [Unit]
+      Description=CoreDNS DNS server
+      Documentation=https://coredns.io
+      After=network.target
+      [Service]
+      PermissionsStartOnly=true
+      LimitNOFILE=1048576
+      LimitNPROC=512
+      CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      NoNewPrivileges=true
+      User=coredns
+      WorkingDirectory=/var/lib/coredns
+      ExecStart=/usr/bin/coredns -conf=/etc/coredns/Corefile
+      ExecReload=/bin/kill -SIGUSR1 $MAINPID
+      Restart=on-failure
+      StandardOutput=append:/var/log/coredns.log
+      StandardError=append:/var/log/coredns.err.log
+      [Install]
+      WantedBy=multi-user.target
+    path: /etc/systemd/system/coredns.service
+  - content: |
+      allow 0.0.0.0/0
+    path: /etc/chrony/conf.d/99-allow-all.conf
+  - content: |
+      DHCPDv4_CONF=/etc/dhcp/dhcpd.conf
+      INTERFACESv4="ens224"
+      INTERFACESv6=""
+    path: /etc/default/isc-dhcp-server
+  - content: |
+      option domain-name "${domain}";
+      option domain-name-servers ${cidrhost(management_network_address, 1)};
+      default-lease-time 600;
+      max-lease-time 7200;
+      ddns-update-style none;
+      authoritative;
+      subnet ${cidrhost(management_network_address, 0)} netmask 255.255.255.0 {
+        option routers ${cidrhost(management_network_address, 1)};
+        option subnet-mask 255.255.255.0;
+        range dynamic-bootp ${cidrhost(management_network_address, 200)} ${cidrhost(management_network_address, 250)};
+      }
+    path: /etc/dhcp/dhcpd.conf
+  - content: |
+      PasswordAuthentication yes
+    path: /etc/ssh/sshd_config.d/00-allow-password.conf
+
+runcmd:
+  - systemctl restart ssh
+  - sysctl -p /etc/sysctl.d/99-routing.conf
+  - netplan apply
+  - hostnamectl set-hostname ${hostname}.${domain}
+  - iptables -A INPUT -j ACCEPT
+  - iptables -A FORWARD -j ACCEPT
+  - iptables -t nat -o ens192 -A POSTROUTING -j MASQUERADE
+  - iptables -t nat -A PREROUTING -p tcp -i ens192 --dport 10022 -j DNAT --to 10.0.0.2:22
+  - iptables -t nat -A PREROUTING -p tcp -i ens192 --dport 3389 -j DNAT --to 10.0.0.2
+  - iptables -t nat -A PREROUTING -p udp -i ens192 --dport 3389 -j DNAT --to 10.0.0.2
+  - iptables-save > /etc/iptables/rules.v4
+  - iptables-restore < /etc/iptables/rules.v4
+  - sysctl -p
+  - modprobe nf_conntrack
+  # DHCP
+  - systemctl restart isc-dhcp-server
+  # DNS
+  - [ "sh" , "-c", "wget https://github.com/coredns/coredns/releases/download/v1.12.0/coredns_1.12.0_linux_amd64.tgz -O - | tar zxvf - -C /usr/bin/" ]
+  - mkdir -p /etc/coredns
+  - mkdir -p /var/lib/coredns
+  - useradd -l -r -s /usr/sbin/nologin -m -d /var/lib/coredns -c 'CoreDNS user' coredns
+  - systemctl stop systemd-resolved
+  - systemctl disable systemd-resolved
+  - systemctl start coredns
+  - systemctl enable coredns
+  # NTP
+  - systemctl restart chronyd
+  - systemctl enable chronyd
+  - echo > /var/tmp/provisioned

@@ -2,6 +2,14 @@ output "esxi_hosts" {
   value = values(tomap(module.esxi_cluster.esxi_hosts))
 }
 
-output "vcsa_standalone" {
-  value = module.vcsa_standalone
+output "vcsa" {
+  value = var.nested_vcsa != null ? (local.is_vcsa_self_managed ? module.vsphere_kickstarter[0].vcsa_info : module.vcsa_standalone[0]) : null
+}
+
+output "storage" {
+  value = var.storage != null ? module.storage[0] : null
+}
+
+output "router" {
+  value = var.external_network != null ? module.router[0] : null
 }

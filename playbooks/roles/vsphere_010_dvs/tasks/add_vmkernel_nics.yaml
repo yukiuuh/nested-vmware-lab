@@ -1,0 +1,5 @@
+- name: Add vmkernel ports to portgroup
+  ansible.builtin.include_tasks: add_vmkernel_nic.yaml
+  loop: "{{ portgroups }}"
+  loop_control:
+    loop_var: portgroup

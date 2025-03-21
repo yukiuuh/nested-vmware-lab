@@ -36,10 +36,13 @@ data "vsphere_datastore" "iso_datastore" {
 
 resource "terraform_data" "kickstart_script" {
   connection {
-    type     = "ssh"
-    user     = var.ks_server_user
-    password = var.ks_server_password
-    host     = var.ks_server_ip
+    type             = "ssh"
+    user             = var.ks_server_user
+    password         = var.ks_server_password
+    host             = var.ks_server_ip
+    bastion_host     = var.bastion_ip
+    bastion_user     = var.bastion_user
+    bastion_password = var.bastion_password
   }
   provisioner "file" {
     content     = local.ks
@@ -69,6 +72,7 @@ resource "vsphere_virtual_machine" "nested_esxi" {
   annotation            = "Provisioned from [${var.iso_datastore}] ${var.iso_path}"
   nvme_controller_count = 1
   force_power_off       = true
+  enable_disk_uuid      = true
 
   lifecycle {
     ignore_changes = [
@@ -125,10 +129,11 @@ resource "vsphere_virtual_machine" "nested_esxi" {
     command = "${var.vi.govc_setup_cmd} KS_URL=http://${var.ks_server_ip}/${var.name}.cfg KS_NAMESERVER=${var.dns} KS_IP=${var.management_vmknic.ip} KS_NETMASK=${var.management_vmknic.subnet} KS_GATEWAY=${var.management_vmknic.gateway} VM_NAME=${var.name} KS_VLAN=${var.management_vmknic.vlan} bash ${path.module}/scripts/enter_kickstart.sh"
   }
   provisioner "local-exec" {
-    command = "until govc host.info ; do sleep 15 ; done "
+    command = "until govc guest.ls -l 'root:${var.password}' -vm ${var.name} /var/tmp/provisioned ; do sleep 60 ; done"
     environment = {
-      GOVC_URL      = local.esxi_url
-      GOVC_INSECURE = "true"
+      GOVC_URL        = var.vi.govc_url
+      GOVC_INSECURE   = "true"
+      GOVC_DATACENTER = var.vi.datacenter.name
     }
   }
 }

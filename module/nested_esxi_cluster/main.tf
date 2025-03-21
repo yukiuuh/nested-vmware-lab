@@ -73,22 +73,25 @@ module "nested_esxi_scratch" {
   password           = var.vm_password
   ks_server_password = var.ks_server_password
   ks_server_user     = local.ks_server_user
-  ks_server_ip       = var.ks_server_ip
+  ks_server_ip       = var.create_ks_server ? module.ks_server[0].ip : var.ks_server_ip
   ks_server_www_dir  = local.ks_server_www_dir
+  bastion_ip         = var.bastion_ip
+  bastion_user       = var.bastion_user
+  bastion_password   = var.bastion_password
   iso_datastore      = var.esxi_iso_datastore
   iso_path           = var.esxi_iso_path
   nfs_hosts          = var.nfs_hosts
   iscsi_targets      = var.iscsi_targets
 }
 
-resource "terraform_data" "cleanup_kickstarter" {
+resource "terraform_data" "stop_kickstarter" {
   count      = var.create_ks_server ? 1 : 0
   depends_on = [module.nested_esxi_scratch]
   input = {
-    vm_name = module.ks_server[0].vmname
+    vm_name = var.create_ks_server ? module.ks_server[0].name : ""
   }
   provisioner "local-exec" {
-    command = "govc vm.power -off -force ${self.input.vm_name}; govc vm.destroy ${self.input.vm_name}; echo 0"
+    command = "govc vm.power -off -force ${self.input.vm_name} ; echo 0"
     environment = {
       GOVC_URL        = var.vi.govc_url
       GOVC_INSECURE   = "true"

@@ -112,3 +112,15 @@ variable "ks_server_ip" {}
 variable "ks_server_user" { default = "root" }
 variable "ks_server_password" {}
 variable "ks_server_www_dir" { default = "/var/www/html/" }
+variable "bastion_ip" {
+  nullable = true
+  default  = null
+}
+variable "bastion_user" {
+  nullable = true
+  default  = null
+}
+variable "bastion_password" {
+  nullable = true
+  default  = null
+}

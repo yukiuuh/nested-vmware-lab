@@ -1,0 +1,95 @@
+#cloud-config
+
+users:
+  - name: ${user}
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    groups: sudo, adm, cdrom, dip, lxd
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: '${password}'
+%{ if length(ssh_authorized_keys) > 0  }
+    ssh_authorized_keys:
+%{ for key in ssh_authorized_keys ~}
+      - ${key}
+%{ endfor ~}
+%{ else }
+# NO AUTHORIZED KEY
+%{ endif }
+
+packages:
+  - nfs-kernel-server
+  - targetcli-fb
+  - apache2
+  - zfsutils-linux
+  - unzip
+  - gnupg
+  - software-properties-common
+
+write_files:
+  - content: |
+      /pool01/nfs *(rw,async,no_subtree_check,no_root_squash)
+    path: /etc/exports
+  - content: |
+      network:
+        version: 2
+        ethernets:
+          ens192:
+            addresses:
+              - ${ip_address}/${prefix}
+            gateway4: ${gateway}
+            dhcp4: false
+            nameservers:
+              addresses:
+%{ for nameserver in nameservers ~}
+                - ${nameserver}
+%{ endfor ~}
+          ens224:
+            mtu: ${storage_mtu}
+            dhcp4: false
+            dhcp6: false
+          ens256:
+            mtu: ${storage_mtu}
+            dhcp4: false
+            dhcp6: false
+        vlans:
+          vlan.${storage1_vlan}:
+            id: ${storage1_vlan}
+            link: ens224
+            addresses: [ "${storage1_ip}/${storage_prefix}" ]
+            mtu: ${storage_mtu}
+          vlan.${storage2_vlan}:
+            id: ${storage2_vlan}
+            link: ens256
+            addresses: [ "${storage2_ip}/${storage_prefix}" ]
+            mtu: ${storage_mtu}
+    path: /etc/netplan/99-static.yaml
+    permission: '0600'
+
+  - content: |
+      PasswordAuthentication yes
+    path: /etc/ssh/sshd_config.d/00-allow-password.conf
+
+runcmd:
+  - netplan apply
+  - hostnamectl set-hostname ${hostname}.${domain}
+  # NFS/iSCSI
+  - zpool create pool01 /dev/sdb -o autotrim=on -O compression=${zfs_compression}
+  - zfs create pool01/nfs -o atime=off
+  - zfs set dedup=${zfs_nfs_dedup} pool01/nfs
+  - systemctl restart nfs-server.service
+  - zfs create pool01/volumes -o atime=off
+  - targetcli /iscsi create iqn.2003-01.org.linux-iscsi.storage.x8664:sn.140b6f9d8753
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.storage.x8664:sn.140b6f9d8753/tpg1/portals delete 0.0.0.0 ip_port=3260
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.storage.x8664:sn.140b6f9d8753/tpg1/portals create ${storage1_ip}
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.storage.x8664:sn.140b6f9d8753/tpg1/portals create ${storage2_ip}
+%{ for lun_name in lun_name_list ~}
+  - zfs create -s -V ${lun_size_gb}g pool01/volumes/${lun_name}
+  - targetcli /backstores/block create dev=/dev/zvol/pool01/volumes/${lun_name} name=${lun_name}
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.storage.x8664:sn.140b6f9d8753/tpg1/luns create /backstores/block/${lun_name}
+%{ endfor ~}
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.storage.x8664:sn.140b6f9d8753/tpg1 set attribute generate_node_acls=1 # disable acl
+  - targetcli /iscsi/iqn.2003-01.org.linux-iscsi.storage.x8664:sn.140b6f9d8753/tpg1 set attribute demo_mode_write_protect=0 # disable write protect
+  - targetcli saveconfig
+  - systemctl start target
+  - systemctl enable target
+  - echo > /var/tmp/provisioned

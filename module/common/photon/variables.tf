@@ -34,3 +34,5 @@ variable "remote_ovf_url" {
 variable "wait_for_guest_net_routable" {
   default = true
 }
+
+variable "annotation" { default = "" }

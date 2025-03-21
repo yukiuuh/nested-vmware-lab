@@ -1,0 +1,39 @@
+- name: Create Datacenter
+  community.vmware.vmware_datacenter:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    datacenter_name: "{{ datacenter_name }}"
+    state: present
+- name: Create Cluster
+  community.vmware.vmware_cluster:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    datacenter_name: "{{ datacenter_name }}"
+    cluster_name: "{{ cluster_name }}"
+    state: present
+- name: Add Nested ESXi to Cluster
+  community.vmware.vmware_host:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    datacenter_name: "{{ datacenter_name }}"
+    cluster_name: "{{ cluster_name }}"
+    esxi_hostname: "{{ item }}"
+    esxi_username: "root"
+    esxi_password: "{{ esxi_password }}"
+    state: present
+  loop: "{{ register_esxi_hostnames }}"
+- name: Rescan HBA and new VMFS Volumes
+  community.vmware.vmware_host_scanhba:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    cluster_name: '{{ cluster_name }}'
+    rescan_vmfs: true
+    rescan_hba: true

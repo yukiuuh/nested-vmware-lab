@@ -1,0 +1,32 @@
+- name: Enable vSAN and claim storage automatically
+  community.vmware.vmware_cluster_vsan:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    datacenter_name: "{{ datacenter_name }}"
+    cluster_name: "{{ cluster_name }}"
+    enable: "{{  vsan_enabled  }}"
+    vsan_auto_claim_storage: true
+  when: vsan_enabled | default(false)
+- name: Enable HA and VM monitoring without admission control
+  community.vmware.vmware_cluster_ha:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    datacenter_name: "{{ datacenter_name }}"
+    cluster_name: "{{ cluster_name }}"
+    ha_vm_monitoring: vmMonitoringOnly
+    enable: "{{ ha_enabled }}"
+  when: ha_enabled  | default(false)
+- name: Enable DRS
+  community.vmware.vmware_cluster_drs:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    datacenter_name: "{{ datacenter_name }}"
+    cluster_name: "{{ cluster_name }}"
+    enable: "{{ drs_enabled }}"
+  when: drs_enabled  | default(false)

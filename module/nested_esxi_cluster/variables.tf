@@ -9,10 +9,24 @@ variable "esxi_iso_datastore" {}
 variable "esxi_iso_path" {}
 
 variable "create_ks_server" { default = false }
-variable "ks_server_ip" {}
+variable "ks_server_ip" { nullable = true }
 variable "ks_server_user" { default = "root" }
 variable "ks_server_password" { default = "VMware123!" }
 variable "ks_server_www_dir" { default = "/srv/" }
+
+variable "bastion_ip" {
+  nullable = true
+  default  = null
+}
+variable "bastion_user" {
+  nullable = true
+  default  = null
+}
+variable "bastion_password" {
+  nullable = true
+  default  = null
+}
+
 
 variable "gateway" { type = string }
 variable "nameservers" { type = list(string) }

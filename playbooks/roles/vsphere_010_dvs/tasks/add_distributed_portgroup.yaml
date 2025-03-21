@@ -1,0 +1,12 @@
+- name: Create vlan portgroup
+  community.vmware.vmware_dvs_portgroup:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    portgroup_name: '{{ portgroup.name }}'
+    switch_name: "{{ dvs_name }}"
+    vlan_id: "{{ portgroup.vlan_id }}"
+    num_ports: 120
+    port_binding: static
+    state: present
