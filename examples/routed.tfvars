@@ -35,13 +35,13 @@ nested_esxi_shape = {
 esxi_iso_datastore = "ISO"
 esxi_iso_path      = "/template/iso/VMware-VMvisor-Installer-8.0U3-24022510.x86_64.iso"
 
-name_prefix  = "hanayamay"
-nameservers  = ["10.0.0.1"]
-subnet_mask  = "255.255.255.0"
-gateway      = "10.0.0.1"
-ntp          = "10.0.0.1"
-domain_name  = "nested.lab"
-network_name = "LabNetwork" # Promiscuous mode or MAC Learning enabled, and VLAN trunking enabled
+name_prefix         = "hanayamay"
+nameservers         = ["10.0.0.1"]
+subnet_mask         = "255.255.255.0"
+gateway             = "10.0.0.1"
+ntp                 = "10.0.0.1"
+domain_name         = "nested.lab"
+network_name        = "LabNetwork" # Promiscuous mode or MAC Learning enabled, and VLAN trunking enabled
 ssh_authorized_keys = []
 
 storage_vmknics = {
@@ -75,12 +75,12 @@ provision_datastores = [{
 ]
 
 nested_vcsa = {
-  self_managed      = true
-  ip                = "10.0.0.100"
-  hostname          = "vcsa01"
+  self_managed      = false
   remote_ovf_url    = ""
   iso_path          = "template/iso/VMware-VCSA-all-8.0.3-24022515.iso"
   iso_datastore     = "ISO"
+  ip                = "10.0.0.100"
+  hostname          = "vcsa01"
   datastore         = "iscsi01"
   deployment_option = "tiny"
 }

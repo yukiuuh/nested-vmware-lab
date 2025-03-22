@@ -21,10 +21,12 @@ runcmd:
   - systemctl stop iptables
   - systemctl disable iptables
   - nohup python3 -m http.server -d /srv 80 &
+%{ if is_self_managed ~}
   - mount /dev/cdrom /mnt/cdrom
   - ln -s /mnt/cdrom/vcsa/*.ova /srv
   - vmtoolsd --cmd "info-set guestinfo.vcsaOvaUrl http://$(ip -f inet -o addr show dev eth0 | sed 's/  */ /g' | cut -d ' ' -f 4 | cut -d '/' -f 1)/$(basename $(ls /mnt/cdrom/vcsa/*.ova))"
   - bash /root/deploy_vcsa.sh
+%{ endif ~}
   - hostnamectl set-hostname vsphere-kickstarter
   - pip install pyvmomi passlib netaddr git+https://github.com/vmware/vsphere-automation-sdk-python.git
   - echo > /var/tmp/provisioned

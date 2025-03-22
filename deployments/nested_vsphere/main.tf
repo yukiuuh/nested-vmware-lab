@@ -31,7 +31,6 @@ resource "tls_private_key" "ed25519" {
   algorithm = "ED25519"
 }
 
-
 module "router" {
   count               = var.external_network != null ? 1 : 0
   source              = "../../module/router"
@@ -76,7 +75,7 @@ module "storage" {
 
 
 module "vsphere_kickstarter" {
-  count                  = local.is_vcsa_self_managed ? 1 : 0
+  count                  = var.nested_vcsa != null ? 1 : 0
   source                 = "../../module/vsphere_kickstarter"
   depends_on             = [module.router]
   network_interfaces     = [var.network_name]
@@ -86,8 +85,8 @@ module "vsphere_kickstarter" {
   vm_password            = var.vm_password
   vi                     = module.vi
   remote_ovf_url         = var.photon_ovf_url
-  vcsa_iso_datastore     = var.nested_vcsa.iso_datastore
-  vcsa_iso_path          = var.nested_vcsa.iso_path
+  vcsa_iso_datastore     = var.nested_vcsa.iso_datastore != "" ? var.nested_vcsa.iso_datastore : null
+  vcsa_iso_path          = var.nested_vcsa.iso_path != "" ? var.nested_vcsa.iso_path : null
   vcsa_name              = "${local.name_prefix}-${var.nested_vcsa.hostname}"
   vcsa_network_name      = "VM Network"
   vcsa_gateway           = var.gateway
@@ -107,7 +106,7 @@ module "vsphere_kickstarter" {
 
 module "vcsa_standalone" {
   count             = var.nested_vcsa != null && !var.nested_vcsa.self_managed ? 1 : 0
-  depends_on        = [module.vsphere_kickstarter]
+  depends_on        = [module.vsphere_kickstarter, module.router]
   source            = "../../module/vcsa_standalone"
   ip                = var.nested_vcsa.ip
   hostname          = var.nested_vcsa.hostname

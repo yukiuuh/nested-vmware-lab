@@ -39,6 +39,7 @@ locals {
     {
       password           = local.vm_password
       deploy_vcsa_base64 = base64encode(local.deploy_vcsa)
+      is_self_managed    = var.vcsa_iso_datastore != null
   })
   metadata = templatefile("${path.module}/templates/metadata.tftpl",
     {
@@ -50,6 +51,7 @@ locals {
 }
 
 data "vsphere_datastore" "iso_datastore" {
+  count         = var.vcsa_iso_datastore != null ? 1 : 0
   name          = var.vcsa_iso_datastore
   datacenter_id = var.vi.datacenter.id
 }
@@ -57,19 +59,19 @@ module "vsphere_kickstarter_photon" {
   source             = "../common/photon"
   vi                 = var.vi
   name               = var.name
-  annotation         = "Temporary VM for vCenter Server ${var.vcsa_name} from [${var.vcsa_iso_datastore}] ${var.vcsa_iso_path}"
+  annotation         = join("", ["Temporary VM for vCenter Server ${var.vcsa_name}", var.vcsa_iso_datastore != null ? "from [${var.vcsa_iso_datastore}] ${var.vcsa_iso_path}" : ""])
   userdata           = local.userdata
   metadata           = local.metadata
   network_interfaces = var.network_interfaces
   remote_ovf_url     = var.remote_ovf_url
   num_cpus           = 2
   mem_gb             = 1
-  cdroms = [
+  cdroms = var.vcsa_iso_datastore != null ? [
     {
-      datastore_id = data.vsphere_datastore.iso_datastore.id
+      datastore_id = data.vsphere_datastore.iso_datastore[0].id
       path         = var.vcsa_iso_path
     }
-  ]
+  ] : []
 }
 
 resource "terraform_data" "wait_for_vsphere_kickstarter" {
@@ -86,13 +88,5 @@ resource "terraform_data" "wait_for_vsphere_kickstarter" {
       GOVC_DATACENTER = var.vi.datacenter.name
     }
   }
-  # provisioner "local-exec" {
-  #   command = "govc vm.power -off -force ${self.input.name}"
-  #   environment = {
-  #     GOVC_URL        = var.vi.govc_url
-  #     GOVC_INSECURE   = "true"
-  #     GOVC_DATACENTER = var.vi.datacenter.name
-  #   }
-  # }
 }
 

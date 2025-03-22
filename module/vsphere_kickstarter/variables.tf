@@ -22,10 +22,10 @@ variable "remote_ovf_url" {
 }
 
 variable "vcsa_iso_datastore" {
-
+  nullable = true
 }
 variable "vcsa_iso_path" {
-
+  nullable = true
 }
 
 variable "vcsa_name" {}

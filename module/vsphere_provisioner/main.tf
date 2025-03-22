@@ -19,7 +19,7 @@ resource "local_file" "private_key" {
   file_permission = "0600"
 }
 
-resource "terraform_data" "vsphere_provisioner" {
+resource "terraform_data" "wait_for_nested_vsphere" {
   # wait for vCenter Server Appliance to be ready
   connection {
     type             = "ssh"
@@ -57,7 +57,7 @@ resource "ansible_playbook" "provision_nested_vsphere" {
   playbook   = "${path.module}/../../playbooks/vsphere.yaml"
   name       = var.ip
   replayable = false
-  depends_on = [terraform_data.vsphere_provisioner]
+  depends_on = [terraform_data.wait_for_nested_vsphere]
   verbosity  = 1
   extra_vars = {
     vc_address      = var.vcsa_ip
