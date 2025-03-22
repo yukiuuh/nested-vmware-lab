@@ -83,57 +83,11 @@ write_files:
         forward . ${nameservers[0]}
       }
     path: /etc/coredns/Corefile
-  - content: |
-      ${cidrhost(management_network_address, 1)} ${hostname}.${domain}
-      ${cidrhost(management_network_address, 80)} nsxm.${domain}
-      ${cidrhost(management_network_address, 81)} nsxm01.${domain}
-      ${cidrhost(management_network_address, 82)} nsxm02.${domain}
-      ${cidrhost(management_network_address, 83)} nsxm03.${domain}
-      ${cidrhost(management_network_address, 84)} nsxe01.${domain}
-      ${cidrhost(management_network_address, 85)} nsxe02.${domain}
-      ${cidrhost(management_network_address, 86)} nsxe03.${domain}
-      ${cidrhost(management_network_address, 87)} nsxe04.${domain}
-      ${cidrhost(management_network_address, 88)} avi.${domain}
-      ${cidrhost(management_network_address, 89)} avi01.${domain}
-      ${cidrhost(management_network_address, 90)} avi02.${domain}
-      ${cidrhost(management_network_address, 91)} avi03.${domain}
-      ${cidrhost(management_network_address, 92)} vrli.${domain}
-      ${cidrhost(management_network_address, 93)} vrli01.${domain}
-      ${cidrhost(management_network_address, 94)} vrli02.${domain}
-      ${cidrhost(management_network_address, 95)} vrli03.${domain}
-      ${cidrhost(management_network_address, 96)} vra.${domain}
-      ${cidrhost(management_network_address, 97)} vra01.${domain}
-      ${cidrhost(management_network_address, 98)} vra02.${domain}
-      ${cidrhost(management_network_address, 99)} vra03.${domain}
-      ${cidrhost(management_network_address, 100)} vcsa01.${domain}
-      ${cidrhost(management_network_address, 101)} esxi01.${domain}
-      ${cidrhost(management_network_address, 102)} esxi02.${domain}
-      ${cidrhost(management_network_address, 103)} esxi03.${domain}
-      ${cidrhost(management_network_address, 104)} esxi04.${domain}
-      ${cidrhost(management_network_address, 105)} esxi05.${domain}
-      ${cidrhost(management_network_address, 106)} esxi06.${domain}
-      ${cidrhost(management_network_address, 107)} esxi07.${domain}
-      ${cidrhost(management_network_address, 108)} esxi08.${domain}
-      ${cidrhost(management_network_address, 109)} esxi09.${domain}
-      ${cidrhost(management_network_address, 110)} wvcsa01.${domain}
-      ${cidrhost(management_network_address, 111)} wesxi01.${domain}
-      ${cidrhost(management_network_address, 112)} wesxi02.${domain}
-      ${cidrhost(management_network_address, 113)} wesxi03.${domain}
-      ${cidrhost(management_network_address, 114)} wesxi04.${domain}
-      ${cidrhost(management_network_address, 115)} wesxi05.${domain}
-      ${cidrhost(management_network_address, 116)} wesxi06.${domain}
-      ${cidrhost(management_network_address, 117)} wesxi07.${domain}
-      ${cidrhost(management_network_address, 118)} wesxi08.${domain}
-      ${cidrhost(management_network_address, 119)} wesxi09.${domain}
-      ${cidrhost(management_network_address, 120)} wnsxm.${domain}
-      ${cidrhost(management_network_address, 121)} wnsxm01.${domain}
-      ${cidrhost(management_network_address, 122)} wnsxm02.${domain}
-      ${cidrhost(management_network_address, 123)} wnsxm03.${domain}
-      ${cidrhost(management_network_address, 124)} wnsxe01.${domain}
-      ${cidrhost(management_network_address, 125)} wnsxe02.${domain}
-      ${cidrhost(management_network_address, 126)} wnsxe03.${domain}
-      ${cidrhost(management_network_address, 127)} wnsxe04.${domain}
+
+  - content: ${hosts_base64}
+    encoding: b64
     path: /etc/coredns/hosts
+
   - content: |
       [Unit]
       Description=CoreDNS DNS server

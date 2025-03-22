@@ -143,3 +143,23 @@ variable "external_network" {
     ip          = string
   })
 }
+
+variable "vsphere_provisioner" {
+  nullable = true
+  default  = null
+  type = object({
+    datacenter_name = string
+    cluster_name    = string
+    dvs = list(object({
+      name    = string
+      version = string
+      mtu     = string
+      dvs_uplinks = list(object({
+
+      }))
+      portgroups = list(object({
+        vlan_id = string
+      }))
+    }))
+  })
+}

@@ -23,7 +23,7 @@ resource "random_id" "uuid" {
 
 locals {
   name_prefix          = "${var.name_prefix}-${random_id.uuid.hex}"
-  is_vcsa_self_managed = var.nested_vcsa != null && var.nested_vcsa.self_managed
+  is_vcsa_self_managed = var.nested_vcsa != null ? var.nested_vcsa.self_managed : false
   router_user          = "labadmin"
 }
 
@@ -105,7 +105,7 @@ module "vsphere_kickstarter" {
 }
 
 module "vcsa_standalone" {
-  count             = var.nested_vcsa != null && !var.nested_vcsa.self_managed ? 1 : 0
+  count             = var.nested_vcsa != null ? (!var.nested_vcsa.self_managed ? 1 : 0) : 0
   depends_on        = [module.vsphere_kickstarter, module.router]
   source            = "../../module/vcsa_standalone"
   ip                = var.nested_vcsa.ip
