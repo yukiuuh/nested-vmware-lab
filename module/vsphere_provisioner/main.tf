@@ -56,18 +56,21 @@ locals {
 resource "ansible_playbook" "provision_nested_vsphere" {
   playbook   = "${path.module}/../../playbooks/vsphere.yaml"
   name       = var.ip
-  replayable = false
+  replayable = true
   depends_on = [terraform_data.wait_for_nested_vsphere]
   verbosity  = 1
   extra_vars = {
-    vc_address      = var.vcsa_ip
-    vc_username     = var.vcsa_username
-    vc_password     = var.vcsa_password
-    datacenter_name = var.nested_datacenter_name
-    cluster_name    = var.nested_cluster_name
-    esxi_hosts      = jsonencode(var.nested_esxi[*].hostname)
-    esxi_password   = var.nested_esxi[0].password
-
+    vc_address              = var.vcsa_ip
+    vc_username             = var.vcsa_username
+    vc_password             = var.vcsa_password
+    datacenter_name         = var.nested_datacenter_name
+    cluster_name            = var.nested_cluster_name
+    esxi_hosts              = jsonencode(var.nested_esxi[*].hostname)
+    esxi_password           = var.nested_esxi[0].password
+    dvs_list                = jsonencode(var.dvs_list)
+    ha_enabled              = var.ha_enabled ? "True" : "False"
+    vsan_enabled            = var.vsan_enabled ? "True" : "False"
+    drs_enabled             = var.drs_enabled ? "True" : "False"
     ansible_hostname        = var.ip
     ansible_connection      = "ssh"
     ansible_ssh_pass        = var.password

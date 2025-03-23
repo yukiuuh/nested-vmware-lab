@@ -45,6 +45,7 @@ module "router" {
   ip                  = var.external_network.ip
   wan_network_name    = var.external_network.name
   ssh_authorized_keys = concat([tls_private_key.ed25519.public_key_openssh], var.ssh_authorized_keys)
+  nested_network      = var.lab_network
 }
 
 module "storage" {
@@ -73,6 +74,9 @@ module "storage" {
   ubuntu_ovf_url       = var.ubuntu_ovf_url
 }
 
+locals {
+  vcsa_vmname = "${local.name_prefix}-${var.nested_vcsa.hostname}"
+}
 
 module "vsphere_kickstarter" {
   count                  = var.nested_vcsa != null ? 1 : 0
@@ -87,7 +91,7 @@ module "vsphere_kickstarter" {
   remote_ovf_url         = var.photon_ovf_url
   vcsa_iso_datastore     = var.nested_vcsa.iso_datastore != "" ? var.nested_vcsa.iso_datastore : null
   vcsa_iso_path          = var.nested_vcsa.iso_path != "" ? var.nested_vcsa.iso_path : null
-  vcsa_name              = "${local.name_prefix}-${var.nested_vcsa.hostname}"
+  vcsa_name              = local.vcsa_vmname
   vcsa_network_name      = "VM Network"
   vcsa_gateway           = var.gateway
   vcsa_ntp               = var.ntp
@@ -114,7 +118,7 @@ module "vcsa_standalone" {
   subnet_mask       = var.subnet_mask
   vi                = module.vi
   remote_ovf_url    = var.nested_vcsa.remote_ovf_url
-  name              = "${local.name_prefix}-${var.nested_vcsa.hostname}"
+  name              = local.vcsa_vmname
   network_name      = var.network_name
   gateway           = var.gateway
   ntp               = var.ntp
@@ -164,6 +168,7 @@ module "vsphere_provisioner" {
   vcsa_ip                 = var.nested_vcsa.ip
   vcsa_password           = var.vm_password
   vcsa_username           = "administrator@vsphere.local"
+  vcsa_vmname             = local.vcsa_vmname
   local_govc_path         = "/usr/bin/govc"
   ip                      = module.vsphere_kickstarter[0].ip
   username                = "root"
@@ -173,4 +178,10 @@ module "vsphere_provisioner" {
   bastion_password        = var.external_network != null ? var.vm_password : null
   nested_esxi             = values(tomap(module.esxi_cluster.esxi_hosts))
   ssh_private_key_openssh = tls_private_key.ed25519.private_key_openssh
+  dvs_list                = var.vsphere_provisioner.dvs_list
+  vsan_enabled            = var.vsphere_provisioner.vsan_enabled
+  ha_enabled              = var.vsphere_provisioner.ha_enabled
+  drs_enabled             = var.vsphere_provisioner.drs_enabled
+  nested_cluster_name     = var.vsphere_provisioner.cluster_name
+  nested_datacenter_name  = var.vsphere_provisioner.datacenter_name
 }

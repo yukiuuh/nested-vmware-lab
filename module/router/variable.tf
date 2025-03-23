@@ -25,13 +25,6 @@ variable "nested_network" {
     vlan_starts_with   = number
     vlan_network_count = number
   })
-  default = {
-    domain_name        = "nested.lab"
-    mtu                = 1500
-    network            = "10.0.0.0"
-    vlan_starts_with   = 1001
-    vlan_network_count = 9
-  }
 }
 variable "ssh_authorized_keys" {
   default = []

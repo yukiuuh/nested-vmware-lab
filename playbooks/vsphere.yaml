@@ -14,24 +14,27 @@
         datacenter_name: '{{ datacenter_name }}'
         cluster_name: '{{ cluster_name }}'
         esxi_password: '{{ esxi_password }}'
+        vsan_enabled: '{{ vsan_enabled }}'
+        ha_enabled: '{{ ha_enabled }}'
+        drs_enabled: '{{ drs_enabled }}'
 
     - name: Initialize nested vSphere
       ansible.builtin.include_role:
         name: vsphere_000_initialize
 
-    # - name: Set up Distributed Switch
-    #   ansible.builtin.include_role:
-    #     name: vsphere_010_dvs
-    #   vars:
-    #     dvs_name: '{{ dvs.name }}'
-    #     dvs_version: '{{ dvs.version }}'
-    #     dvs_mtu: '{{ dvs.mtu }}'
-    #     dvs_uplinks: '{{ dvs.uplinks }}'
-    #     portgroups: '{{ dvs.portgroups }}'
-    #   loop: '{{ nested_vsphere.dvs_list }}'
-    #   loop_control:
-    #     loop_var: "dvs"
+    - name: Set up Distributed Switch
+      ansible.builtin.include_role:
+        name: vsphere_010_dvs
+      vars:
+        dvs_name: '{{ dvs.name }}'
+        dvs_version: '{{ dvs.version }}'
+        dvs_mtu: '{{ dvs.mtu }}'
+        dvs_uplinks: '{{ dvs.uplinks }}'
+        portgroups: '{{ dvs.portgroups }}'
+      loop: '{{ dvs_list }}'
+      loop_control:
+        loop_var: "dvs"
 
-    # - name: Set up cluster
-    #   ansible.builtin.include_role:
-    #     name: vsphere_020_cluster
+    - name: Set up cluster
+      ansible.builtin.include_role:
+        name: vsphere_020_cluster

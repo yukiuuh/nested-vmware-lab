@@ -144,21 +144,53 @@ variable "external_network" {
   })
 }
 
+variable "lab_network" {
+  nullable = true
+  default = {
+    domain_name        = "nested.lab"
+    mtu                = 1700
+    network            = "10.0.0.0"
+    vlan_starts_with   = 1001
+    vlan_network_count = 20
+  }
+  type = object({
+    domain_name        = string
+    network            = string
+    mtu                = number
+    vlan_starts_with   = number
+    vlan_network_count = number
+  })
+}
+
 variable "vsphere_provisioner" {
   nullable = true
   default  = null
   type = object({
-    datacenter_name = string
-    cluster_name    = string
-    dvs = list(object({
+    datacenter_name = optional(string)
+    cluster_name    = optional(string)
+    vsan_enabled    = optional(bool, false)
+    drs_enabled     = optional(bool, true)
+    ha_enabled      = optional(bool, true)
+    dvs_list = list(object({
       name    = string
       version = string
       mtu     = string
-      dvs_uplinks = list(object({
-
-      }))
+      uplinks = list(string)
       portgroups = list(object({
+        name    = string
         vlan_id = string
+        vmknics = list(object({
+          starting_ip            = string
+          subnet_mask            = string
+          mtu                    = string
+          enable_vmotion         = optional(string, "False")
+          enable_vsan            = optional(string, "False")
+          enable_ft              = optional(string, "False")
+          enable_mgmt            = optional(string, "False")
+          enable_provisioning    = optional(string, "False")
+          enable_replication_nfc = optional(string, "False")
+          enable_backup_nfc      = optional(string, "False")
+        }))
       }))
     }))
   })
