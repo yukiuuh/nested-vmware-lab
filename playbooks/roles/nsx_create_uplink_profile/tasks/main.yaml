@@ -1,0 +1,15 @@
+- name: Create a Uplink Profile
+  vmware.ansible_for_nsxt.nsxt_uplink_profiles:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "{{ uplink_profile.name }}"
+    resource_type: "UplinkHostSwitchProfile"
+    teaming:
+      active_list:
+        - uplink_name: "uplink-1"
+          uplink_type: PNIC
+      policy: FAILOVER_ORDER
+    transport_vlan: "{{ uplink_profile.vlan }}"
+    state: "{{ nsx_state }}"

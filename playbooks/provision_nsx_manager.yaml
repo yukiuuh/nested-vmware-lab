@@ -1,0 +1,151 @@
+---
+- name: Provisioning NSX Manager
+  gather_facts: false
+  hosts: all
+  vars:
+    nsx_hostname: "{{ nsx_hostname }}"
+    nsx_username: "{{ nsx_username }}"
+    nsx_password: "{{ nsx_password }}"
+    vc_address: "{{ vc_address }}"
+    vc_password: "{{ vc_password }}"
+    vc_username: "{{ vc_username }}"
+    nsx_license: "{{ nsx_license }}"
+    nsx_tep_ip_pool_gateway: "{{ nsx_tep_ip_pool_gateway }}"
+    nsx_tep_ip_pool_start_ip: "{{ nsx_tep_ip_pool_start_ip }}"
+    nsx_tep_ip_pool_end_ip: "{{ nsx_tep_ip_pool_end_ip }}"
+    nsx_tep_ip_pool_cidr: "{{ nsx_tep_ip_pool_cidr }}"
+    nsx_transport_cluster_name: "{{ nsx_transport_cluster }}"
+    nsx_tep_uplink_vlan: "{{ nsx_tep_uplink_vlan }}"
+    nsx_host_switch_uplinks: "{{ nsx_host_switch_uplink_list | from_json }}"
+    nsx_host_switch_name: "{{ nsx_host_switch_name }}"
+    nsx_set_as_oidc_provider: True
+    nsx_tep_ip_pool_name: "{{ nsx_tep_ip_pool | default('ip_pool_tep')}}"
+    nsx_transport_node_profile_name: "{{ nsx_transport_node_profile | default('transport_node_profile')}}"
+    nsx_host_switch_profile_name: "{{ nsx_host_switch_profile | default('host_switch_profile')}}"
+    nsx_tep_uplink_profile_name: "{{ nsx_tep_uplink_profile | default('tep_uplink_profile')}}"
+    nsx_state: present
+    validate_certs: false
+
+  tasks:
+    - name: Check manager status
+      vmware.ansible_for_nsxt.nsxt_manager_status:
+          hostname: "{{ nsx_hostname }}"
+          username: "{{ nsx_username }}"
+          password: "{{ nsx_password }}"
+          validate_certs: "{{ validate_certs }}"
+          wait_time: 50
+
+    - name: Add NSX-T License
+      vmware.ansible_for_nsxt.nsxt_licenses:
+        hostname: "{{ nsx_hostname }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        license_key: "{{ nsx_license }}"
+        state: "{{ nsx_state }}"
+      # retries: 0
+      retries: "{{ 0 if ansible_check_mode else 60 }}"
+      delay: 15
+      register: add_nsx_license_result
+      until: add_nsx_license_result is succeeded
+    # wait for nsx manager
+
+    - name: "Add Compute Manager"
+      vmware.ansible_for_nsxt.nsxt_fabric_compute_managers:
+        hostname: "{{ nsx_hostname }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ vc_address }}"
+        server: "{{ vc_address }}"
+        origin_type: vCenter
+        set_as_oidc_provider: "{{ nsx_set_as_oidc_provider }}"
+        credential:
+          credential_type: UsernamePasswordLoginCredential
+          username: "{{ vc_username }}"
+          password: "{{ vc_password }}"
+        state: "{{ nsx_state }}"
+      register: cm_info
+      until: cm_info is succeeded
+      delay: 30
+      retries: 2
+      ignore_errors: false
+
+    - name: Add IP Pools
+      ansible.builtin.include_role:
+        name: nsx_create_ip_pool
+      vars:
+        ip_pool: 
+          name: "{{ nsx_tep_ip_pool_name }}"
+          start_ip: "{{ nsx_tep_ip_pool_start_ip }}"
+          end_ip: "{{ nsx_tep_ip_pool_end_ip }}"
+          cidr: "{{ nsx_tep_ip_pool_cidr }}"
+          gateway: "{{ nsx_tep_ip_pool_gateway }}"
+
+    - name: Add Uplink Profile
+      ansible.builtin.include_role:
+        name: nsx_create_uplink_profile
+      vars:
+        uplink_profile:
+          name: "{{ nsx_tep_uplink_profile_name }}"
+          vlan: "{{ nsx_tep_uplink_vlan }}"
+
+    - name: Create a transport node profile
+      vmware.ansible_for_nsxt.nsxt_transport_node_profiles:
+        hostname: "{{ nsx_hostname }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ nsx_transport_node_profile_name }}"
+        resource_type: "TransportNodeProfile"
+        host_switch_spec:
+          resource_type: "StandardHostSwitchSpec"
+          host_switches:
+            - host_switch_profiles:
+                - name: "{{ nsx_tep_uplink_profile_name }}"
+                  type: "UplinkHostSwitchProfile"
+              host_switch_name: "{{ nsx_host_switch_name }}"
+              host_switch_mode: "STANDARD"
+              host_switch_type: "VDS"
+              uplinks: "{{ nsx_host_switch_uplinks }}"
+              ip_assignment_spec:
+                resource_type: "StaticIpPoolSpec"
+                ip_pool_name: "{{ nsx_tep_ip_pool_name }}"
+              transport_zone_endpoints:
+                - transport_zone_name: "nsx-overlay-transportzone"
+                - transport_zone_name: "nsx-vlan-transportzone"
+        state: "{{ nsx_state }}"
+      register: tnp_info
+      until: tnp_info is succeeded
+      delay: 10
+      retries: 1
+
+    - name: "Create Transport Cluster"
+      vmware.ansible_for_nsxt.nsxt_transport_node_collections:
+        hostname: "{{ nsx_hostname }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ nsx_transport_cluster_name }}"
+        description: "{{ nsx_transport_cluster_name }} is configured by ansible"
+        resource_type: "TransportNodeCollection"
+        compute_manager_name: "{{ vc_address }}"
+        cluster_name: "{{ nsx_transport_cluster_name }}"
+        transport_node_profile_name: "{{ nsx_transport_node_profile_name }}"
+        state: "{{ nsx_state }}"
+      register: tc_info
+      until: tc_info is succeeded
+      delay: 3
+      retries: 1
+
+    - name: "Get Transport Cluster info"
+      vmware.ansible_for_nsxt.nsxt_transport_node_collections_facts:
+        hostname: "{{ nsx_hostname }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+      register: transport_cluster_info
+
+    - name: Debug ansible facts 
+      ansible.builtin.debug:
+        var: ansible_facts

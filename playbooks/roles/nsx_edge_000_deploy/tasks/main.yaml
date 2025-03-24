@@ -1,0 +1,218 @@
+- name: Add Edge IP Pool
+  ansible.builtin.include_role:
+    name: nsx_create_ip_pool
+  vars:
+    ip_pool: 
+      name: "{{ edge_tep_ip_pool_name }}"
+      start_ip: "{{ edge_tep_ip_pool_start_ip }}"
+      end_ip: "{{ edge_tep_ip_pool_end_ip }}"
+      cidr: "{{ edge_tep_ip_pool_cidr }}"
+      gateway: "{{ edge_tep_ip_pool_gateway }}"
+
+- name: Add Edge Uplink Profile
+  ansible.builtin.include_role:
+    name: nsx_create_uplink_profile
+  vars:
+    uplink_profile:
+      name: "{{ edge_tep_uplink_profile_name }}"
+      vlan: "{{ edge_tep_uplink_vlan }}"
+
+- name: "Creating Uplink Segment"
+  vmware.ansible_for_nsxt.nsxt_policy_segment:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "{{ edge_uplink_segment_name }}"
+    domain_name: null
+    transport_zone_display_name: "nsx-vlan-transportzone"
+    subnets: []
+    vlan_ids:
+      - "0-4094"
+    state: "{{ nsx_state }}"
+  register: segment_info
+  retries: 30
+  delay: 10
+  ignore_errors: true
+  until: segment_info is succeeded
+
+- name: "Creating external Uplink Segment"
+  vmware.ansible_for_nsxt.nsxt_policy_segment:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "{{ external_uplink_segment_name }}"
+    domain_name: null
+    transport_zone_display_name: "nsx-vlan-transportzone"
+    subnets: []
+    vlan_ids:
+      - "{{ external_uplink_vlan }}"
+    state: "{{ nsx_state }}"
+  
+- name: "Deploy NSX Edge VM"
+  vmware.ansible_for_nsxt.nsxt_transport_nodes:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "{{ item.hostname }}"
+    host_switch_spec:
+      resource_type: StandardHostSwitchSpec
+      host_switches:
+        - host_switch_name: nvds
+          host_switch_type: NVDS
+          host_switch_mode: STANDARD
+          host_switch_profiles:
+            - name: "{{ edge_tep_uplink_profile_name }}"
+              type: UplinkHostSwitchProfile
+          pnics:
+            - device_name: fp-eth0
+              uplink_name: uplink-1
+          ip_assignment_spec:
+            resource_type: StaticIpPoolSpec
+            ip_pool_name: "{{ edge_tep_ip_pool_name }}"
+          transport_zone_endpoints:
+            - transport_zone_name: nsx-vlan-transportzone
+            - transport_zone_name: nsx-overlay-transportzone
+    node_deployment_info:
+      deployment_type: VIRTUAL_MACHINE
+      deployment_config:
+        form_factor: "{{ edge_deployment_size }}"
+        vm_deployment_config:
+          vc_name: "{{ vc_address }}"
+          vc_username: "{{ vc_username }}"
+          vc_password: "{{ vc_password }}"
+          storage: "{{ datastore_name }}"
+          compute: "{{ cluster_name }}"
+          data_networks:
+            - "{{ edge_uplink_segment_name }}"
+          default_gateway_addresses:
+            - "{{ gateway }}"
+          management_network: "{{ management_portgroup_name }}"
+          management_port_subnets:
+            - ip_addresses:
+                - "{{ item.management_ip }}"
+              prefix_length: 24
+          placement_type: VsphereDeploymentConfig
+        node_user_settings:
+          cli_username: admin
+          root_password: "{{nsx_password }}"
+          cli_password: "{{ nsx_password }}"
+          audit_username: audit
+          audit_password: "{{ nsx_password }}"
+      node_settings:
+        allow_ssh_root_login: 'True'
+        enable_ssh: 'True'
+        hostname: "{{ item.hostname }}.{{ domain_name }}"
+        ntp_servers:
+          - "{{ ntp_server }}"
+        search_domains:
+          - "{{ domain_name }}"
+        dns_servers:
+          - "{{ dns_server }}"
+      resource_type: EdgeNode
+      display_name: "{{ item.hostname }}"
+    description: "{{ item.hostname }} is configured by ansible"
+    state: "{{ nsx_state }}"
+  loop: "{{ edge_vms }}"
+  async: 1800
+  poll: 0
+  register: result_async
+
+- name: Wait for Edge deployments
+  community.vmware.vmware_guest_tools_wait:
+    hostname:  "{{ vc_address }}"
+    username:  "{{ vc_username }}"
+    password:  "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    name: "{{ item.hostname }}"
+  loop: "{{ edge_vms }}"
+  register: edge_deployment_info
+  until: edge_deployment_info is succeeded
+  delay: 60
+  retries: 20
+
+- name: "Workaround for Ryzen"
+  community.vmware.vmware_vm_shell:
+    hostname:  "{{ vc_address }}"
+    username:  "{{ vc_username }}"
+    password:  "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    cluster: "{{ cluster_name }}"
+    vm_id: "{{ item.hostname }}"
+    vm_password: "{{ nsx_password }}"
+    vm_username: "root"
+    vm_shell: /usr/bin/sed
+    vm_shell_args: "-i 's/if\ \"AMD\"\ in\ vendor_info/if\ False/' /opt/vmware/nsx-edge/bin/config.py"
+    vm_shell_env:
+      - "PATH=/bin:/sbin:/usr/bin"
+    wait_for_process: true
+  loop: "{{ edge_vms }}"
+
+- name: Wait for Edge connection
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  loop: "{{ result_async.results }}"
+  register: async_poll_results
+  until: async_poll_results.finished
+  retries: 30
+  delay: 60
+
+- name: Add edge cluster
+  vmware.ansible_for_nsxt.nsxt_edge_clusters:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "{{ nsx_edge_cluster_name }}"
+    cluster_profile_bindings:
+      - profile_name: "nsx-default-edge-high-availability-profile"
+    members: |
+          {% set result = [] %}
+          {% for item in edge_vms %}
+          {% set _ = result.append({'transport_node_name': item.hostname}) %}
+          {% endfor %}
+          {{ result }}
+    state: "{{ nsx_state }}"
+
+- name: Create T0 gateway
+  vmware.ansible_for_nsxt.nsxt_policy_tier0:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "t0"
+    state: "{{ nsx_state }}"
+    ha_mode: "ACTIVE_STANDBY"
+    failover_mode: "PREEMPTIVE"
+    do_wait_till_create: true
+    locale_services:
+      - state: "{{ nsx_state }}"
+        display_name: "tier0_ls"
+        do_wait_till_create: true
+        edge_cluster_info:
+          edge_cluster_display_name: "{{ nsx_edge_cluster_name }}"
+        preferred_edge_nodes_info:
+          - edge_cluster_display_name: "{{ nsx_edge_cluster_name }}"
+            edge_node_display_name: "{{ edge_vms[0].hostname }}"
+        interfaces:
+          - display_name: "edge01_interface"
+            state: "{{ nsx_state }}"
+            subnets:
+              - ip_addresses: "{{ nsx_t0_address }}"
+                prefix_len: 24
+            segment_id: "{{ external_uplink_segment_name }}"
+            do_wait_till_create: true
+            edge_node_info:
+              edge_cluster_display_name: "{{ nsx_edge_cluster_name }}"
+              edge_node_display_name: "{{ edge_vms[0].hostname }}"
+    static_routes:
+      - state: "{{ nsx_state }}"
+        display_name: "default"
+        do_wait_till_create: true
+        network: "0.0.0.0/0"
+        next_hops:
+          - ip_address: "{{ nsx_t0_gateway }}"

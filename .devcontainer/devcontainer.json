@@ -29,8 +29,8 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				// "redhat.ansible",
-				// "ms-azuretools.vscode-docker",
+				"redhat.ansible",
+				"ms-azuretools.vscode-docker",
 				"hashicorp.terraform"
 			],
 			"settings": {

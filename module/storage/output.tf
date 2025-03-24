@@ -15,3 +15,7 @@ output "storage1_vlan" {
 output "storage2_vlan" {
   value = var.storage2_vlan
 }
+
+output "name" {
+  value = var.name
+}

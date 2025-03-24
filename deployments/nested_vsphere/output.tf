@@ -13,3 +13,8 @@ output "storage" {
 output "router" {
   value = var.external_network != null ? module.router[0] : null
 }
+output "nsx" {
+  value = var.nsx != null ? {
+    managers = module.vsphere_provisioner[0].nsx_managers
+  } : null
+}

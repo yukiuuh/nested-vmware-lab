@@ -22,9 +22,24 @@ variable "username" {}
 variable "local_govc_path" {
   default = "/usr/bin/govc"
 }
+variable "ovftool_path" {
+  default = "/mnt/cdrom/vcsa/ovftool/lin64"
+}
 
 variable "nested_datacenter_name" { default = "Datacenter" }
 variable "nested_cluster_name" { default = "Cluster" }
+variable "nested_datastore_name" { default = "iscsi01" }
+variable "nested_management_portroup_name" { default = "VM Network" }
+
+variable "gateway" { type = string }
+variable "nameservers" { type = list(string) }
+variable "subnet_mask" {
+  type    = string
+  default = "255.255.255.0"
+}
+variable "domain_name" { type = string }
+variable "ntp" { type = string }
+
 variable "vsan_enabled" { default = false }
 variable "ha_enabled" { default = false }
 variable "drs_enabled" { default = false }
@@ -56,4 +71,42 @@ variable "dvs_list" {
       }))
     }))
   }))
+}
+
+variable "nsx" {
+  nullable = true
+  default  = null
+  type = object({
+    manager_ova_path        = string
+    manager_ova             = string
+    manager_deployment_size = string
+    license                 = string
+    password                = string
+    username                = optional(string, "admin")
+    managers = list(object({
+      hostname = string
+      ip       = string
+    }))
+    host_tep_ip_pool_gateway  = string
+    host_tep_ip_pool_start_ip = string
+    host_tep_ip_pool_end_ip   = string
+    host_tep_ip_pool_cidr     = string
+    host_tep_uplink_vlan      = number
+    host_switch_name          = string
+    host_switch_uplink_list = list(object({
+      uplink_name     = string
+      vds_uplink_name = string
+    }))
+    edge_deployment_size      = string
+    edge_tep_ip_pool_gateway  = string
+    edge_tep_ip_pool_start_ip = string
+    edge_tep_ip_pool_end_ip   = string
+    edge_tep_ip_pool_cidr     = string
+    edge_tep_uplink_vlan      = number
+    external_uplink_vlan_list = list(number)
+    edge_vm_list = list(object({
+      management_ip = string
+      hostname      = string
+    }))
+  })
 }

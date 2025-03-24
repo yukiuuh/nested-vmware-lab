@@ -1,0 +1,47 @@
+---
+- name: Provision nested NSX Edge
+  gather_facts: false
+  hosts: all
+  vars:
+    validate_certs: false
+    nsx_state: "present"
+  tasks:
+    - name: Setup variables for NSX Edge
+      ansible.builtin.set_fact:
+        validate_certs: False
+        vc_address: '{{ vc_address }}'
+        vc_username: '{{ vc_username }}'
+        vc_password: '{{ vc_password }}'
+        nsx_username: '{{ nsx_username }}'
+        nsx_password: '{{ nsx_password }}'
+
+        domain:  '{{ domain_name }}'
+        netmask: '{{ netmask }}'
+        gateway: '{{ gateway }}'
+        dns_server: '{{ dns_server }}'
+        ntp_server: '{{ ntp_server }}'
+
+        datacenter_name: '{{ datacenter_name }}'
+        cluster_name: '{{ cluster_name }}'
+        datastore_name: '{{ datastore_name }}'
+        management_portgroup_name: '{{ management_portgroup_name }}'
+
+        edge_deployment_size: '{{ edge_deployment_size }}'
+        edge_uplink_segment_name: "edge_uplink_segment"
+        edge_tep_ip_pool_name: "edge_ip_pool_tep"
+        # edge_transport_node_profile_name: "edge_transport_node_profile"
+        edge_host_switch_profile_name: "edge_host_switch_profile"
+        edge_tep_uplink_profile_name: "edge_uplink_profile"
+        edge_vms: "{{ edge_vm_list | from_json }}"
+
+        external_uplink_segment_name: "external_uplink"
+        nsx_edge_cluster_name: "edge_cluster"
+        external_uplink_vlan: "1010"
+        nsx_t0_address: "10.0.10.84"
+        nsx_t0_gateway: "10.0.10.1"
+
+        # nsxt_licenses: '{{ nsx_license_list }}'
+
+    - name: deploy NSX Edge
+      ansible.builtin.include_role:
+        name: nsx_edge_000_deploy

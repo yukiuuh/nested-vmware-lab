@@ -162,26 +162,34 @@ module "esxi_cluster" {
 }
 
 module "vsphere_provisioner" {
-  source                  = "../../module/vsphere_provisioner"
-  depends_on              = [module.vcsa_standalone, module.vcsa_standalone]
-  count                   = var.nested_vcsa != null ? 1 : 0
-  vcsa_ip                 = var.nested_vcsa.ip
-  vcsa_password           = var.vm_password
-  vcsa_username           = "administrator@vsphere.local"
-  vcsa_vmname             = local.vcsa_vmname
-  local_govc_path         = "/usr/bin/govc"
-  ip                      = module.vsphere_kickstarter[0].ip
-  username                = "root"
-  password                = var.vm_password
-  bastion_ip              = var.external_network != null ? module.router[0].wan_ip : null
-  bastion_user            = var.external_network != null ? local.router_user : null
-  bastion_password        = var.external_network != null ? var.vm_password : null
-  nested_esxi             = values(tomap(module.esxi_cluster.esxi_hosts))
-  ssh_private_key_openssh = tls_private_key.ed25519.private_key_openssh
-  dvs_list                = var.vsphere_provisioner.dvs_list
-  vsan_enabled            = var.vsphere_provisioner.vsan_enabled
-  ha_enabled              = var.vsphere_provisioner.ha_enabled
-  drs_enabled             = var.vsphere_provisioner.drs_enabled
-  nested_cluster_name     = var.vsphere_provisioner.cluster_name
-  nested_datacenter_name  = var.vsphere_provisioner.datacenter_name
+  source                          = "../../module/vsphere_provisioner"
+  depends_on                      = [module.vcsa_standalone, module.vcsa_standalone]
+  count                           = var.nested_vcsa != null ? 1 : 0
+  vcsa_ip                         = var.nested_vcsa.ip
+  vcsa_password                   = var.vm_password
+  vcsa_username                   = "administrator@vsphere.local"
+  vcsa_vmname                     = local.vcsa_vmname
+  local_govc_path                 = "/usr/bin/govc"
+  ip                              = module.vsphere_kickstarter[0].ip
+  username                        = "root"
+  password                        = var.vm_password
+  bastion_ip                      = var.external_network != null ? module.router[0].wan_ip : null
+  bastion_user                    = var.external_network != null ? local.router_user : null
+  bastion_password                = var.external_network != null ? var.vm_password : null
+  nested_esxi                     = values(tomap(module.esxi_cluster.esxi_hosts))
+  ssh_private_key_openssh         = tls_private_key.ed25519.private_key_openssh
+  dvs_list                        = var.vsphere_provisioner.dvs_list
+  vsan_enabled                    = var.vsphere_provisioner.vsan_enabled
+  ha_enabled                      = var.vsphere_provisioner.ha_enabled
+  drs_enabled                     = var.vsphere_provisioner.drs_enabled
+  nested_cluster_name             = var.vsphere_provisioner.cluster_name
+  nested_datacenter_name          = var.vsphere_provisioner.datacenter_name
+  nested_datastore_name           = var.provision_datastores[0].datastore_name
+  nested_management_portroup_name = "VM Network"
+  gateway                         = var.gateway
+  nameservers                     = var.nameservers
+  domain_name                     = var.domain_name
+  ntp                             = var.ntp
+  ovftool_path                    = var.vsphere_provisioner.ovftool_path
+  nsx                             = var.nsx
 }

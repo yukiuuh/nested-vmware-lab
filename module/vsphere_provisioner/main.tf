@@ -56,7 +56,7 @@ locals {
 resource "ansible_playbook" "provision_nested_vsphere" {
   playbook   = "${path.module}/../../playbooks/vsphere.yaml"
   name       = var.ip
-  replayable = true
+  replayable = false
   depends_on = [terraform_data.wait_for_nested_vsphere]
   verbosity  = 1
   extra_vars = {
@@ -71,6 +71,122 @@ resource "ansible_playbook" "provision_nested_vsphere" {
     ha_enabled              = var.ha_enabled ? "True" : "False"
     vsan_enabled            = var.vsan_enabled ? "True" : "False"
     drs_enabled             = var.drs_enabled ? "True" : "False"
+    ansible_hostname        = var.ip
+    ansible_connection      = "ssh"
+    ansible_ssh_pass        = var.password
+    ansible_user            = var.username
+    ansible_ssh_common_args = local.ansible_connection_args
+  }
+}
+
+resource "ansible_playbook" "deploy_nsx" {
+  playbook   = "${path.module}/../../playbooks/deploy_nsx_manager.yaml"
+  count      = var.nsx != null ? 1 : 0
+  name       = var.ip
+  replayable = false
+  depends_on = [ansible_playbook.provision_nested_vsphere]
+  verbosity  = 1
+  extra_vars = {
+    vc_address                  = var.vcsa_ip
+    vc_username                 = var.vcsa_username
+    vc_password                 = var.vcsa_password
+    datacenter_name             = var.nested_datacenter_name
+    cluster_name                = var.nested_cluster_name
+    datastore_name              = var.nested_datastore_name
+    management_portgroup_name   = var.nested_management_portroup_name
+    nsx_manager1                = jsonencode(var.nsx.managers[0])
+    nsx_username                = var.nsx.username
+    ntp_server                  = var.ntp
+    dns_server                  = var.nameservers[0]
+    gateway                     = var.gateway
+    netmask                     = var.subnet_mask
+    domain_name                 = var.domain_name
+    nsx_ova                     = var.nsx.manager_ova
+    nsx_ova_path                = var.nsx.manager_ova_path
+    nsx_username                = var.nsx.username
+    nsx_password                = var.nsx.password
+    ovftool_path                = var.ovftool_path
+    nsx_manager_deployment_size = var.nsx.manager_deployment_size
+
+    ansible_hostname        = var.ip
+    ansible_connection      = "ssh"
+    ansible_ssh_pass        = var.password
+    ansible_user            = var.username
+    ansible_ssh_common_args = local.ansible_connection_args
+  }
+}
+
+
+resource "ansible_playbook" "provision_nsx_manager" {
+  playbook   = "${path.module}/../../playbooks/provision_nsx_manager.yaml"
+  count      = var.nsx != null ? 1 : 0
+  name       = var.ip
+  replayable = false
+  depends_on = [ansible_playbook.deploy_nsx]
+  verbosity  = 1
+  extra_vars = {
+    vc_address                 = var.vcsa_ip
+    vc_username                = var.vcsa_username
+    vc_password                = var.vcsa_password
+    nsx_hostname               = var.nsx.managers[0].ip
+    nsx_username               = var.nsx.username
+    nsx_password               = var.nsx.password
+    nsx_transport_cluster_name = var.nested_cluster_name
+
+    nsx_tep_ip_pool_gateway     = var.nsx.host_tep_ip_pool_gateway
+    nsx_tep_ip_pool_start_ip    = var.nsx.host_tep_ip_pool_start_ip
+    nsx_tep_ip_pool_end_ip      = var.nsx.host_tep_ip_pool_end_ip
+    nsx_tep_ip_pool_cidr        = var.nsx.host_tep_ip_pool_cidr
+    nsx_tep_uplink_vlan         = var.nsx.host_tep_uplink_vlan
+    nsx_host_switch_uplink_list = jsonencode(var.nsx.host_switch_uplink_list)
+    nsx_host_switch_name        = var.nsx.host_switch_name
+    nsx_license                 = var.nsx.license
+
+    ansible_hostname        = var.ip
+    ansible_connection      = "ssh"
+    ansible_ssh_pass        = var.password
+    ansible_user            = var.username
+    ansible_ssh_common_args = local.ansible_connection_args
+  }
+}
+
+resource "ansible_playbook" "deploy_edge" {
+  playbook   = "${path.module}/../../playbooks/deploy_nsx_edge.yaml"
+  count      = var.nsx != null ? 1 : 0
+  name       = var.ip
+  replayable = true
+  depends_on = [ansible_playbook.provision_nsx_manager]
+  verbosity  = 1
+  extra_vars = {
+    vc_address   = var.vcsa_ip
+    vc_username  = var.vcsa_username
+    vc_password  = var.vcsa_password
+    nsx_hostname = var.nsx.managers[0].ip
+    nsx_username = var.nsx.username
+    nsx_password = var.nsx.password
+
+    datacenter_name           = var.nested_datacenter_name
+    cluster_name              = var.nested_cluster_name
+    datastore_name            = var.nested_datastore_name
+    management_portgroup_name = var.nested_management_portroup_name
+
+    ntp_server  = var.ntp
+    dns_server  = var.nameservers[0]
+    gateway     = var.gateway
+    netmask     = var.subnet_mask
+    domain_name = var.domain_name
+
+    edge_deployment_size = var.nsx.edge_deployment_size
+    edge_vm_list         = jsonencode(var.nsx.edge_vm_list)
+
+    edge_tep_ip_pool_gateway  = var.nsx.edge_tep_ip_pool_gateway
+    edge_tep_ip_pool_start_ip = var.nsx.edge_tep_ip_pool_start_ip
+    edge_tep_ip_pool_end_ip   = var.nsx.edge_tep_ip_pool_end_ip
+    edge_tep_ip_pool_cidr     = var.nsx.edge_tep_ip_pool_cidr
+    edge_tep_uplink_vlan      = var.nsx.edge_tep_uplink_vlan
+
+    # external_uplink_vlan_list = var.nsx.external_uplink_vlan_list
+
     ansible_hostname        = var.ip
     ansible_connection      = "ssh"
     ansible_ssh_pass        = var.password

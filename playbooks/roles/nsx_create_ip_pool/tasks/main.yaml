@@ -1,0 +1,17 @@
+- name: "Creating IP Pool"
+  vmware.ansible_for_nsxt.nsxt_policy_ip_pool:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "{{ ip_pool.name }}"
+    pool_static_subnets:
+      - display_name: "{{ ip_pool.name }}-subnet"
+        allocation_ranges:
+          - start: "{{ ip_pool.start_ip }}"
+            end: "{{ ip_pool.end_ip }}"
+        cidr: "{{ ip_pool.cidr }}"
+        gateway_ip: "{{ ip_pool.gateway }}"
+        state: "{{ nsx_state }}"
+    state: "{{ nsx_state }}"
+    do_wait_till_create: true
