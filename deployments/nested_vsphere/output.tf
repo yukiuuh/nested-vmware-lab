@@ -16,5 +16,6 @@ output "router" {
 output "nsx" {
   value = var.nsx != null ? {
     managers = module.vsphere_provisioner[0].nsx_managers
+    edges    = module.vsphere_provisioner[0].nsx_edges
   } : null
 }

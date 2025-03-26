@@ -26,6 +26,7 @@
         datastore_name: '{{ datastore_name }}'
         management_portgroup_name: '{{ management_portgroup_name }}'
 
+        nsx_host_switch_name: '{{ nsx_host_switch_name }}'
         edge_deployment_size: '{{ edge_deployment_size }}'
         edge_uplink_segment_name: "edge_uplink_segment"
         edge_tep_ip_pool_name: "edge_ip_pool_tep"

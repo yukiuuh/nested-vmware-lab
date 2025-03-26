@@ -184,7 +184,7 @@ resource "ansible_playbook" "deploy_edge" {
     edge_tep_ip_pool_end_ip   = var.nsx.edge_tep_ip_pool_end_ip
     edge_tep_ip_pool_cidr     = var.nsx.edge_tep_ip_pool_cidr
     edge_tep_uplink_vlan      = var.nsx.edge_tep_uplink_vlan
-
+    nsx_host_switch_name      = var.nsx.host_switch_name
     # external_uplink_vlan_list = var.nsx.external_uplink_vlan_list
 
     ansible_hostname        = var.ip

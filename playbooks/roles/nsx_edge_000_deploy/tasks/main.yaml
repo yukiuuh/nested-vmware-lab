@@ -30,6 +30,7 @@
     vlan_ids:
       - "0-4094"
     state: "{{ nsx_state }}"
+    do_wait_till_create: true
   register: segment_info
   retries: 30
   delay: 10
@@ -46,9 +47,24 @@
     domain_name: null
     transport_zone_display_name: "nsx-vlan-transportzone"
     subnets: []
+    do_wait_till_create: true
     vlan_ids:
       - "{{ external_uplink_vlan }}"
     state: "{{ nsx_state }}"
+
+- name: Wait for VLAN segment
+  community.vmware.vmware_dvs_portgroup_info:
+    hostname:  "{{ vc_address }}"
+    username:  "{{ vc_username }}"
+    password:  "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+  register: dvpg_info
+  until: dvpg_info.dvs_portgroup_info[nsx_host_switch_name] | json_query(dvpg_query)
+  delay: 10
+  retries: 30
+  vars:
+    dvpg_query: "[?portgroup_name=='{{edge_uplink_segment_name}}']"
   
 - name: "Deploy NSX Edge VM"
   vmware.ansible_for_nsxt.nsxt_transport_nodes:
@@ -133,6 +149,14 @@
   until: edge_deployment_info is succeeded
   delay: 60
   retries: 20
+  ignore_errors: true
+
+- name: List Transport Nodes
+  vmware.ansible_for_nsxt.nsxt_transport_nodes_facts:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
 
 - name: "Workaround for Ryzen"
   community.vmware.vmware_vm_shell:
