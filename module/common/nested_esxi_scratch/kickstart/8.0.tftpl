@@ -17,7 +17,9 @@ esxcli system settings advanced set -o /UserVars/SuppressShellWarning -i 1
 
 esxcli network vswitch standard set --vswitch-name=vSwitch0 --mtu=${mtu}
 esxcli network ip interface set -i vmk0 -m ${mtu}
+%{ if !vcf_mode }
 esxcli network vswitch standard uplink add --vswitch-name=vSwitch0 --uplink-name=vmnic1
+%{ endif }
 esxcli network vswitch standard portgroup set -v ${vlan} -p "VM Network"
 
 %{ if storage1_vmknic != null ~}

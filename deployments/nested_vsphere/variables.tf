@@ -65,6 +65,7 @@ variable "nested_esxi_hostname_prefix" {
 
 variable "storage_vmknics" {
   nullable = true
+  default  = null
   type = object({
     mtu                  = number
     storage1_starting_ip = string
@@ -91,6 +92,7 @@ variable "nested_esxi_shape" {
     nic_count    = number
     tpm_enabled  = bool
     nvme_enabled = bool
+    vcf_mode     = optional(bool, false)
     disks = list(object({
       label       = string
       size_gb     = number

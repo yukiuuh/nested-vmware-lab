@@ -75,7 +75,7 @@ module "storage" {
 }
 
 locals {
-  vcsa_vmname = "${local.name_prefix}-${var.nested_vcsa.hostname}"
+  vcsa_vmname = var.nested_vcsa != null ? "${local.name_prefix}-${var.nested_vcsa.hostname}" : ""
 }
 
 module "vsphere_kickstarter" {
@@ -163,8 +163,8 @@ module "esxi_cluster" {
 
 module "vsphere_provisioner" {
   source                          = "../../module/vsphere_provisioner"
-  depends_on                      = [module.vcsa_standalone, module.vcsa_standalone]
-  count                           = var.nested_vcsa != null ? 1 : 0
+  depends_on                      = [module.vcsa_standalone, module.vsphere_kickstarter]
+  count                           = var.nested_vcsa != null && var.vsphere_provisioner != null ? 1 : 0
   vcsa_ip                         = var.nested_vcsa.ip
   vcsa_password                   = var.vm_password
   vcsa_username                   = "administrator@vsphere.local"

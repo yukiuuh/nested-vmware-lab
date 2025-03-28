@@ -124,3 +124,6 @@ variable "bastion_password" {
   nullable = true
   default  = null
 }
+variable "vcf_mode" {
+  default = false
+}

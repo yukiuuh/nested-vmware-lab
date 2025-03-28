@@ -17,6 +17,7 @@ locals {
       storage1_vmknic      = var.storage1_vmknic
       storage2_vmknic      = var.storage2_vmknic
       provision_datastores = var.provision_datastores
+      vcf_mode             = var.vcf_mode
     }
   )
 
