@@ -68,4 +68,5 @@ vmkfstools -C vmfs6 -S ${provision_datastore.datastore_name} /vmfs/devices/disks
 %{ endfor ~}
 
 /sbin/generate-certificates
+/etc/init.d/hostd restart && /etc/init.d/vpxa restart
 date > /var/tmp/provisioned

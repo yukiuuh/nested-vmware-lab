@@ -48,6 +48,13 @@ variable "nested_esxi" {}
 
 variable "ssh_private_key_openssh" { default = "" }
 
+variable "storage_policy_list" {
+  default = []
+  type = list(object({
+    name      = string
+    datastore = string
+  }))
+}
 variable "dvs_list" {
   type = list(object({
     name    = string

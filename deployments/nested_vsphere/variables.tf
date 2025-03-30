@@ -212,6 +212,10 @@ variable "vsphere_provisioner" {
     drs_enabled     = optional(bool, true)
     ha_enabled      = optional(bool, true)
     ovftool_path    = optional(string, "/mnt/cdrom/vcsa/ovftool/lin64")
+    storage_policy_list = optional(list(object({
+      name      = string
+      datastore = string
+    })), [])
     dvs_list = list(object({
       name    = string
       version = string

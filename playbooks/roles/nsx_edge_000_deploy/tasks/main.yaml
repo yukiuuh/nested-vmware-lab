@@ -65,7 +65,11 @@
   retries: 30
   vars:
     dvpg_query: "[?portgroup_name=='{{edge_uplink_segment_name}}']"
-  
+
+- name: Sleep for 30 seconds
+  ansible.builtin.wait_for:
+    timeout: 30
+
 - name: "Deploy NSX Edge VM"
   vmware.ansible_for_nsxt.nsxt_transport_nodes:
     hostname: "{{ nsx_hostname }}"

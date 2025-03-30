@@ -2,7 +2,7 @@ vsphere_user     = "administrator@vsphere.local"
 vsphere_password = "Password1!"
 vsphere_server   = "vc01.example.com"
 datacenter       = "Datacenter"
-datastore        = "vsanDatasore"
+datastore        = "vsanDatastore"
 resource_pool    = "Cluster/Resources"
 compute_host     = "192.168.1.101"
 

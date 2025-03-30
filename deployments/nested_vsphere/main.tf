@@ -179,6 +179,7 @@ module "vsphere_provisioner" {
   nested_esxi                     = values(tomap(module.esxi_cluster.esxi_hosts))
   ssh_private_key_openssh         = tls_private_key.ed25519.private_key_openssh
   dvs_list                        = var.vsphere_provisioner.dvs_list
+  storage_policy_list             = var.vsphere_provisioner.storage_policy_list
   vsan_enabled                    = var.vsphere_provisioner.vsan_enabled
   ha_enabled                      = var.vsphere_provisioner.ha_enabled
   drs_enabled                     = var.vsphere_provisioner.drs_enabled

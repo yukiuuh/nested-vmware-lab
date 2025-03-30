@@ -71,6 +71,7 @@ resource "ansible_playbook" "provision_nested_vsphere" {
     ha_enabled              = var.ha_enabled ? "True" : "False"
     vsan_enabled            = var.vsan_enabled ? "True" : "False"
     drs_enabled             = var.drs_enabled ? "True" : "False"
+    storage_policy_list     = jsonencode(var.storage_policy_list)
     ansible_hostname        = var.ip
     ansible_connection      = "ssh"
     ansible_ssh_pass        = var.password
@@ -154,7 +155,7 @@ resource "ansible_playbook" "deploy_edge" {
   playbook   = "${path.module}/../../playbooks/deploy_nsx_edge.yaml"
   count      = var.nsx != null ? 1 : 0
   name       = var.ip
-  replayable = true
+  replayable = false
   depends_on = [ansible_playbook.provision_nsx_manager]
   verbosity  = 1
   extra_vars = {

@@ -17,6 +17,7 @@
         vsan_enabled: '{{ vsan_enabled }}'
         ha_enabled: '{{ ha_enabled }}'
         drs_enabled: '{{ drs_enabled }}'
+        storage_policies: '{{ storage_policy_list | from_json | list  }}'
 
     - name: Initialize nested vSphere
       ansible.builtin.include_role:

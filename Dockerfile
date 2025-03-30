@@ -12,7 +12,7 @@ RUN groupadd --gid $USER_GID $USERNAME && \
     apt-get update && \
     apt-get install -y ssh sshpass netcat-openbsd git ca-certificates --no-install-recommends && \
     pip install pip --upgrade && \
-    pip install --no-cache-dir ansible==10.0.0a1 ansible-lint pyvmomi passlib netaddr git+https://github.com/vmware/vsphere-automation-sdk-python.git && \
+    pip install --no-cache-dir ansible==10.0.0a1 ansible-lint pyvmomi jmespath passlib netaddr git+https://github.com/vmware/vsphere-automation-sdk-python.git && \
     rm -rf /var/lib/apt/lists/*
 
 USER bootstrap

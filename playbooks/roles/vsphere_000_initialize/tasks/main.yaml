@@ -37,3 +37,52 @@
     cluster_name: '{{ cluster_name }}'
     rescan_vmfs: true
     rescan_hba: true
+
+- name: Create a datastore category
+  community.vmware.vmware_category:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    category_name: datastore_category
+    category_cardinality: 'multiple'
+    associable_object_types:
+      - Datastore
+    state: present
+
+- name: Create a tag
+  community.vmware.vmware_tag:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    category_name: datastore_category
+    tag_name: "{{ item.name }}"
+    state: present
+  loop: "{{ storage_policies }}"
+
+- name: Add tag to a Datastore
+  community.vmware.vmware_tag_manager:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    tag_names:
+      - "{{ item.name }}"
+    object_name: "{{ item.datastore }}"
+    object_type: Datastore
+    state: add
+  loop: "{{ storage_policies }}"
+
+- name: Create or update a vSphere tag-based storage policies
+  community.vmware.vmware_vm_storage_policy:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    name: "{{ item.name }}"
+    tag_category: datastore_category
+    tag_name: "{{ item.name }}"
+    tag_affinity: true
+    state: "present"
+  loop: "{{ storage_policies }}"
