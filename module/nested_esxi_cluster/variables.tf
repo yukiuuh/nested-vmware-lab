@@ -26,8 +26,6 @@ variable "bastion_password" {
   nullable = true
   default  = null
 }
-
-
 variable "gateway" { type = string }
 variable "nameservers" { type = list(string) }
 variable "subnet_mask" {
