@@ -110,10 +110,18 @@ variable "nsx" {
     edge_tep_ip_pool_end_ip   = string
     edge_tep_ip_pool_cidr     = string
     edge_tep_uplink_vlan      = number
-    external_uplink_vlan_list = list(number)
+    # external_uplink_vlan_list = list(number)
+    external_uplink_vlan = number
+    t0_gateway           = string
     edge_vm_list = list(object({
       management_ip = string
       hostname      = string
+      t0_interfaces = list(object(
+        {
+          ip            = string
+          prefix_length = string
+        }
+      ))
     }))
   })
 }

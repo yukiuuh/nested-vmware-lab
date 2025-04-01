@@ -53,11 +53,19 @@ locals {
   ansible_connection_args = var.bastion_ip != null ? "-o ProxyCommand=\"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${local_file.private_key.filename} ${var.bastion_user}@${var.bastion_ip} -W %h:%p \" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" : "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 }
 
+resource "terraform_data" "wait_for_ssh_connection" {
+  depends_on = [terraform_data.wait_for_nested_vsphere]
+
+  provisioner "local-exec" {
+    command = "until sshpass -p '${var.password}' ssh ${local.ansible_connection_args} ${var.username}@${var.ip} exit; do sleep 15; done"
+  }
+}
+
 resource "ansible_playbook" "provision_nested_vsphere" {
   playbook   = "${path.module}/../../playbooks/vsphere.yaml"
   name       = var.ip
   replayable = false
-  depends_on = [terraform_data.wait_for_nested_vsphere]
+  depends_on = [terraform_data.wait_for_ssh_connection]
   verbosity  = 1
   extra_vars = {
     vc_address              = var.vcsa_ip
@@ -179,6 +187,8 @@ resource "ansible_playbook" "deploy_edge" {
 
     edge_deployment_size = var.nsx.edge_deployment_size
     edge_vm_list         = jsonencode(var.nsx.edge_vm_list)
+    nsx_t0_gateway       = var.nsx.t0_gateway
+    external_uplink_vlan = var.nsx.external_uplink_vlan
 
     edge_tep_ip_pool_gateway  = var.nsx.edge_tep_ip_pool_gateway
     edge_tep_ip_pool_start_ip = var.nsx.edge_tep_ip_pool_start_ip

@@ -73,6 +73,10 @@
     object_type: Datastore
     state: add
   loop: "{{ storage_policies }}"
+  register: datastore_tag_info
+  until: datastore_tag_info is succeeded
+  delay: 30
+  retries: 20
 
 - name: Create or update a vSphere tag-based storage policies
   community.vmware.vmware_vm_storage_policy:
@@ -86,3 +90,7 @@
     tag_affinity: true
     state: "present"
   loop: "{{ storage_policies }}"
+  register: storage_policy_info
+  until: storage_policy_info is succeeded
+  delay: 30
+  retries: 20

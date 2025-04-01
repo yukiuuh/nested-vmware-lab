@@ -2,7 +2,7 @@
   ansible.builtin.include_role:
     name: nsx_create_ip_pool
   vars:
-    ip_pool: 
+    ip_pool:
       name: "{{ edge_tep_ip_pool_name }}"
       start_ip: "{{ edge_tep_ip_pool_start_ip }}"
       end_ip: "{{ edge_tep_ip_pool_end_ip }}"
@@ -54,9 +54,9 @@
 
 - name: Wait for VLAN segment
   community.vmware.vmware_dvs_portgroup_info:
-    hostname:  "{{ vc_address }}"
-    username:  "{{ vc_username }}"
-    password:  "{{ vc_password }}"
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
     validate_certs: "{{ validate_certs }}"
     datacenter: "{{ datacenter_name }}"
   register: dvpg_info
@@ -64,11 +64,11 @@
   delay: 10
   retries: 30
   vars:
-    dvpg_query: "[?portgroup_name=='{{edge_uplink_segment_name}}']"
+    dvpg_query: "[?portgroup_name=='{{ edge_uplink_segment_name }}']"
 
-- name: Sleep for 30 seconds
+- name: Sleep for 300 seconds
   ansible.builtin.wait_for:
-    timeout: 30
+    timeout: 300
 
 - name: "Deploy NSX Edge VM"
   vmware.ansible_for_nsxt.nsxt_transport_nodes:
@@ -117,7 +117,7 @@
           placement_type: VsphereDeploymentConfig
         node_user_settings:
           cli_username: admin
-          root_password: "{{nsx_password }}"
+          root_password: "{{ nsx_password }}"
           cli_password: "{{ nsx_password }}"
           audit_username: audit
           audit_password: "{{ nsx_password }}"
@@ -142,9 +142,9 @@
 
 - name: Wait for Edge deployments
   community.vmware.vmware_guest_tools_wait:
-    hostname:  "{{ vc_address }}"
-    username:  "{{ vc_username }}"
-    password:  "{{ vc_password }}"
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
     validate_certs: "{{ validate_certs }}"
     datacenter: "{{ datacenter_name }}"
     name: "{{ item.hostname }}"
@@ -164,9 +164,9 @@
 
 - name: "Workaround for Ryzen"
   community.vmware.vmware_vm_shell:
-    hostname:  "{{ vc_address }}"
-    username:  "{{ vc_username }}"
-    password:  "{{ vc_password }}"
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
     validate_certs: "{{ validate_certs }}"
     datacenter: "{{ datacenter_name }}"
     cluster: "{{ cluster_name }}"
@@ -227,11 +227,17 @@
           - edge_cluster_display_name: "{{ nsx_edge_cluster_name }}"
             edge_node_display_name: "{{ edge_vms[0].hostname }}"
         interfaces:
-          - display_name: "edge01_interface"
+          - display_name: "{{ edge_vms[0].hostname }}_interface"
             state: "{{ nsx_state }}"
-            subnets:
-              - ip_addresses: "{{ nsx_t0_address }}"
-                prefix_len: 24
+            # subnets:
+            #   - ip_addresses: "{{ edge_vms[0].t0_interfaces[0].ip }}"
+            #     prefix_len: "{{ edge_vms[0].t0_interfaces[0].prefix_length }}"
+            subnets: |
+              {% set subnets = [] %}
+              {% for interface in edge_vms[0].t0_interfaces %}
+              {% set _ = subnets.append({'ip_addresses': interface.ip, 'prefix_len': interface.prefix_length}) %}
+              {% endfor %}
+              {{ subnets }}
             segment_id: "{{ external_uplink_segment_name }}"
             do_wait_till_create: true
             edge_node_info:
