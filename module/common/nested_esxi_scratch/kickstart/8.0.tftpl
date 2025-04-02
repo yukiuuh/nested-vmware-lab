@@ -67,6 +67,9 @@ END_SECTOR=`/bin/partedUtil get /vmfs/devices/disks/$DEVICE_NAME | awk '{print $
 vmkfstools -C vmfs6 -S ${provision_datastore.datastore_name} /vmfs/devices/disks/$DEVICE_NAME:1
 %{ endfor ~}
 
+%{ if vcf_mode }
 /sbin/generate-certificates
 /etc/init.d/hostd restart && /etc/init.d/vpxa restart
+%{ endif }
+
 date > /var/tmp/provisioned
