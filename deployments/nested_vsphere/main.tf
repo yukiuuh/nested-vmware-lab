@@ -48,6 +48,23 @@ module "router" {
   nested_network      = var.lab_network
 }
 
+module "sddc_manager" {
+  count          = var.sddc_manager != null ? 1 : 0
+  source         = "../../module/sddc_manager"
+  vi             = module.vi
+  name           = "${local.name_prefix}-${var.sddc_manager.hostname}"
+  gateway        = var.gateway
+  ntp            = var.ntp
+  remote_ovf_url = var.sddc_manager.remote_ovf_url
+  ip             = var.sddc_manager.ip
+  nameservers    = var.nameservers
+  subnet_mask    = var.subnet_mask
+  domain_name    = var.domain_name
+  hostname       = var.sddc_manager.hostname
+  vm_password    = var.sddc_manager.password
+  network_name   = var.network_name
+}
+
 module "storage" {
   count                = var.storage != null ? 1 : 0
   source               = "../../module/storage"

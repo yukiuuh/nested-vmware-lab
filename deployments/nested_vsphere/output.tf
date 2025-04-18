@@ -19,3 +19,6 @@ output "nsx" {
     edges    = module.vsphere_provisioner[0].nsx_edges
   } : null
 }
+output "sddc_manager" {
+  value = var.sddc_manager != null ? module.sddc_manager[0] : null
+}

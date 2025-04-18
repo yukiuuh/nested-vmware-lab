@@ -133,6 +133,17 @@ variable "storage" {
   })
 }
 
+variable "sddc_manager" {
+  nullable = true
+  default  = null
+  type = object({
+    ip             = string
+    hostname       = string
+    remote_ovf_url = string
+    password       = string
+  })
+}
+
 variable "external_network" {
   nullable = true
   default  = null
