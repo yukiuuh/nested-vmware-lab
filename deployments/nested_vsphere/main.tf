@@ -210,4 +210,5 @@ module "vsphere_provisioner" {
   ntp                             = var.ntp
   ovftool_path                    = var.vsphere_provisioner.ovftool_path
   nsx                             = var.nsx
+  avi                             = var.avi
 }

@@ -1,5 +1,5 @@
 ---
-- name: Provision nested NSX
+- name: Deploy nested NSX
   gather_facts: false
   hosts: all
   vars:

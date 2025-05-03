@@ -205,3 +205,41 @@ resource "ansible_playbook" "deploy_edge" {
     ansible_ssh_common_args = local.ansible_connection_args
   }
 }
+
+resource "ansible_playbook" "deploy_avi" {
+  playbook   = "${path.module}/../../playbooks/deploy_avi.yaml"
+  count      = var.avi != null ? 1 : 0
+  name       = var.ip
+  replayable = false
+  depends_on = [ansible_playbook.deploy_edge]
+  verbosity  = 1
+  extra_vars = {
+    vc_address           = var.vcsa_ip
+    vc_username          = var.vcsa_username
+    vc_password          = var.vcsa_password
+    avi_vm_name          = var.avi.controllers[0].hostname
+    avi_username         = "admin"
+    avi_password         = var.avi.password
+    avi_default_password = var.avi.default_password
+    avi_ova_path         = var.avi.controller_ova_url
+    avi_management_ip    = var.avi.controllers[0].ip
+    ovftool_path         = var.ovftool_path
+
+    datacenter_name           = var.nested_datacenter_name
+    cluster_name              = var.nested_cluster_name
+    datastore_name            = var.nested_datastore_name
+    management_portgroup_name = var.nested_management_portroup_name
+
+    ntp_server  = var.ntp
+    dns_server  = var.nameservers[0]
+    gateway     = var.gateway
+    netmask     = var.subnet_mask
+    domain_name = var.domain_name
+
+    ansible_hostname        = var.ip
+    ansible_connection      = "ssh"
+    ansible_ssh_pass        = var.password
+    ansible_user            = var.username
+    ansible_ssh_common_args = local.ansible_connection_args
+  }
+}

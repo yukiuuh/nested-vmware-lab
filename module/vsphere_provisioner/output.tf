@@ -19,3 +19,13 @@ output "nsx_edges" {
     source   = var.nsx.manager_ova
   }] : null
 }
+
+output "avi_controllers" {
+  value = var.avi != null ? [for controller in var.avi.controllers : {
+    ip       = controller.ip
+    hostname = "${controller.hostname}.${var.domain_name}"
+    password = var.avi.password
+    name     = controller.hostname
+    source   = var.avi.controller_ova_url
+  }] : null
+}

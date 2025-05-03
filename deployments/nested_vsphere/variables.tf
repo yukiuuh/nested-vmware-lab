@@ -221,6 +221,35 @@ variable "nsx" {
   })
 }
 
+variable "avi" {
+  nullable = true
+  default  = null
+  type = object({
+    controller_ova_url = string
+    license            = string
+    password           = string
+    default_password   = string
+    controllers = list(object(
+      {
+        hostname = string
+        ip       = string
+      }
+    ))
+    workload_network = object({
+      name     = string
+      network  = string
+      begin_ip = string
+      end_ip   = string
+    })
+    frontend_network = object({
+      name     = string
+      network  = string
+      begin_ip = string
+      end_ip   = string
+    })
+  })
+}
+
 variable "vsphere_provisioner" {
   nullable = true
   default  = null
