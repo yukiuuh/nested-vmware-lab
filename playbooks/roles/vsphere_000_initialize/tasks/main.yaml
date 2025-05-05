@@ -92,7 +92,7 @@
   loop: "{{ storage_policies }}"
   register: storage_policy_info
   until: storage_policy_info is succeeded
-  delay: 30
+  delay: 60
   retries: 20
 
 - name: Create Local Content Library

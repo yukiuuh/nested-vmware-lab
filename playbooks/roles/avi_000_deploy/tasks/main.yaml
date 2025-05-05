@@ -44,6 +44,20 @@
     force_change: false
   ignore_errors: true
 
+- name: Wait for Avi
+  ansible.builtin.uri:
+    url: https://{{ avi_management_ip }}
+    validate_certs: false
+    timeout: 10
+    method: GET
+    body_format: json
+    return_content: true
+    status_code: 200
+  register: result
+  until: result is succeeded
+  retries: 10
+  delay: 60
+
 - name: System configuration
   vmware.alb.avi_systemconfiguration:
     avi_credentials:
@@ -53,6 +67,8 @@
     state: present
     welcome_workflow_complete: true
     default_license_tier: ENTERPRISE
+    portal_configuration:
+      allow_basic_authentication: true
     dns_configuration:
       search_domain: "{{ domain_name }}"
       server_list:
@@ -61,9 +77,11 @@
     ntp_configuration:
       ntp_servers:
         - server:
-            type: V4
+            type: >-
+              {%- if ntp_server | ansible.utils.ipv4 -%} V4
+              {%- else -%}                               DNS
+              {%- endif -%}
             addr: "{{ ntp_server }}"
-  ignore_errors: true
 
 - name: Backup configuration
   vmware.alb.avi_backupconfiguration:

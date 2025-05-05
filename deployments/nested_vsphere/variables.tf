@@ -235,18 +235,15 @@ variable "avi" {
         ip       = string
       }
     ))
-    workload_network = object({
+    gateway              = string
+    ipam_usable_networks = list(string)
+    networks = list(object({
       name     = string
       network  = string
       begin_ip = string
       end_ip   = string
-    })
-    frontend_network = object({
-      name     = string
-      network  = string
-      begin_ip = string
-      end_ip   = string
-    })
+      type     = string
+    }))
   })
 }
 

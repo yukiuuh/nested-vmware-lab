@@ -1,0 +1,156 @@
+- name: Create a VMware cloud with write access mode
+  vmware.alb.avi_cloud:
+    avi_credentials:
+      username: "admin"
+      password: "{{ avi_password }}"
+      controller: "{{ avi_management_ip }}"
+      api_version: 22.1.5
+    dhcp_enabled: true
+    enable_vip_static_routes: false
+    name: Default-Cloud
+    se_group_template_ref: /api/serviceenginegroup/?name=Default-Group
+    prefer_static_routes: false
+    vcenter_configuration:
+      datacenter: "{{ con_datacenter }}"
+      management_network: "{{ '/api/vimgrnwruntime/?name=' + con_mgmt_network }}"
+      password: "{{ vcenter_password }}"
+      privilege: WRITE_ACCESS
+      username: "{{ vcenter_user }}"
+      vcenter_url: "{{ vcenter_host }}"
+      use_content_lib: false
+    vtype: CLOUD_VCENTER
+
+- name: Sleep for 180 seconds
+  ansible.builtin.wait_for:
+    timeout: 180
+
+- name: Configure Networks
+  vmware.alb.avi_network:
+    avi_credentials:
+      username: "admin"
+      password: "{{ avi_password }}"
+      controller: "{{ avi_management_ip }}"
+      api_version: 22.1.5
+    name: "{{ item.name }}"
+    cloud_ref: /api/cloud/?name=Default-Cloud
+    dhcp_enabled: false
+    configured_subnets:
+      - prefix:
+          mask: '{{ item.network | ansible.utils.ipaddr("prefix") }}'
+          ip_addr:
+            type: V4
+            addr: '{{ item.network.split("/")[0] }}'
+        static_ip_ranges:
+          - range:
+              begin:
+                type: V4
+                addr: '{{ item.begin_ip }}'
+              end:
+                type: V4
+                addr: '{{ item.end_ip }}'
+            type: '{{ item.type }}'
+  with_items: "{{ avi_networks }}"
+
+- name: Add default route
+  vmware.alb.avi_vrfcontext:
+    avi_credentials:
+      username: "admin"
+      password: "{{ avi_password }}"
+      controller: "{{ avi_management_ip }}"
+      api_version: 22.1.5
+    state: present
+    name: global
+    static_routes:
+      - next_hop:
+          addr: "{{ avi_gateway }}"
+          type: V4
+        prefix:
+          ip_addr:
+            addr: "0.0.0.0"
+            type: V4
+          mask: 0
+        route_id: 1
+
+- name: Add default IPAM
+  vmware.alb.avi_ipamdnsproviderprofile:
+    avi_credentials:
+      username: "admin"
+      password: "{{ avi_password }}"
+      controller: "{{ avi_management_ip }}"
+      api_version: 22.1.5
+    state: present
+    name: '{{ avi_default_ipam_name }}'
+    type: IPAMDNS_TYPE_INTERNAL
+    internal_profile:
+      usable_networks:
+        - nw_ref: '{{ "/api/vimgrnwruntime/?name=" + item }}'
+  with_items: '{{ avi_ipam_usable_networks }}'
+
+- name: Attach IPAM to Default-Cloud
+  vmware.alb.avi_cloud:
+    avi_credentials:
+      username: "admin"
+      password: "{{ avi_password }}"
+      controller: "{{ avi_management_ip }}"
+      api_version: 22.1.5
+    name: Default-Cloud
+    ipam_provider_ref: '{{ "/api/ipamdnsproviderprofile/?name=" + avi_default_ipam_name }}'
+    dhcp_enabled: true
+    enable_vip_static_routes: false
+    se_group_template_ref: /api/serviceenginegroup/?name=Default-Group
+    prefer_static_routes: false
+    vcenter_configuration:
+      datacenter: "{{ con_datacenter }}"
+      management_network: "{{ '/api/vimgrnwruntime/?name=' + con_mgmt_network }}"
+      password: "{{ vcenter_password }}"
+      privilege: WRITE_ACCESS
+      username: "{{ vcenter_user }}"
+      vcenter_url: "{{ vcenter_host }}"
+      use_content_lib: false
+    vtype: CLOUD_VCENTER
+
+- name: Create Controller Certificate
+  vmware.alb.avi_sslkeyandcertificate:
+    avi_credentials:
+      username: "admin"
+      password: "{{ avi_password }}"
+      controller: "{{ avi_management_ip }}"
+      api_version: 22.1.5
+    type: SSL_CERTIFICATE_TYPE_SYSTEM
+    name: '{{ avi_vm_name }}'
+    certificate:
+      self_signed: true
+      subject:
+        common_name: '{{ avi_vm_name + "." + domain }}'
+      key_params:
+        algorithm: SSL_KEY_ALGORITHM_RSA
+      subject_alt_names:
+        - '{{ avi_vm_name + "." + domain }}'
+        - '{{ con_mgmt_ip }}'
+
+- name: Attach new controller certificate
+  vmware.alb.avi_systemconfiguration:
+    avi_credentials:
+      username: "admin"
+      password: "{{ avi_password }}"
+      controller: "{{ avi_management_ip }}"
+    state: present
+    welcome_workflow_complete: true
+    default_license_tier: ENTERPRISE
+    portal_configuration:
+      allow_basic_authentication: false
+      sslkeyandcertificate_refs:
+        - '{{ "/api/sslkeyandcertificate/?name=" + avi_vm_name }}'
+    dns_configuration:
+      search_domain: "{{ domain_name }}"
+      server_list:
+        - type: V4
+          addr: "{{ dns_server }}"
+    ntp_configuration:
+      ntp_servers:
+        - server:
+            type: >-
+              {%- if ntp_server | ansible.utils.ipv4 -%} V4
+              {%- else -%}                               DNS
+              {%- endif -%}
+            addr: "{{ ntp_server }}"

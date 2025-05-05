@@ -32,12 +32,10 @@
         avi_ova_path: '{{ avi_ova_path }}'
         avi_vm_name: '{{ avi_vm_name }}'
         avi_management_ip: '{{ avi_management_ip }}'
+        avi_networks: '{{ avi_network_list | from_json | list }}'
+        avi_gateway: '{{ avi_gateway }}'
+        avi_ipam_usable_networks: '{{ avi_ipam_usable_network_list | from_json | list }}'
 
-    - name: Avi Controller | VMware | Configure VMware controller
-      ansible.builtin.import_role:
-        name: avi_000_deploy
-      vars:
-        ovftool_path: '{{ ovftool_path }}'
         vcenter_host: '{{ vc_address }}'
         vcenter_user: '{{ vc_username }}'
         vcenter_password: '{{ vc_password }}'
@@ -52,3 +50,15 @@
         con_mgmt_mask: '{{ netmask }}'
         con_default_gw: '{{ gateway }}'
         con_power_on: true
+
+        avi_default_ipam_name: "defaultipam"
+
+        content_library_name: '{{ content_library_name }}'
+
+    - name: Deploy Avi
+      ansible.builtin.import_role:
+        name: avi_000_deploy
+
+    - name: Configure Avi
+      ansible.builtin.import_role:
+        name: avi_010_vsphere_cloud
