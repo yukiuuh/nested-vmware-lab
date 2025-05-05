@@ -264,6 +264,10 @@ variable "vsphere_provisioner" {
       name      = string
       datastore = string
     })), [])
+    content_library_list = optional(list(object({
+      name      = string
+      datastore = string
+    })), [])
     dvs_list = list(object({
       name    = string
       version = string

@@ -11,3 +11,4 @@ services:
     platform: linux/amd64
     tty: true
     user: bootstrap
+    init: true

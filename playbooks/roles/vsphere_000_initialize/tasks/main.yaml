@@ -94,3 +94,20 @@
   until: storage_policy_info is succeeded
   delay: 30
   retries: 20
+
+- name: Create Local Content Library
+  community.vmware.vmware_content_library_manager:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs | default(false) }}"
+    library_name: "{{ item.name }}"
+    library_description: "{{ item.name }}"
+    library_type: local
+    datastore_name: "{{ item.datastore }}"
+    state: present
+  loop: "{{ content_libraries }}"
+  register: content_library_info
+  until: content_library_info is succeeded
+  delay: 30
+  retries: 20 # wait for content library service

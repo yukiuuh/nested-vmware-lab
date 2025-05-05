@@ -55,6 +55,14 @@ variable "storage_policy_list" {
     datastore = string
   }))
 }
+
+variable "content_library_list" {
+  default = []
+  type = list(object({
+    name      = string
+    datastore = string
+  }))
+}
 variable "dvs_list" {
   type = list(object({
     name    = string
