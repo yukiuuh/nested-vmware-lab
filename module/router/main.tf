@@ -67,3 +67,20 @@ module "router" {
     }
   ]
 }
+
+resource "terraform_data" "wait_for_router" {
+  depends_on = [module.router]
+  input = {
+    name     = var.name
+    password = var.vm_password
+    username = local.router_user
+  }
+  provisioner "local-exec" {
+    command = "until govc guest.ls -l '${self.input.username}:${self.input.password}' -vm ${self.input.name} /var/tmp/provisioned ; do sleep 60 ; done"
+    environment = {
+      GOVC_URL        = var.vi.govc_url
+      GOVC_INSECURE   = "true"
+      GOVC_DATACENTER = var.vi.datacenter.name
+    }
+  }
+}

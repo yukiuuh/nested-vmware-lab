@@ -228,8 +228,8 @@ resource "ansible_playbook" "deploy_avi" {
     avi_network_list             = jsonencode(var.avi.networks)
     avi_gateway                  = var.avi.gateway
     avi_ipam_usable_network_list = jsonencode(var.avi.ipam_usable_networks)
-    content_library_name         = var.content_library_list[0].name
-    ovftool_path                 = var.ovftool_path
+
+    ovftool_path = var.ovftool_path
 
     datacenter_name           = var.nested_datacenter_name
     cluster_name              = var.nested_cluster_name

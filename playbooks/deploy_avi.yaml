@@ -53,8 +53,6 @@
 
         avi_default_ipam_name: "defaultipam"
 
-        content_library_name: '{{ content_library_name }}'
-
     - name: Deploy Avi
       ansible.builtin.import_role:
         name: avi_000_deploy
