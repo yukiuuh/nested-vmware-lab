@@ -38,7 +38,7 @@ module "nested_esxi_scratch" {
   for_each           = local.nested_esxi
   name               = "${var.name_prefix}-${each.value.hostname}"
   vi                 = var.vi
-  network_interfaces = [for i in range(var.nested_esxi_shape.nic_count) : var.network_name]
+  network_interfaces = var.network_interfaces_override != null ? var.network_interfaces_override : [for i in range(var.nested_esxi_shape.nic_count) : var.network_name]
   disks              = var.nested_esxi_shape.disks
   nvme_enabled       = var.nested_esxi_shape.nvme_enabled
   hostname           = "${each.value.hostname}.${var.domain_name}"

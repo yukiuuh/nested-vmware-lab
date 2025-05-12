@@ -78,6 +78,13 @@ variable "storage_vmknics" {
 variable "provision_datastores" {
   default = []
 }
+
+variable "network_interfaces_override" {
+  default  = null
+  nullable = true
+  type     = list(string)
+}
+
 variable "nested_esxi_shape" {
   type = object({
     num_cpus     = number

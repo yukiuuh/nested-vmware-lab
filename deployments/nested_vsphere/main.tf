@@ -31,6 +31,15 @@ resource "tls_private_key" "ed25519" {
   algorithm = "ED25519"
 }
 
+locals {
+  lab_network = {
+    domain_name        = var.domain_name
+    mtu                = 1700
+    network            = "10.0.0.0"
+    vlan_starts_with   = 1001
+    vlan_network_count = 20
+  }
+}
 module "router" {
   count               = var.external_network != null ? 1 : 0
   source              = "../../module/router"
@@ -45,7 +54,7 @@ module "router" {
   ip                  = var.external_network.ip
   wan_network_name    = var.external_network.name
   ssh_authorized_keys = concat([tls_private_key.ed25519.public_key_openssh], var.ssh_authorized_keys)
-  nested_network      = var.lab_network
+  nested_network      = local.lab_network
 }
 
 module "sddc_manager" {
@@ -174,6 +183,7 @@ module "esxi_cluster" {
   nested_esxi_starting_ip     = var.nested_esxi_starting_ip
   nested_esxi_hostname_prefix = var.nested_esxi_hostname_prefix
   nested_esxi_shape           = var.nested_esxi_shape
+  network_interfaces_override = var.external_network != null && var.attach_wan_to_nested_esxi ? concat([for i in range(var.nested_esxi_shape.nic_count - 2) : var.network_name], [for j in range(2) : var.external_network.name]) : null
   provision_datastores        = var.provision_datastores
   photon_ovf_url              = var.photon_ovf_url
 }
