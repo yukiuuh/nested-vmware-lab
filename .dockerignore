@@ -1,0 +1,10 @@
+**/.ansible
+**/.vscode
+**/.devcontainer
+**/terraform.tfstate.d
+**/tfvars
+**/.terraform*
+**/terraform.*
+**/*.tfvars*
+**/.env
+!templates/*tfvars*

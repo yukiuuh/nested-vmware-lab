@@ -1,0 +1,48 @@
+vsphere_server: vcsa01.example.com
+vsphere_user: administrator@vsphere.local
+vsphere_password: YOURPASSWORD
+
+datacenter: "Datacenter"
+datastore: "datastore1"
+resource_pool: "Cluster/Resources"
+compute_host: "esxi01.example.com"
+lan_network_name: "LabNetwork"
+wan_network_name: "VM Network"
+ 
+nested_domain_name: "nested.lab"
+name_prefix: "yourname"
+
+wan_subnet_mask: "255.255.255.0"
+wan_gateway: "192.168.1.1"
+wan_dns_servers:
+ - "8.8.8.8"
+wan_ntp: "ntp.nict.jp"
+router_wan_ip: "192.168.1.201"
+authorized_keys: 
+  - "ssh-ed25519 xxxxxxx"
+
+photon_ovf_url: https://packages.vmware.com/photon/5.0/RC/ova/photon-uefi-hw15-5.0-4d5974638.x86_64.ova
+ubuntu_ovf_url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.ova
+
+esxi_iso_path: /template/iso/VMware-VMvisor-Installer-8.0U3-24022510.x86_64.iso
+esxi_iso_datastore: ISO_DATASTORE
+vcsa_iso_path: /template/iso/VMware-VCSA-all-8.0.3-24022515.iso
+vcsa_iso_datastore: ISO_DATASTORE
+# avi_ova_url: http://server.example.com/share01/OVA/AVI/controller-22.1.7-9093.ova
+# nsx_manager_ova_path: http://server.example.com/share01/OVA/NSX/
+# nsx_manager_ova: nsx-unified-appliance-4.2.1.1.0.24405896.ova
+
+lun_size_gb: 200
+disk_size_gb: 200
+
+esxi_count: 3
+esxi_cpus: 4
+esxi_disk0_size_gb: 40
+esxi_mem_gb: 24
+esxi_with_tpm: false
+
+vcsa_deployment_option: tiny
+
+# nsx_license: ""
+# nsx_manager_deployment_size: medium
+# nsx_edge_deployment_size: MEDIUM
