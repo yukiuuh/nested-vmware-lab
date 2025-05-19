@@ -21,7 +21,7 @@ router_wan_ip: "192.168.1.201"
 authorized_keys: 
   - "ssh-ed25519 xxxxxxx"
 
-photon_ovf_url: https://packages.vmware.com/photon/5.0/RC/ova/photon-uefi-hw15-5.0-4d5974638.x86_64.ova
+photon_ovf_url: https://packages.vmware.com/photon/5.0/GA/ova/photon-hw15-5.0-dde71ec57.x86_64.ova
 ubuntu_ovf_url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.ova
 
 esxi_iso_path: /template/iso/VMware-VMvisor-Installer-8.0U3-24022510.x86_64.iso
