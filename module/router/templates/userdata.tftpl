@@ -70,7 +70,7 @@ write_files:
             mtu: ${vlan_mtu}
 %{ endfor ~}
     path: /etc/netplan/99-static.yaml
-    permission: '0600'
+    permissions: '0600'
   - content: |
       . {
         cache 30

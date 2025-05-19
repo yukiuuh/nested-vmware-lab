@@ -63,7 +63,7 @@ write_files:
             addresses: [ "${storage2_ip}/${storage_prefix}" ]
             mtu: ${storage_mtu}
     path: /etc/netplan/99-static.yaml
-    permission: '0600'
+    permissions: '0600'
 
   - content: |
       PasswordAuthentication yes
