@@ -38,6 +38,7 @@ locals {
       domain                     = var.nested_network.domain_name
       hostname                   = local.router_hostname
       vlan_mtu                   = var.nested_network.mtu
+      http_proxy_port            = var.http_proxy_port
       hosts_base64 = base64encode(templatefile("${path.module}/templates/hosts.tftpl",
         {
           management_network_address = local.management_network_address

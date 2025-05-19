@@ -162,23 +162,17 @@ variable "external_network" {
   })
 }
 
-# variable "lab_network" {
-#   nullable = true
-#   default = {
-#     domain_name        = "nested.lab"
-#     mtu                = 1700
-#     network            = "10.0.0.0"
-#     vlan_starts_with   = 1001
-#     vlan_network_count = 20
-#   }
-#   type = object({
-#     domain_name        = string
-#     network            = string
-#     mtu                = number
-#     vlan_starts_with   = number
-#     vlan_network_count = number
-#   })
-# }
+variable "router_mtu" {
+  nullable = true
+  default  = null
+  type     = number
+}
+
+variable "router_http_proxy_port" {
+  nullable = true
+  default  = null
+  type     = number
+}
 
 variable "nsx" {
   nullable = true

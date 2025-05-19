@@ -34,7 +34,7 @@ resource "tls_private_key" "ed25519" {
 locals {
   lab_network = {
     domain_name        = var.domain_name
-    mtu                = 1700
+    mtu                = var.router_mtu != null ? var.router_mtu : 1700
     network            = "10.0.0.0"
     vlan_starts_with   = 1001
     vlan_network_count = 20
@@ -55,6 +55,7 @@ module "router" {
   wan_network_name    = var.external_network.name
   ssh_authorized_keys = concat([tls_private_key.ed25519.public_key_openssh], var.ssh_authorized_keys)
   nested_network      = local.lab_network
+  http_proxy_port     = var.router_http_proxy_port
 }
 
 module "sddc_manager" {

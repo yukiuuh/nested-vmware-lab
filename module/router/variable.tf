@@ -30,3 +30,9 @@ variable "ssh_authorized_keys" {
   default = []
   type    = list(string)
 }
+
+variable "http_proxy_port" {
+  default  = 3128
+  type     = number
+  nullable = false
+}

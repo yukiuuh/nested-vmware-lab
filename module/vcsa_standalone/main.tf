@@ -88,7 +88,7 @@ resource "vsphere_virtual_machine" "vcsa" {
   }
 
   provisioner "local-exec" {
-    command = "until govc guest.run -l 'root:${var.vm_password}' -vm ${var.name} grep succeeded /var/log/firstboot/status ; do sleep 60 ; done"
+    command = "until govc guest.run -l 'root:${var.vm_password}' -vm ${var.name} stat /var/log/firstboot/succeeded ; do sleep 60 ; done"
     environment = {
       GOVC_URL      = var.vi.govc_url
       GOVC_INSECURE = "true"

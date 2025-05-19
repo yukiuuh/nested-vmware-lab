@@ -36,7 +36,7 @@ cp -r ./deployments/nested_vsphere/ ./workspace/
 3. Create config file
 ```bash
 cd ./workspace/nested_vsphere
-cp /examples/config.yaml ./
+cp /app/examples/config.yaml ./
 vim config.yaml # edit
 
 setup_vars.sh -c ./config.yaml -m <vsphere|avi|nsx> > terraform.tfvars # generate tfvars file
