@@ -125,16 +125,18 @@ variable "storage" {
   nullable = true
   default  = null
   type = object({
-    ip            = string
-    storage1_ip   = string
-    storage2_ip   = string
-    storage1_vlan = number
-    storage2_vlan = number
-    mtu           = number
-    subnet_mask   = string
-    disk_size_gb  = number
-    lun_size_gb   = number
-    lun_count     = number
+    ip              = string
+    storage1_ip     = string
+    storage2_ip     = string
+    storage1_vlan   = number
+    storage2_vlan   = number
+    mtu             = number
+    subnet_mask     = string
+    disk_size_gb    = number
+    lun_size_gb     = number
+    lun_count       = number
+    zfs_nfs_dedup   = optional(string, "off")
+    zfs_compression = optional(string, "off")
   })
 }
 

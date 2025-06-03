@@ -99,6 +99,8 @@ module "storage" {
   lun_count            = var.storage.lun_count
   network_name         = var.network_name
   ubuntu_ovf_url       = var.ubuntu_ovf_url
+  zfs_compression      = var.storage.zfs_compression
+  zfs_nfs_dedup        = var.storage.zfs_nfs_dedup
 }
 
 locals {
