@@ -11,11 +11,11 @@ resource "random_id" "uuid" {
   byte_length = 4
 }
 locals {
-  name_prefix = random_id.uuid.hex
+  key_name = random_id.uuid.hex
 }
 resource "local_file" "private_key" {
   content         = var.ssh_private_key_openssh
-  filename        = "/tmp/${local.name_prefix}.pem"
+  filename        = "/tmp/${local.key_name}.pem"
   file_permission = "0600"
 }
 
@@ -90,6 +90,20 @@ resource "ansible_playbook" "provision_nested_vsphere" {
   }
 }
 
+locals {
+  nsx_managers = var.nsx != null ? [for m in var.nsx.managers : ({
+    ip       = m.ip
+    hostname = m.hostname
+    vmname   = "${var.name_prefix}-${m.hostname}"
+  })] : []
+  nsx_edges = var.nsx != null ? [for e in var.nsx.edge_vm_list : ({
+    management_ip = e.management_ip
+    hostname      = e.hostname
+    t0_interfaces = e.t0_interfaces
+    vmname        = "${var.name_prefix}-${e.hostname}"
+  })] : []
+}
+
 resource "ansible_playbook" "deploy_nsx" {
   playbook   = "${path.module}/../../playbooks/deploy_nsx_manager.yaml"
   count      = var.nsx != null ? 1 : 0
@@ -105,7 +119,7 @@ resource "ansible_playbook" "deploy_nsx" {
     cluster_name                = var.nested_cluster_name
     datastore_name              = var.nested_datastore_name
     management_portgroup_name   = var.nested_management_portroup_name
-    nsx_manager1                = jsonencode(var.nsx.managers[0])
+    nsx_manager1                = jsonencode(local.nsx_managers[0])
     nsx_username                = var.nsx.username
     ntp_server                  = var.ntp
     dns_server                  = var.nameservers[0]
@@ -139,7 +153,7 @@ resource "ansible_playbook" "provision_nsx_manager" {
     vc_address                 = var.vcsa_ip
     vc_username                = var.vcsa_username
     vc_password                = var.vcsa_password
-    nsx_hostname               = var.nsx.managers[0].ip
+    nsx_hostname               = local.nsx_managers[0].ip
     nsx_username               = var.nsx.username
     nsx_password               = var.nsx.password
     nsx_transport_cluster_name = var.nested_cluster_name
@@ -188,7 +202,7 @@ resource "ansible_playbook" "deploy_edge" {
     domain_name = var.domain_name
 
     edge_deployment_size = var.nsx.edge_deployment_size
-    edge_vm_list         = jsonencode(var.nsx.edge_vm_list)
+    edge_vm_list         = jsonencode(local.nsx_edges)
     nsx_t0_gateway       = var.nsx.t0_gateway
     external_uplink_vlan = var.nsx.external_uplink_vlan
 
@@ -219,7 +233,8 @@ resource "ansible_playbook" "deploy_avi" {
     vc_address                   = var.vcsa_ip
     vc_username                  = var.vcsa_username
     vc_password                  = var.vcsa_password
-    avi_vm_name                  = var.avi.controllers[0].hostname
+    avi_hostname                 = var.avi.controllers[0].hostname
+    avi_vm_name                  = "${var.name_prefix}-${var.avi.controllers[0].hostname}"
     avi_username                 = "admin"
     avi_password                 = var.avi.password
     avi_default_password         = var.avi.default_password

@@ -18,6 +18,7 @@ variable "bastion_password" {
 variable "ip" {}
 variable "password" {}
 variable "username" {}
+variable "name_prefix" {}
 
 variable "local_govc_path" {
   default = "/usr/bin/govc"

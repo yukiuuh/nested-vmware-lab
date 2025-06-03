@@ -30,7 +30,8 @@
         avi_default_password: '{{ avi_default_password }}'
 
         avi_ova_path: '{{ avi_ova_path }}'
-        avi_vm_name: '{{ avi_vm_name }}'
+        avi_vm_name: '{{avi_vm_name}}'
+        avi_hostname: '{{ avi_hostname }}'
         avi_management_ip: '{{ avi_management_ip }}'
         avi_networks: '{{ avi_network_list | from_json | list }}'
         avi_gateway: '{{ avi_gateway }}'

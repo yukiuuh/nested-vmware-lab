@@ -193,6 +193,7 @@ module "esxi_cluster" {
 
 module "vsphere_provisioner" {
   source                  = "../../module/vsphere_provisioner"
+  name_prefix             = local.name_prefix
   depends_on              = [module.vcsa_standalone, module.vsphere_kickstarter]
   count                   = var.nested_vcsa != null && var.vsphere_provisioner != null ? 1 : 0
   vcsa_ip                 = var.nested_vcsa.ip
