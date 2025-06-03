@@ -169,6 +169,13 @@ write_files:
         option subnet-mask 255.255.255.0;
         range dynamic-bootp ${cidrhost(management_network_address, 200)} ${cidrhost(management_network_address, 250)};
       }
+%{ for enable_dhcp_network in enable_dhcp_networks ~}
+      subnet ${enable_dhcp_network.network} netmask ${enable_dhcp_network.netmask} {
+        option routers ${enable_dhcp_network.gateway};
+        option subnet-mask ${enable_dhcp_network.netmask};
+        range dynamic-bootp ${enable_dhcp_network.start_ip} ${enable_dhcp_network.end_ip};
+      }
+%{ endfor ~}
     path: /etc/dhcp/dhcpd.conf
   - content: |
       PasswordAuthentication yes

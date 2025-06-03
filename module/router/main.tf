@@ -24,6 +24,17 @@ locals {
       "address" = cidrsubnet(local.nested_network_address, 8, i + 1)
     }
   }
+
+  enable_dhcp_networks = {
+    for i in range(var.nested_network.vlan_network_count) : i => {
+      "network"  = cidrhost(cidrsubnet(local.nested_network_address, 8, i + 1), 0)
+      "netmask"  = "255.255.255.0"
+      "gateway"  = cidrhost(cidrsubnet(local.nested_network_address, 8, i + 1), 1)
+      "start_ip" = cidrhost(cidrsubnet(local.nested_network_address, 8, i + 1), 200)
+      "end_ip"   = cidrhost(cidrsubnet(local.nested_network_address, 8, i + 1), 250)
+    }
+  }
+
   router_userdata = templatefile("${path.module}/templates/userdata.tftpl",
     {
       ssh_authorized_keys        = var.ssh_authorized_keys
@@ -39,6 +50,7 @@ locals {
       hostname                   = local.router_hostname
       vlan_mtu                   = var.nested_network.mtu
       http_proxy_port            = var.http_proxy_port
+      enable_dhcp_networks       = local.enable_dhcp_networks
       hosts_base64 = base64encode(templatefile("${path.module}/templates/hosts.tftpl",
         {
           management_network_address = local.management_network_address
