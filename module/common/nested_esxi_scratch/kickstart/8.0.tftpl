@@ -20,6 +20,7 @@ esxcli system settings advanced set -o /UserVars/SuppressShellWarning -i 1
 esxcli network ip interface remove --interface-name vmk0
 esxcli network ip interface add -p "Management Network" -i vmk0
 esxcli network ip interface ipv4 set -i vmk0 -t=static -I=${ip} -N=${netmask}
+esxcli network ip route ipv4 add -g ${gateway} -n default
 %{ endif }
 
 esxcli network vswitch standard set --vswitch-name=vSwitch0 --mtu=${mtu}
