@@ -11,7 +11,8 @@ variable "mem_gb" {
   default = 8
 }
 variable "hardware_version" {
-  default = 20
+  default  = null
+  nullable = true
 }
 variable "network_interfaces" {
   default = []
