@@ -75,6 +75,23 @@ module "sddc_manager" {
   network_name   = var.network_name
 }
 
+module "cloud_builder" {
+  count          = var.cloud_builder != null ? 1 : 0
+  source         = "../../module/cloud_builder"
+  vi             = module.vi
+  name           = "${local.name_prefix}-${var.cloud_builder.hostname}"
+  gateway        = var.gateway
+  ntp            = var.ntp
+  remote_ovf_url = var.cloud_builder.remote_ovf_url
+  ip             = var.cloud_builder.ip
+  nameservers    = var.nameservers
+  subnet_mask    = var.subnet_mask
+  domain_name    = var.domain_name
+  hostname       = var.cloud_builder.hostname
+  vm_password    = var.cloud_builder.password
+  network_name   = var.network_name
+}
+
 module "storage" {
   count                = var.storage != null ? 1 : 0
   source               = "../../module/storage"

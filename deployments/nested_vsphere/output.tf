@@ -22,6 +22,9 @@ output "nsx" {
 output "sddc_manager" {
   value = var.sddc_manager != null ? module.sddc_manager[0] : null
 }
+output "cloud_builder" {
+  value = var.cloud_builder != null ? module.cloud_builder[0] : null
+}
 output "avi" {
   value = var.avi != null ? {
     controllers = module.vsphere_provisioner[0].avi_controllers

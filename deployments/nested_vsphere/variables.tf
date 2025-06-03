@@ -140,7 +140,18 @@ variable "storage" {
   })
 }
 
-variable "sddc_manager" {
+variable "sddc_manager" { # for VCF 9.x
+  nullable = true
+  default  = null
+  type = object({
+    ip             = string
+    hostname       = string
+    remote_ovf_url = string
+    password       = string
+  })
+}
+
+variable "cloud_builder" { # for VCF 5.x
   nullable = true
   default  = null
   type = object({
