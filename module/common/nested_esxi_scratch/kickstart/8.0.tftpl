@@ -15,6 +15,13 @@ vim-cmd hostsvc/start_esx_shell
 esxcli system settings advanced set -o /UserVars/SuppressShellWarning -i 1
 %{ endif }
 
+%{ if vcf_mode }
+# recreate vmk0 to regenerate MAC address
+esxcli network ip interface remove --interface-name vmk0
+esxcli network ip interface add -p "Management Network" -i vmk0
+esxcli network ip interface ipv4 set -i vmk0 -t=static -I=${ip} -N=${netmask}
+%{ endif }
+
 esxcli network vswitch standard set --vswitch-name=vSwitch0 --mtu=${mtu}
 esxcli network ip interface set -i vmk0 -m ${mtu}
 %{ if !vcf_mode }
