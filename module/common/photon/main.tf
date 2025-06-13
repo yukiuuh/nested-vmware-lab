@@ -29,6 +29,7 @@ resource "vsphere_virtual_machine" "photon_with_cloudinit" {
   firmware             = data.vsphere_ovf_vm_template.photon.firmware
   scsi_type            = data.vsphere_ovf_vm_template.photon.scsi_type
   annotation           = var.annotation != "" ? var.annotation : data.vsphere_ovf_vm_template.photon.annotation
+  force_power_off       = true
 
   lifecycle {
     ignore_changes = [
