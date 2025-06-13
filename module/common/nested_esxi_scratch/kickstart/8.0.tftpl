@@ -5,6 +5,9 @@ entropy --sources=1
 network --bootproto=static --device=vmnic0 --ip=${ip} --netmask=${netmask} --vlanid=${vlan} --gateway=${gateway} --hostname=${hostname} --nameserver=${nameserver}
 reboot
 
+%post --interpreter=busybox
+sed -i '/kernelopt=/ s/$/ allowLegacyCPU=true/' /vmfs/volumes/BOOTBANK1/boot.cfg
+sed -i '/kernelopt=/ s/$/ allowLegacyCPU=true/' /vmfs/volumes/BOOTBANK2/boot.cfg
 %firstboot --interpreter=busybox
 
 %{ if ssh_enabled  }
@@ -77,7 +80,8 @@ vmkfstools -C vmfs6 -S ${provision_datastore.datastore_name} /vmfs/devices/disks
 
 %{ if vcf_mode }
 /sbin/generate-certificates
-/etc/init.d/hostd restart && /etc/init.d/vpxa restart
+/bin/services.sh restart
+/sbin/auto-backup.sh
 %{ endif }
 
 date > /var/tmp/provisioned
