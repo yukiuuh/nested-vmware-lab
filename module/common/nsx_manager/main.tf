@@ -23,10 +23,10 @@ resource "vsphere_virtual_machine" "nsx_manager" {
   host_system_id   = var.vi.compute_host.id
   guest_id         = data.vsphere_ovf_vm_template.nsx_manager_source.guest_id
   # firmware             = data.vsphere_ovf_vm_template.nsx_manager_source.firmware
-  scsi_type = data.vsphere_ovf_vm_template.nsx_manager_source.scsi_type
-  num_cpus  = data.vsphere_ovf_vm_template.nsx_manager_source.num_cpus
-  memory    = data.vsphere_ovf_vm_template.nsx_manager_source.memory
-  force_power_off       = true
+  scsi_type       = data.vsphere_ovf_vm_template.nsx_manager_source.scsi_type
+  num_cpus        = data.vsphere_ovf_vm_template.nsx_manager_source.num_cpus
+  memory          = data.vsphere_ovf_vm_template.nsx_manager_source.memory
+  force_power_off = true
 
   lifecycle {
     ignore_changes = [

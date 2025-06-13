@@ -191,7 +191,7 @@ variable "nsx" {
   nullable = true
   default  = null
   type = object({
-    managed_by_terraform = optional(bool, true)
+    managed_by_terraform    = optional(bool, true)
     manager_ova_path        = string
     manager_ova             = string
     manager_deployment_size = string
@@ -239,10 +239,10 @@ variable "avi" {
   default  = null
   type = object({
     managed_by_terraform = optional(bool, true)
-    controller_ova_url = string
-    license            = string
-    password           = string
-    default_password   = string
+    controller_ova_url   = string
+    license              = string
+    password             = string
+    default_password     = string
     controllers = list(object(
       {
         hostname = string

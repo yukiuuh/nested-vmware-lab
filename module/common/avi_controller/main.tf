@@ -56,9 +56,9 @@ resource "vsphere_virtual_machine" "avi_controller" {
 
   vapp {
     properties = {
-      "mgmt-ip"             = var.ip_address
-      "mgmt-mask"           = var.netmask
-      "default-gw"          = var.gateway
+      "mgmt-ip"    = var.ip_address
+      "mgmt-mask"  = var.netmask
+      "default-gw" = var.gateway
     }
   }
 }

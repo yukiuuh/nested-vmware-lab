@@ -237,16 +237,16 @@ locals {
   avi_controllers = var.avi != null && var.avi.managed_by_terraform ? var.avi.controllers : []
 }
 module "avi_controller" {
-  source      = "../../module/common/avi_controller"
-  for_each    = { for node in local.avi_controllers : node.hostname => node }
-  depends_on  = [module.router]
-  vi          = module.vi
-  name        = "${local.name_prefix}-${each.value.hostname}"
-  netmask     = var.subnet_mask
-  ip_address  = each.value.ip
-  remote_ovf_url    = "${var.avi.controller_ova_url}"
-  gateway           = var.gateway
-  network_name      = var.network_name
+  source         = "../../module/common/avi_controller"
+  for_each       = { for node in local.avi_controllers : node.hostname => node }
+  depends_on     = [module.router]
+  vi             = module.vi
+  name           = "${local.name_prefix}-${each.value.hostname}"
+  netmask        = var.subnet_mask
+  ip_address     = each.value.ip
+  remote_ovf_url = var.avi.controller_ova_url
+  gateway        = var.gateway
+  network_name   = var.network_name
 }
 
 module "vsphere_provisioner" {

@@ -141,10 +141,10 @@ variable "avi" {
   default  = null
   type = object({
     managed_by_terraform = optional(bool, true)
-    controller_ova_url = string
-    license            = string
-    password           = string
-    default_password   = string
+    controller_ova_url   = string
+    license              = string
+    password             = string
+    default_password     = string
     controllers = list(object(
       {
         hostname = string
