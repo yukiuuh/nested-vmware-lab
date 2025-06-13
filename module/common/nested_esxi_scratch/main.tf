@@ -82,6 +82,9 @@ resource "vsphere_virtual_machine" "nested_esxi" {
       disk[0].io_share_count,
       disk[1].io_share_count,
       disk[2].io_share_count,
+      disk[0].label,
+      disk[1].label,
+      disk[2].label,
       cdrom[0]
     ]
   }
