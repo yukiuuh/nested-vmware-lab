@@ -208,10 +208,51 @@ module "esxi_cluster" {
   photon_ovf_url              = var.photon_ovf_url
 }
 
+locals {
+  nsx_manager_nodes = var.nsx != null && var.nsx.managed_by_terraform ? var.nsx.managers : []
+}
+
+module "nsx_manager_cluster" {
+  source      = "../../module/common/nsx_manager"
+  for_each    = { for node in local.nsx_manager_nodes : node.hostname => node }
+  depends_on  = [module.router]
+  vi          = module.vi
+  name        = "${local.name_prefix}-${each.value.hostname}"
+  netmask     = var.subnet_mask
+  vm_password = var.nsx.password
+  domain_name = var.domain_name
+  dns_server  = var.nameservers[0]
+  ip_address  = each.value.ip
+  ssh_enabled = true
+  role        = "NSX Manager"
+
+  remote_ovf_url    = "${var.nsx.manager_ova_path}${var.nsx.manager_ova}"
+  hostname          = each.value.hostname
+  ntp               = var.ntp
+  gateway           = var.gateway
+  deployment_option = var.nsx.manager_deployment_size
+  network_name      = var.network_name
+}
+locals {
+  avi_controllers = var.avi != null && var.avi.managed_by_terraform ? var.avi.controllers : []
+}
+module "avi_controller" {
+  source      = "../../module/common/avi_controller"
+  for_each    = { for node in local.avi_controllers : node.hostname => node }
+  depends_on  = [module.router]
+  vi          = module.vi
+  name        = "${local.name_prefix}-${each.value.hostname}"
+  netmask     = var.subnet_mask
+  ip_address  = each.value.ip
+  remote_ovf_url    = "${var.avi.controller_ova_url}"
+  gateway           = var.gateway
+  network_name      = var.network_name
+}
+
 module "vsphere_provisioner" {
   source                  = "../../module/vsphere_provisioner"
   name_prefix             = local.name_prefix
-  depends_on              = [module.vcsa_standalone, module.vsphere_kickstarter]
+  depends_on              = [module.vcsa_standalone, module.vsphere_kickstarter, module.nsx_manager_cluster, module.avi_controller]
   count                   = var.nested_vcsa != null && var.vsphere_provisioner != null ? 1 : 0
   vcsa_ip                 = var.nested_vcsa.ip
   vcsa_password           = var.vm_password

@@ -6,24 +6,33 @@
     validate_certs: "{{ validate_certs | default(false) }}"
     datacenter_name: "{{ datacenter_name }}"
     state: present
+# - name: Login into vCenter and get cookies
+#   ansible.builtin.uri:
+#     url: https://{{ vc_address }}/rest/com/vmware/cis/session
+#     force_basic_auth: true
+#     validate_certs: false
+#     method: POST
+#     user: "{{ vc_username }}"
+#     password: "{{ vc_password }}"
+#   register: vc_login
 - name: Create Cluster
-  community.vmware.vmware_cluster:
+  vmware.vmware.cluster:
     hostname: "{{ vc_address }}"
     username: "{{ vc_username }}"
     password: "{{ vc_password }}"
     validate_certs: "{{ validate_certs | default(false) }}"
-    datacenter_name: "{{ datacenter_name }}"
-    cluster_name: "{{ cluster_name }}"
+    datacenter: "{{ datacenter_name }}"
+    cluster: "{{ cluster_name }}"
     state: present
 - name: Add Nested ESXi to Cluster
-  community.vmware.vmware_host:
+  vmware.vmware.esxi_host:
     hostname: "{{ vc_address }}"
     username: "{{ vc_username }}"
     password: "{{ vc_password }}"
     validate_certs: "{{ validate_certs | default(false) }}"
-    datacenter_name: "{{ datacenter_name }}"
-    cluster_name: "{{ cluster_name }}"
-    esxi_hostname: "{{ item }}"
+    datacenter: "{{ datacenter_name }}"
+    cluster: "{{ cluster_name }}"
+    esxi_host_name: "{{ item }}"
     esxi_username: "root"
     esxi_password: "{{ esxi_password }}"
     state: present
