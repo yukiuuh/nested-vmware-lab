@@ -22,6 +22,7 @@ RUN ansible-galaxy collection install community.general && \
     ansible-galaxy collection install community.vmware && \
     ansible-galaxy collection install ansible.utils && \
     ansible-galaxy collection install vmware.alb && \
+    ansible-galaxy collection install vmware.vmware && \
     ansible-galaxy collection install git+https://github.com/vmware/ansible-for-nsxt
 
 RUN pip install -r ~/.ansible/collections/ansible_collections/vmware/alb/requirements.txt
