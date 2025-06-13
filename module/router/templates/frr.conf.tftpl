@@ -1,0 +1,42 @@
+log syslog informational
+
+!
+router bgp ${router_asn}
+ default-information originate
+ bgp router-id ${cidrhost(management_network_address, 1)}
+%{ for i in range(2, 10) ~}
+ neighbor ${cidrhost(bgp_network1_address, i)} remote-as ${remote_asn1}
+ neighbor ${cidrhost(bgp_network1_address, i)} route-map INBOUND_POLICY in
+ neighbor ${cidrhost(bgp_network1_address, i)} route-map OUTBOUND_POLICY out
+%{ endfor ~}
+%{ for i in range(2, 10) ~}
+ neighbor ${cidrhost(bgp_network2_address, i)} remote-as ${remote_asn1}
+ neighbor ${cidrhost(bgp_network2_address, i)} route-map INBOUND_POLICY in
+ neighbor ${cidrhost(bgp_network2_address, i)} route-map OUTBOUND_POLICY out
+%{ endfor ~}
+%{ for i in range(2, 10) ~}
+ neighbor ${cidrhost(bgp_network3_address, i)} remote-as ${remote_asn2}
+ neighbor ${cidrhost(bgp_network3_address, i)} route-map INBOUND_POLICY in
+ neighbor ${cidrhost(bgp_network3_address, i)} route-map OUTBOUND_POLICY out
+%{ endfor ~}
+%{ for i in range(2, 10) ~}
+ neighbor ${cidrhost(bgp_network4_address, i)} remote-as ${remote_asn2}
+ neighbor ${cidrhost(bgp_network4_address, i)} route-map INBOUND_POLICY in
+ neighbor ${cidrhost(bgp_network4_address, i)} route-map OUTBOUND_POLICY out
+%{ endfor ~}
+ network 0.0.0.0
+exit
+!
+
+# Route-maps
+route-map INBOUND_POLICY permit 10
+  match ip address prefix-list INBOUND_PREFIX
+  set local-preference 100
+
+route-map OUTBOUND_POLICY permit 10
+  match ip address prefix-list OUTBOUND_PREFIX
+  set metric 10
+
+# IP Prefix Lists
+ip prefix-list INBOUND_PREFIX seq 5 permit 0.0.0.0/0 le 32
+ip prefix-list OUTBOUND_PREFIX seq 5 permit 0.0.0.0/0 le 32

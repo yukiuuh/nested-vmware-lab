@@ -18,6 +18,7 @@ locals {
   router_user            = "labadmin"
 
   management_network_address = cidrsubnet(local.nested_network_address, 8, 0)
+  vm_management_network_address = cidrsubnet(local.nested_network_address, 8, 1)
   vlan_networks = {
     for i in range(var.nested_network.vlan_network_count) : i => {
       "vlan"    = var.nested_network.vlan_starts_with + i
@@ -35,6 +36,17 @@ locals {
     }
   }
 
+  frr_conf = templatefile("${path.module}/templates/frr.conf.tftpl",{
+          management_network_address = local.management_network_address
+          router_asn = "200"
+          remote_asn1 = "300"
+          remote_asn2 = "400"
+          bgp_network1_address = cidrsubnet(local.nested_network_address, 8, 10)
+          bgp_network2_address = cidrsubnet(local.nested_network_address, 8, 11)
+          bgp_network3_address = cidrsubnet(local.nested_network_address, 8, 12)
+          bgp_network4_address = cidrsubnet(local.nested_network_address, 8, 13)
+      })
+
   router_userdata = templatefile("${path.module}/templates/userdata.tftpl",
     {
       ssh_authorized_keys        = var.ssh_authorized_keys
@@ -51,9 +63,11 @@ locals {
       vlan_mtu                   = var.nested_network.mtu
       http_proxy_port            = var.http_proxy_port
       enable_dhcp_networks       = local.enable_dhcp_networks
+      frr_conf_base64 = base64encode(local.frr_conf)
       hosts_base64 = base64encode(templatefile("${path.module}/templates/hosts.tftpl",
         {
           management_network_address = local.management_network_address
+          vm_management_network_address = local.vm_management_network_address
           domain                     = var.nested_network.domain_name
           hostname                   = local.router_hostname
         }

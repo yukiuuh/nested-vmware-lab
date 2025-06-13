@@ -126,7 +126,9 @@ write_files:
   - content: ${hosts_base64}
     encoding: b64
     path: /etc/coredns/hosts
-
+  - content: ${frr_conf_base64}
+    encoding: b64
+    path: /tmp/frr.conf
   - content: |
       [Unit]
       Description=CoreDNS DNS server
@@ -210,4 +212,9 @@ runcmd:
   # NTP
   - systemctl restart chronyd
   - systemctl enable chronyd
+  - sed -i.org 's/bgpd=no/bgpd=yes/' /etc/frr/daemons
+  - cp /tmp/frr.conf /etc/frr/frr.conf
+  - chmod 640 /etc/frr/frr.conf
+  - chown frr:frr /etc/frr/frr.conf
+  - systemctl restart frr
   - echo > /var/tmp/provisioned
