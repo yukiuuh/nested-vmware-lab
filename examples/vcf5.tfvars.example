@@ -1,0 +1,73 @@
+datacenter    = "Datacenter"
+datastore     = "datastore1"
+resource_pool = "Cluster/Resources"
+compute_host  = "esxi01.example.com"
+
+name_prefix  = "yourname-vcf5"
+network_name = "LabNetwork" # Promiscuous mode or MAC Learning enabled, and VLAN trunking enabled
+ssh_authorized_keys = []
+
+external_network = {
+  name        = "VM Network"
+  subnet_mask = "255.255.255.0"
+  gateway     = "192.168.1.1"
+  nameservers = ["8.8.8.8"]
+  ntp         = "ntp.nict.jp"
+  ip          = "" # gateway to lab network. using dhcp if "" is provided
+}
+
+router_mtu = 9000
+
+esxi_iso_datastore = "ISO_DATASTORE"
+esxi_iso_path      = "/template/iso/VMware-VMvisor-Installer-8.0U3b-24280767.x86_64.iso"
+
+# uncomment to deploy Cloud Builder
+# cloud_builder = {
+#   ip             = "10.0.0.133"
+#   hostname       = "cloudbuilder"
+#   remote_ovf_url = "http://server.example.com/share01/OVA/VCF/VMware-Cloud-Builder-5.2.1.0-24307856_OVF10.ova"
+#   password       = "VMware123!VMware123!"
+# }
+
+nested_esxi_count = 4
+nested_esxi_shape = {
+  "num_cpus"     = 12
+  "mem_gb"       = 64
+  "nic_count"    = 4
+  "tpm_enabled"  = false
+  "nvme_enabled" = true
+  "vcf_mode"     = true # required for VCF deployment
+  "disks" = [
+    {
+      "label"       = "disk0"
+      "size_gb"     = 40
+      "unit_number" = 0
+    },
+    {
+      "label"       = "disk1"
+      "size_gb"     = 50
+      "unit_number" = 1
+    },
+    {
+      "label"       = "disk2"
+      "size_gb"     = 500
+      "unit_number" = 2
+    },
+  ]
+}
+
+nested_esxi_hostname_prefix = "esxi"
+nested_esxi_starting_ip     = "10.0.0.101"
+storage_vmknics             = null
+iscsi_targets               = []
+nfs_hosts                   = []
+provision_datastores        = []
+
+photon_ovf_url = "https://packages.vmware.com/photon/5.0/GA/ova/photon-hw15-5.0-dde71ec57.x86_64.ova"
+ubuntu_ovf_url = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.ova"
+
+nameservers = ["10.0.0.1"]
+subnet_mask = "255.255.255.0"
+gateway     = "10.0.0.1"
+ntp         = "10.0.0.1"
+domain_name = "nested.lab"

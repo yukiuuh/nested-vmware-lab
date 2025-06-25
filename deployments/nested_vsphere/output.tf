@@ -19,8 +19,8 @@ output "nsx" {
     edges    = module.vsphere_provisioner[0].nsx_edges
   } : null
 }
-output "sddc_manager" {
-  value = var.sddc_manager != null ? module.sddc_manager[0] : null
+output "vcf_installer" {
+  value = var.vcf_installer != null ? module.vcf_installer[0] : null
 }
 output "cloud_builder" {
   value = var.cloud_builder != null ? module.cloud_builder[0] : null

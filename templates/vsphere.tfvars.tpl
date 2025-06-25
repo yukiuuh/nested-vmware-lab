@@ -89,9 +89,10 @@ nfs_hosts = [{
   ip             = "10.0.0.10"
   datastore_name = "nfs01"
 }]
-provision_datastores = [{
-  datastore_name = "iscsi01"
-  path_name      = "vmhba65:C0:T0:L0"
+provision_datastores = [
+  {
+    datastore_name = "iscsi01"
+    path_name      = "vmhba65:C0:T0:L0"
   },
   {
     datastore_name = "iscsi02"

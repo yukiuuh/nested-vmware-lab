@@ -58,20 +58,20 @@ module "router" {
   http_proxy_port     = var.router_http_proxy_port
 }
 
-module "sddc_manager" {
-  count          = var.sddc_manager != null ? 1 : 0
-  source         = "../../module/sddc_manager"
+module "vcf_installer" {
+  count          = var.vcf_installer != null ? 1 : 0
+  source         = "../../module/vcf_installer"
   vi             = module.vi
-  name           = "${local.name_prefix}-${var.sddc_manager.hostname}"
+  name           = "${local.name_prefix}-${var.vcf_installer.hostname}"
   gateway        = var.gateway
   ntp            = var.ntp
-  remote_ovf_url = var.sddc_manager.remote_ovf_url
-  ip             = var.sddc_manager.ip
+  remote_ovf_url = var.vcf_installer.remote_ovf_url
+  ip             = var.vcf_installer.ip
   nameservers    = var.nameservers
   subnet_mask    = var.subnet_mask
   domain_name    = var.domain_name
-  hostname       = var.sddc_manager.hostname
-  vm_password    = var.sddc_manager.password
+  hostname       = var.vcf_installer.hostname
+  vm_password    = var.vcf_installer.password
   network_name   = var.network_name
 }
 

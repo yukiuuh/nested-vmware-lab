@@ -140,7 +140,7 @@ variable "storage" {
   })
 }
 
-variable "sddc_manager" { # for VCF 9.x
+variable "vcf_installer" { # for VCF 9.x
   nullable = true
   default  = null
   type = object({
