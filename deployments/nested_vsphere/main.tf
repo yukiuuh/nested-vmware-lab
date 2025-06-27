@@ -58,6 +58,19 @@ module "router" {
   http_proxy_port     = var.router_http_proxy_port
 }
 
+module "tkg_cli" {
+  count               = var.create_tkg_client ? 1 : 0
+  source              = "../../module/tkg_cli"
+  depends_on          = [module.router]
+  vi                  = module.vi
+  network_name        = var.network_name
+  ssh_authorized_keys = concat([tls_private_key.ed25519.public_key_openssh], var.ssh_authorized_keys)
+  ssh_rsa_private     = tls_private_key.ed25519.private_key_openssh
+  ssh_rsa_public      = tls_private_key.ed25519.public_key_openssh
+  name                = "${local.name_prefix}-tkg-cli"
+  ubuntu_ovf_url      = var.ubuntu_ovf_url
+}
+
 module "vcf_installer" {
   count          = var.vcf_installer != null ? 1 : 0
   source         = "../../module/vcf_installer"

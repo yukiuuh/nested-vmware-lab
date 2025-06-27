@@ -1,0 +1,74 @@
+#cloud-config
+
+users:
+  - name: ${user}
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    groups: sudo, adm, cdrom, dip, lxd, docker
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: '${password}'
+%{ if length(ssh_authorized_keys) > 0  }
+    ssh_authorized_keys:
+%{ for key in ssh_authorized_keys ~}
+      - ${key}
+%{ endfor ~}
+%{ else }
+# NO AUTHORIZED KEY
+%{ endif }
+
+packages:
+  - curl
+  - git
+  - tar # for vscode
+  - ca-certificates
+  - gpg
+  - wget
+  - apt-transport-https
+  - software-properties-common
+
+write_files:
+  - owner: root:root
+    path: /etc/sysctl.d/90-override.conf
+    content: |
+      ipv4.conf.all.rp_filter = 0
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "exec-opts": ["native.cgroupdriver=systemd"]
+      }
+  - path: /etc/ssh/sshd_config.d/00-allow-password.conf
+    content: |
+      PasswordAuthentication yes
+  - path: /home/${user}/.ssh/id_rsa
+    content: ${ssh_rsa_private_b64}
+    owner: ${user}:${user}
+    encoding: b64
+    permissions: '0600'
+    defer: true
+  - path: /home/${user}/.ssh/id_rsa.pub
+    content: ${ssh_rsa_public_b64}
+    owner: ${user}:${user}
+    encoding: b64
+    permissions: '0644'
+    defer: true
+
+runcmd:
+  - hostnamectl set-hostname ${hostname}
+  - curl -L https://carvel.dev/install.sh | bash
+  - curl -kfsSL https://get.docker.com -o get-docker.sh
+  - sudo sh get-docker.sh
+  - echo 'nf_conntrack_max=131072' >> /etc/sysctl.conf
+  - sudo modprobe nf_conntrack
+  - curl -kfsSL ${tanzu_cli_url} | tar zx -C /tmp/
+  - find /tmp -name tanzu-cli* -exec cp {} /usr/local/bin/tanzu \;
+  - chmod 755 /usr/local/bin/tanzu
+  - curl -kfsSL ${kubectl_url} -o /usr/local/bin/kubectl
+  - chmod 755 /usr/local/bin/kubectl
+  - curl -L https://github.com/mikefarah/yq/releases/download/v4.45.4/yq_linux_amd64 -o /usr/local/bin/yq
+  - chmod 755 /usr/local/bin/yq
+  - curl -LO https://github.com/vmware/govmomi/releases/download/v0.51.0/govc_Linux_x86_64.tar.gz
+  - tar zxpf govc*.tar.gz
+  - mv govc /usr/local/bin/govc
+  - echo 'source <(kubectl completion bash)' >> /etc/profile
+  - echo 'source <(tanzu completion bash)' >> /etc/profile
+  - date > /var/tmp/provisioned

@@ -17,19 +17,19 @@ data "vsphere_ovf_vm_template" "ubuntu" {
 }
 
 resource "vsphere_virtual_machine" "ubuntu" {
-  name                 = var.name
-  num_cpus             = var.num_cpus
-  num_cores_per_socket = var.num_cpus
-  memory               = var.mem_gb * 1024
-  datacenter_id        = var.vi.datacenter.id
-  datastore_id         = var.vi.datastore.id
-  host_system_id       = var.vi.compute_host.id
-  resource_pool_id     = var.vi.resource_pool.id
-  guest_id             = data.vsphere_ovf_vm_template.ubuntu.guest_id
-  firmware             = data.vsphere_ovf_vm_template.ubuntu.firmware
-  scsi_type            = data.vsphere_ovf_vm_template.ubuntu.scsi_type
-  force_power_off      = true
-
+  name                         = var.name
+  num_cpus                     = var.num_cpus
+  num_cores_per_socket         = var.num_cpus
+  memory                       = var.mem_gb * 1024
+  datacenter_id                = var.vi.datacenter.id
+  datastore_id                 = var.vi.datastore.id
+  host_system_id               = var.vi.compute_host.id
+  resource_pool_id             = var.vi.resource_pool.id
+  guest_id                     = data.vsphere_ovf_vm_template.ubuntu.guest_id
+  firmware                     = data.vsphere_ovf_vm_template.ubuntu.firmware
+  scsi_type                    = data.vsphere_ovf_vm_template.ubuntu.scsi_type
+  force_power_off              = true
+  extra_config_reboot_required = false
   lifecycle {
     ignore_changes = [
       host_system_id,

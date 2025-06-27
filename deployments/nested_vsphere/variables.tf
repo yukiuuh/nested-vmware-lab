@@ -18,6 +18,8 @@ variable "ubuntu_ovf_url" { default = "https://cloud-images.ubuntu.com/noble/cur
 variable "esxi_iso_datastore" {}
 variable "esxi_iso_path" {}
 
+variable "create_tkg_client" { default = false }
+
 variable "gateway" { type = string }
 variable "nameservers" { type = list(string) }
 variable "subnet_mask" {
