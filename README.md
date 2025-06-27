@@ -2,7 +2,7 @@
 
 ## Description
 
-Create nested vSphere( + AVI or NSX) lab using Terraform and Ansible
+Create nested VCF / VVF / vSphere( + AVI or NSX) lab using Terraform and Ansible
 
 ![overview](overview.svg)
 
@@ -108,3 +108,20 @@ terraform destroy
 | 200 | 10.0.11.1 | 300 | 10.0.11.2 - 10.0.11.9 |
 | 200 | 10.0.12.1 | 400| 10.0.12.2 - 10.0.12.9 |
 | 200 | 10.0.13.1 | 400| 10.0.13.2 - 10.0.13.9 |
+
+## Tips
+
+ - deploy VCF/VVF: [vcf9.tfvars.example](examples/vcf9.tfvars.example), [vcf5.tfvars.example](examples/vcf5.tfvars.example)
+
+ - re-deploy ESXi hosts for VCF
+```bash
+terraform taint 'module.esxi_cluster.module.ks_server[0].module.kickstarter_photon.vsphere_virtual_machine.photon_with_cloudinit'
+terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["0"].vsphere_virtual_machine.nested_esxi'
+terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["1"].vsphere_virtual_machine.nested_esxi'
+terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["2"].vsphere_virtual_machine.nested_esxi'
+terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["3"].vsphere_virtual_machine.nested_esxi'
+terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["0"].terraform_data.kickstart_script'
+terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["1"].terraform_data.kickstart_script'
+terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["2"].terraform_data.kickstart_script'
+terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["3"].terraform_data.kickstart_script'
+```
