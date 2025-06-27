@@ -18,7 +18,7 @@ users:
 
 packages:
   - chrony
-  - isc-dhcp-server
+  - dnsmasq
   - unzip
   - gnupg
   - software-properties-common
@@ -70,31 +70,9 @@ write_files:
             mtu: ${vlan_mtu}
 %{ endfor ~}
     path: /etc/netplan/99-static.yaml
-    permission: '0600'
-  - content: |
-      . {
-        cache 30
-        errors
-        loop
-        reload
-        health
-        ready
-        hosts /etc/coredns/hosts ${domain} {
-          fallthrough
-        }
-        forward . ${nameservers[0]}
-      }
-    path: /etc/coredns/Corefile
+    permissions: '0600'
   - path: /etc/squid/squid.conf
     content: |
-      acl localnet src 0.0.0.1-0.255.255.255  # RFC 1122 "this" network (LAN)
-      acl localnet src 10.0.0.0/8             # RFC 1918 local private network (LAN)
-      acl localnet src 100.64.0.0/10          # RFC 6598 shared address space (CGN)
-      acl localnet src 169.254.0.0/16         # RFC 3927 link-local (directly plugged) machines
-      acl localnet src 172.16.0.0/12          # RFC 1918 local private network (LAN)
-      acl localnet src 192.168.0.0/16         # RFC 1918 local private network (LAN)
-      acl localnet src fc00::/7               # RFC 4193 local private network range
-      acl localnet src fe80::/10              # RFC 4291 link-local (directly plugged) machines
       acl SSL_ports port 443
       acl Safe_ports port 80          # http
       acl Safe_ports port 21          # ftp
@@ -107,12 +85,8 @@ write_files:
       acl Safe_ports port 591         # filemaker
       acl Safe_ports port 777         # multiling http
       acl CONNECT method CONNECT
-      http_access allow localhost manager
-      http_access deny manager
       include /etc/squid/conf.d/*
-      http_access allow localhost
-      http_access allow localnet
-      http_access deny all
+      http_access allow all
       http_port ${http_proxy_port}
       coredump_dir /var/spool/squid
       refresh_pattern ^ftp:           1440    20%     10080
@@ -125,60 +99,40 @@ write_files:
       refresh_pattern .               0       20%     4320
   - content: ${hosts_base64}
     encoding: b64
-    path: /etc/coredns/hosts
+    path: /etc/hosts
+  - content: |
+%{ for nameserver in nameservers ~}
+      nameserver ${nameserver}
+%{ endfor ~}
+    path: /etc/dnsmasq.resolv.conf
+  - content: |
+      domain=${domain}
+      domain-needed
+      bogus-priv
+      listen-address=0.0.0.0
+      resolv-file=/etc/dnsmasq.resolv.conf
+      strict-order
+    path: /etc/dnsmasq.d/dns.conf
+  - content: |
+      log-dhcp
+      interface=ens224
+      dhcp-range=tag:ens224,${cidrhost(management_network_address, 200)},${cidrhost(management_network_address, 250)},30m
+      dhcp-option=tag:ens224,option:router,${cidrhost(management_network_address, 1)}
+      dhcp-option=option:netmask,255.255.255.0
+      dhcp-option=option:dns-server,${cidrhost(management_network_address, 1)}
+%{ for enable_dhcp_network in enable_dhcp_networks ~}
+      interface=vlan.${enable_dhcp_network.vlan}
+      dhcp-range=tag:vlan.${enable_dhcp_network.vlan},${enable_dhcp_network.start_ip},${enable_dhcp_network.end_ip},30m
+      dhcp-option=tag:vlan.${enable_dhcp_network.vlan},option:netmask,${enable_dhcp_network.netmask}
+      dhcp-option=tag:vlan.${enable_dhcp_network.vlan},option:router,${enable_dhcp_network.gateway}
+%{ endfor ~}
+    path: /etc/dnsmasq.d/dhcp.conf
   - content: ${frr_conf_base64}
     encoding: b64
     path: /tmp/frr.conf
   - content: |
-      [Unit]
-      Description=CoreDNS DNS server
-      Documentation=https://coredns.io
-      After=network.target
-      [Service]
-      PermissionsStartOnly=true
-      LimitNOFILE=1048576
-      LimitNPROC=512
-      CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-      AmbientCapabilities=CAP_NET_BIND_SERVICE
-      NoNewPrivileges=true
-      User=coredns
-      WorkingDirectory=/var/lib/coredns
-      ExecStart=/usr/bin/coredns -conf=/etc/coredns/Corefile
-      ExecReload=/bin/kill -SIGUSR1 $MAINPID
-      Restart=on-failure
-      StandardOutput=append:/var/log/coredns.log
-      StandardError=append:/var/log/coredns.err.log
-      [Install]
-      WantedBy=multi-user.target
-    path: /etc/systemd/system/coredns.service
-  - content: |
       allow 0.0.0.0/0
     path: /etc/chrony/conf.d/99-allow-all.conf
-  - content: |
-      DHCPDv4_CONF=/etc/dhcp/dhcpd.conf
-      INTERFACESv4="ens224"
-      INTERFACESv6=""
-    path: /etc/default/isc-dhcp-server
-  - content: |
-      option domain-name "${domain}";
-      option domain-name-servers ${cidrhost(management_network_address, 1)};
-      default-lease-time 600;
-      max-lease-time 7200;
-      ddns-update-style none;
-      authoritative;
-      subnet ${cidrhost(management_network_address, 0)} netmask 255.255.255.0 {
-        option routers ${cidrhost(management_network_address, 1)};
-        option subnet-mask 255.255.255.0;
-        range dynamic-bootp ${cidrhost(management_network_address, 200)} ${cidrhost(management_network_address, 250)};
-      }
-%{ for enable_dhcp_network in enable_dhcp_networks ~}
-      subnet ${enable_dhcp_network.network} netmask ${enable_dhcp_network.netmask} {
-        option routers ${enable_dhcp_network.gateway};
-        option subnet-mask ${enable_dhcp_network.netmask};
-        range dynamic-bootp ${enable_dhcp_network.start_ip} ${enable_dhcp_network.end_ip};
-      }
-%{ endfor ~}
-    path: /etc/dhcp/dhcpd.conf
   - content: |
       PasswordAuthentication yes
     path: /etc/ssh/sshd_config.d/00-allow-password.conf
@@ -186,7 +140,6 @@ write_files:
 runcmd:
   - systemctl restart ssh
   - sysctl -p /etc/sysctl.d/99-routing.conf
-  - [ "sh" , "-c", "wget https://github.com/coredns/coredns/releases/download/v1.12.0/coredns_1.12.0_linux_amd64.tgz -O - | tar zxvf - -C /usr/bin/" ]
   - netplan apply
   - hostnamectl set-hostname ${hostname}.${domain}
   - iptables -A INPUT -j ACCEPT
@@ -199,16 +152,12 @@ runcmd:
   - iptables-restore < /etc/iptables/rules.v4
   - sysctl -p
   - modprobe nf_conntrack
-  # DHCP
-  - systemctl restart isc-dhcp-server
-  # DNS
-  - mkdir -p /etc/coredns
-  - mkdir -p /var/lib/coredns
-  - useradd -l -r -s /usr/sbin/nologin -m -d /var/lib/coredns -c 'CoreDNS user' coredns
+  #DNS
+  - ln -fs /run/systemd/resolve/resolv.conf /etc/resolv.conf
   - systemctl stop systemd-resolved
   - systemctl disable systemd-resolved
-  - systemctl start coredns
-  - systemctl enable coredns
+  - systemctl restart dnsmasq
+  - systemctl enable dnsmasq
   # NTP
   - systemctl restart chronyd
   - systemctl enable chronyd

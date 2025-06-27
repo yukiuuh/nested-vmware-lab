@@ -32,7 +32,7 @@ variable "ssh_authorized_keys" {
 }
 
 variable "http_proxy_port" {
-  default  = 3128
+  default  = 8080
   type     = number
   nullable = false
 }

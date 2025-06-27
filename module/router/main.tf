@@ -28,6 +28,7 @@ locals {
 
   enable_dhcp_networks = {
     for i in range(var.nested_network.vlan_network_count) : i => {
+      "vlan"     = var.nested_network.vlan_starts_with + i
       "network"  = cidrhost(cidrsubnet(local.nested_network_address, 8, i + 1), 0)
       "netmask"  = "255.255.255.0"
       "gateway"  = cidrhost(cidrsubnet(local.nested_network_address, 8, i + 1), 1)
@@ -75,7 +76,6 @@ locals {
     }
   )
 }
-
 
 module "router" {
   source             = "../common/ubuntu"
