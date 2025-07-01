@@ -111,9 +111,12 @@ terraform destroy
 
 ## Tips
 
- - deploy VCF/VVF: [vcf9.tfvars.example](examples/vcf9.tfvars.example), [vcf5.tfvars.example](examples/vcf5.tfvars.example)
+### VCF/VVF deployment
 
- - re-deploy ESXi hosts for VCF
+[vcf9.tfvars.example](examples/vcf9.tfvars.example) or [vcf5.tfvars.example](examples/vcf5.tfvars.example)
+
+#### Re-deploy ESXi hosts
+
 ```bash
 terraform taint 'module.esxi_cluster.module.ks_server[0].module.kickstarter_photon.vsphere_virtual_machine.photon_with_cloudinit'
 terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["0"].vsphere_virtual_machine.nested_esxi'
@@ -124,4 +127,40 @@ terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["0"].terraform_d
 terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["1"].terraform_data.kickstart_script'
 terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["2"].terraform_data.kickstart_script'
 terraform taint 'module.esxi_cluster.module.nested_esxi_scratch["3"].terraform_data.kickstart_script'
+```
+
+### vSphere 9.x deployment
+
+#### Broadcom download token must be set
+
+Workaround for below issue.
+
+* vSphere Lifecycle Manager Issues - Creating an ESX cluster or adding hosts to a datacenter or folder might fail with the error that no ESX versions are available in the vSphere Lifecycle Manager depot
+
+https://techdocs.broadcom.com/us/en/vmware-cis/vcf/vcf-9-0-and-later/9-0/release-notes/vmware-cloud-foundation-90-release-notes/component-specific/vsphere-90-known-issues.html
+
+* VCF authenticated downloads configuration update instructions
+
+https://knowledge.broadcom.com/external/article/390098
+
+tfvars
+```
+vmware_depot_fqdn = "dl.broadcom.com"
+vmware_depot_token = "yourtoken"
+```
+
+#### prosivion_datastores.path_name must be changed from vmhba65 to vmhba64
+
+tfvars
+```
+provision_datastores = [
+  {
+    datastore_name = "iscsi01"
+    path_name      = "vmhba64:C0:T0:L0" # <---
+  },
+  {
+    datastore_name = "iscsi02"
+    path_name      = "vmhba64:C0:T0:L1" # <---
+  }
+]
 ```

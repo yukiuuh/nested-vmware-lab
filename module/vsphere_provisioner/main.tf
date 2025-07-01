@@ -7,6 +7,17 @@ terraform {
   }
 }
 
+data "http" "check_download_token" {
+  count = var.depot_token != "" ? 1 : 0
+  url   = "https://${var.depot_fqdn}/${var.depot_token}/PROD/COMP/ESX_HOST/main/vmw-depot-index.xml"
+  lifecycle {
+    postcondition {
+      condition     = contains([200], self.status_code)
+      error_message = "Status code invalid. body: ${self.response_body}"
+    }
+  }
+}
+
 resource "random_id" "uuid" {
   byte_length = 4
 }
@@ -81,6 +92,8 @@ resource "ansible_playbook" "provision_nested_vsphere" {
     drs_enabled          = var.drs_enabled ? "True" : "False"
     storage_policy_list  = jsonencode(var.storage_policy_list)
     content_library_list = jsonencode(var.content_library_list)
+    depot_fqdn           = var.depot_fqdn
+    depot_token          = var.depot_token
 
     ansible_hostname        = var.ip
     ansible_connection      = "ssh"

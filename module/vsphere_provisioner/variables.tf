@@ -32,6 +32,9 @@ variable "nested_cluster_name" { default = "Cluster" }
 variable "nested_datastore_name" { default = "iscsi01" }
 variable "nested_management_portroup_name" { default = "VM Network" }
 
+variable "depot_token" { default = "" }
+variable "depot_fqdn" { default = "dl.broadcom.com" }
+
 variable "gateway" { type = string }
 variable "nameservers" { type = list(string) }
 variable "subnet_mask" {

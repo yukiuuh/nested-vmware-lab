@@ -6,15 +6,6 @@
     validate_certs: "{{ validate_certs | default(false) }}"
     datacenter_name: "{{ datacenter_name }}"
     state: present
-# - name: Login into vCenter and get cookies
-#   ansible.builtin.uri:
-#     url: https://{{ vc_address }}/rest/com/vmware/cis/session
-#     force_basic_auth: true
-#     validate_certs: false
-#     method: POST
-#     user: "{{ vc_username }}"
-#     password: "{{ vc_password }}"
-#   register: vc_login
 - name: Create Cluster
   vmware.vmware.cluster:
     hostname: "{{ vc_address }}"

@@ -263,6 +263,9 @@ variable "avi" {
   })
 }
 
+variable "vmware_depot_token" { type = string }
+variable "vmware_depot_fqdn" { default = "dl.broadcom.com" }
+
 variable "vsphere_provisioner" {
   nullable = true
   default  = null

@@ -135,7 +135,7 @@ resource "vsphere_virtual_machine" "nested_esxi" {
   provisioner "local-exec" {
     command = "until govc guest.ls -l 'root:${var.password}' -vm ${var.name} /var/tmp/provisioned ; do sleep 60 ; done"
     environment = {
-      GOVC_URL        = var.vi.govc_url
+      GOVC_URL        = nonsensitive(var.vi.govc_url)
       GOVC_INSECURE   = "true"
       GOVC_DATACENTER = var.vi.datacenter.name
     }

@@ -5,6 +5,17 @@ provider "vsphere" {
   vsphere_server       = var.vsphere_server
 }
 
+data "http" "check_download_token" {
+  count = var.vmware_depot_token != "" ? 1 : 0
+  url   = "https://${var.vmware_depot_fqdn}/${var.vmware_depot_token}/PROD/COMP/ESX_HOST/main/vmw-depot-index.xml"
+  lifecycle {
+    postcondition {
+      condition     = contains([200], self.status_code)
+      error_message = "Status code invalid. body: ${self.response_body}"
+    }
+  }
+}
+
 module "vi" {
   source           = "../../module/common/vi"
   datacenter       = var.datacenter
@@ -283,6 +294,9 @@ module "vsphere_provisioner" {
   dvs_list                = var.vsphere_provisioner.dvs_list
   storage_policy_list     = var.vsphere_provisioner.storage_policy_list
   content_library_list    = var.vsphere_provisioner.content_library_list
+
+  depot_fqdn  = var.vmware_depot_fqdn
+  depot_token = var.vmware_depot_token
 
   vsan_enabled                    = var.vsphere_provisioner.vsan_enabled
   ha_enabled                      = var.vsphere_provisioner.ha_enabled
