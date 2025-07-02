@@ -28,6 +28,34 @@ module "vi" {
   vsphere_user     = var.vsphere_user
 }
 
+locals {
+  check_ova_urls = concat(
+    [var.photon_ovf_url, var.ubuntu_ovf_url],
+    var.nested_vcsa != null && var.nested_vcsa.remote_ovf_url != "" ? [var.nested_vcsa.remote_ovf_url] : [],
+    var.vcf_installer != null ? [var.vcf_installer.remote_ovf_url] : [],
+    var.cloud_builder != null ? [var.cloud_builder.remote_ovf_url] : [],
+    var.avi != null ? [var.avi.controller_ova_url] : [],
+    var.nsx != null ? ["${var.nsx.manager_ova_path}${var.nsx.manager_ova}"] : [],
+    var.vrli != null ? [var.vrli.remote_ovf_url] : [],
+  )
+  check_datastore_files = concat([{
+    datastore_name = var.esxi_iso_datastore
+    path           = var.esxi_iso_path
+    }],
+    var.nested_vcsa != null && var.nested_vcsa.iso_path != "" ? [{
+      datastore_name = var.nested_vcsa.iso_datastore
+      path           = var.nested_vcsa.iso_path
+    }] : []
+  )
+}
+
+module "source_validator" {
+  source          = "../../module/common/source_validator"
+  vi              = module.vi
+  datastore_files = local.check_datastore_files
+  ova_urls        = local.check_ova_urls
+}
+
 resource "random_id" "uuid" {
   byte_length = 4
 }
@@ -52,6 +80,7 @@ locals {
   }
 }
 module "router" {
+  depends_on          = [module.source_validator]
   count               = var.external_network != null ? 1 : 0
   source              = "../../module/router"
   vi                  = module.vi
