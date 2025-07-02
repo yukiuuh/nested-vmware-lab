@@ -69,6 +69,27 @@ module "router" {
   http_proxy_port     = var.router_http_proxy_port
 }
 
+module "vrli_cluster" {
+  depends_on          = [module.router]
+  count               = var.vrli != null ? 1 : 0
+  source              = "../../module/vrli_cluster"
+  vi                  = module.vi
+  name_prefix         = local.name_prefix
+  starting_ip         = var.vrli.starting_ip
+  hostname_prefix     = var.vrli.hostname_prefix
+  deployment_option   = var.vrli.deployment_option
+  gateway             = var.gateway
+  ntp                 = var.ntp
+  remote_ovf_url      = var.vrli.remote_ovf_url
+  single_node         = var.vrli.single_node
+  ssh_authorized_keys = concat([tls_private_key.ed25519.public_key_openssh], var.ssh_authorized_keys)
+  nameservers         = var.nameservers
+  subnet_mask         = var.subnet_mask
+  domain_name         = var.domain_name
+  vm_password         = var.vm_password
+  network_name        = var.network_name
+}
+
 module "tkg_cli" {
   count               = var.create_tkg_client ? 1 : 0
   source              = "../../module/tkg_cli"

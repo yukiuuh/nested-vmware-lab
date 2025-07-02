@@ -27,6 +27,11 @@ output "nsx" {
 output "vcf_installer" {
   value = var.vcf_installer != null ? module.vcf_installer[0] : null
 }
+
+output "vrli_cluster" {
+  value = var.vrli != null ? module.vrli_cluster[0].vrli_nodes : null
+}
+
 output "cloud_builder" {
   value = var.cloud_builder != null ? module.cloud_builder[0] : null
 }

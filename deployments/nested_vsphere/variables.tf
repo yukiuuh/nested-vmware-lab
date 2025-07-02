@@ -263,8 +263,20 @@ variable "avi" {
   })
 }
 
-variable "vmware_depot_token" { type = string }
+variable "vmware_depot_token" { default = "" }
 variable "vmware_depot_fqdn" { default = "dl.broadcom.com" }
+
+variable "vrli" {
+  nullable = true
+  default  = null
+  type = object({
+    starting_ip       = string
+    single_node       = optional(bool, true)
+    hostname_prefix   = string
+    remote_ovf_url    = string
+    deployment_option = optional(string, "small")
+  })
+}
 
 variable "vsphere_provisioner" {
   nullable = true
