@@ -1,0 +1,33 @@
+---
+- name: Deploy VPC Connectivity Profile
+  hosts: all
+  gather_facts: false
+  vars:
+    nsx_manager_hostname: '{{ nsx_hostname }}'
+    nsx_manager_username: '{{ nsx_username }}'
+    nsx_manager_password: '{{ nsx_password }}'
+
+    # VPC Connectivity Profile
+    vpc_connectivity_profile_name: "vpc-connectivity-profile"
+    edge_cluster_name: "{{ edge_cluster_name }}"
+
+    # Gateway Connection
+    gateway_connection_name: "t0-connection"
+    tier0_gateway_name: "{{ t0_name }}"
+    t0_locale_service_name: "{{ t0_locale_service_name }}"
+
+    # Transit Gateway
+    transit_gateway_name: "default"
+
+    # IP Blocks
+    external_ip_block_name: "vpc-external-ip-block"
+    external_ip_block_cidr: "{{ external_ip_block_cidr }}"
+    private_ip_block_name: "tgw-private-ip-block"
+    private_ip_block_cidr: "{{ private_ip_block_cidr }}"
+
+    # NSX Project/Org
+    org_id: "default"
+    project_id: "default"
+
+  roles:
+    - nsx_create_vpc_connectivity_profile

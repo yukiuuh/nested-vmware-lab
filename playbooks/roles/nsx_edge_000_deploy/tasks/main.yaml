@@ -221,6 +221,14 @@
       - state: "{{ nsx_state }}"
         display_name: "tier0_ls"
         do_wait_till_create: true
+        BGP:
+          state: "{{ nsx_state }}"
+          local_as_num: "{{ nsx_local_as_num }}"
+          neighbors:
+            - neighbor_address: "{{ nsx_t0_gateway }}"
+              remote_as_num: "{{ nsx_remote_as_num }}"
+              state: "{{ nsx_state }}"
+              display_name: "{{ nsx_t0_gateway }}"
         edge_cluster_info:
           edge_cluster_display_name: "{{ nsx_edge_cluster_name }}"
         preferred_edge_nodes_info:
@@ -229,9 +237,6 @@
         interfaces:
           - display_name: "{{ edge_vms[0].vmname }}_interface"
             state: "{{ nsx_state }}"
-            # subnets:
-            #   - ip_addresses: "{{ edge_vms[0].t0_interfaces[0].ip }}"
-            #     prefix_len: "{{ edge_vms[0].t0_interfaces[0].prefix_length }}"
             subnets: |
               {% set subnets = [] %}
               {% for interface in edge_vms[0].t0_interfaces %}

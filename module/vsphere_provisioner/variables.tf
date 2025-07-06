@@ -126,6 +126,8 @@ variable "nsx" {
     # external_uplink_vlan_list = list(number)
     external_uplink_vlan = number
     t0_gateway           = string
+    local_as_num         = optional(number, 65000)
+    remote_as_num        = optional(number, null)
     edge_vm_list = list(object({
       management_ip = string
       hostname      = string
@@ -136,6 +138,10 @@ variable "nsx" {
         }
       ))
     }))
+    vpc = optional(object({
+      external_ip_block_cidr = string
+      private_ip_block_cidr  = string
+    }), null)
   })
 }
 

@@ -214,6 +214,8 @@ resource "ansible_playbook" "deploy_edge" {
     netmask     = var.subnet_mask
     domain_name = var.domain_name
 
+    nsx_local_as_num     = var.nsx.local_as_num
+    nsx_remote_as_num    = var.nsx.remote_as_num
     edge_deployment_size = var.nsx.edge_deployment_size
     edge_vm_list         = jsonencode(local.nsx_edges)
     nsx_t0_gateway       = var.nsx.t0_gateway
@@ -234,6 +236,32 @@ resource "ansible_playbook" "deploy_edge" {
     ansible_ssh_common_args = local.ansible_connection_args
   }
 }
+
+resource "ansible_playbook" "provision_nsx_vpc" {
+  playbook   = "${path.module}/../../playbooks/provision_nsx_vpc.yaml"
+  count      = var.nsx != null && var.nsx.vpc != null ? 1 : 0
+  name       = var.ip
+  replayable = true
+  depends_on = [ansible_playbook.deploy_edge]
+  verbosity  = 1
+  extra_vars = {
+    nsx_hostname = local.nsx_managers[0].ip
+    nsx_username = var.nsx.username
+    nsx_password = var.nsx.password
+
+    t0_name                 = "t0"
+    edge_cluster_name       = "edge_cluster"
+    external_ip_block_cidr  = var.nsx.vpc.external_ip_block_cidr
+    private_ip_block_cidr   = var.nsx.vpc.private_ip_block_cidr
+    t0_locale_service_name  = "tier0_ls"
+    ansible_hostname        = var.ip
+    ansible_connection      = "ssh"
+    ansible_ssh_pass        = var.password
+    ansible_user            = var.username
+    ansible_ssh_common_args = local.ansible_connection_args
+  }
+}
+
 
 resource "ansible_playbook" "deploy_avi" {
   playbook   = "${path.module}/../../playbooks/deploy_avi.yaml"

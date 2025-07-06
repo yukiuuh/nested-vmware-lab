@@ -223,6 +223,8 @@ variable "nsx" {
     # external_uplink_vlan_list = list(number)
     external_uplink_vlan = number
     t0_gateway           = string
+    local_as_num         = optional(number, 65000)
+    remote_as_num        = optional(number, null)
     edge_vm_list = list(object({
       management_ip = string
       hostname      = string
@@ -233,6 +235,10 @@ variable "nsx" {
         }
       ))
     }))
+    vpc = optional(object({
+      external_ip_block_cidr = string
+      private_ip_block_cidr  = string
+    }), null)
   })
 }
 
@@ -263,7 +269,13 @@ variable "avi" {
   })
 }
 
-variable "vmware_depot_token" { default = "" }
+variable "vmware_depot_token" {
+  default = ""
+  validation {
+    condition     = var.nested_vcsa == null || !regex("VMware-vCenter-Server-Appliance-9.", var.nested_vcsa.remote_ovf_url) || !regex("VMware-VCSA-all-9", var.nested_vcsa.iso_path) || var.vmware_depot_token != ""
+    error_message = "Download token is required for vSphere 9.0 deployment"
+  }
+}
 variable "vmware_depot_fqdn" { default = "dl.broadcom.com" }
 
 variable "vrli" {
