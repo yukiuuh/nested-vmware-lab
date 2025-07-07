@@ -26,7 +26,7 @@ Create nested VCF / VVF / vSphere( + AVI or NSX) lab using Terraform and Ansible
 ## Usage
 1. Start bootstrap container
 ```bash
-docker run -v nested-vmware-lab-workspace:/app/workspace -u bootstrap  -it --rm ghcr.io/yukiuuh/nested-vmware-lab-bootstrap:0.0.1
+docker run -v nested-vmware-lab-workspace:/app/workspace -u bootstrap  -it --rm ghcr.io/yukiuuh/nested-vmware-lab-bootstrap:0.0.2
 ```
 2. Create working directory
 ```bash
@@ -56,8 +56,8 @@ terraform apply
 # 1. via SOCKS5 proxy(default ssh password: VMware123!)
 ssh -D 127.0.0.1:<port number used for SOCKS5> -Nn -f labadmin@<router WAN IP>
 
-# 2. via HTTP proxy(port 3128)
-https_proxy=http://<router WAN IP>:3128
+# 2. via HTTP proxy(port 8080)
+https_proxy=http://<router WAN IP>:8080
 
 # 3. via RDP to WAN IP: you have to create RDP host(IP:10.0.0.2) in LAN network
 ```

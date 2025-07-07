@@ -49,7 +49,7 @@ nested_esxi_shape = {
     },
     {
       "label"       = "disk2"
-      "size_gb"     = 100
+      "size_gb"     = 1000
       "unit_number" = 2
     },
   ]
