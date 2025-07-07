@@ -16,7 +16,7 @@ Create nested VCF / VVF / vSphere( + AVI or NSX) lab using Terraform and Ansible
 
 ## Setup
 1. Create LAN network
- - vSS: VLAN 4095, Promiscous, MAC address changes, Forged transmit
+ - vSS: VLAN 4095, Promiscuous, MAC address changes, Forged transmit
  - vDS: VLAN trunk, MAC Learning, MAC address changes, Forged transmit
  - NSX: VLAN 0-4094, MAC Learning, MAC address changes, allow DHCP trafic
 2. Place product binaries
@@ -144,7 +144,7 @@ https://techdocs.broadcom.com/us/en/vmware-cis/vcf/vcf-9-0-and-later/9-0/release
 https://knowledge.broadcom.com/external/article/390098
 
 tfvars
-```
+```sh
 vmware_depot_fqdn = "dl.broadcom.com"
 vmware_depot_token = "yourtoken"
 ```
@@ -152,7 +152,7 @@ vmware_depot_token = "yourtoken"
 #### prosivion_datastores.path_name must be changed from vmhba65 to vmhba64
 
 tfvars
-```
+```sh
 provision_datastores = [
   {
     datastore_name = "iscsi01"
@@ -163,4 +163,62 @@ provision_datastores = [
     path_name      = "vmhba64:C0:T0:L1" # <---
   }
 ]
+```
+
+### NSX 9.x VPC deployment
+
+BGP and VPC setting example
+
+```sh
+nsx = {
+  manager_ova_path        = "http://server.example.com/share01/OVA/NSX"
+  manager_ova             = "nsx-unified-appliance-9.0.0.0.xxxxxxxx.ova"
+  license                 = ""
+  manager_deployment_size = "medium"
+  password                = "VMware123!VMware123!"
+  managers = [
+    {
+      hostname = "nsxm01"
+      ip       = "10.0.0.81"
+    }
+  ]
+  host_tep_ip_pool_gateway  = "10.0.8.1"
+  host_tep_ip_pool_start_ip = "10.0.8.10"
+  host_tep_ip_pool_end_ip   = "10.0.8.50"
+  host_tep_ip_pool_cidr     = "10.0.8.0/24"
+  host_tep_uplink_vlan      = 1008
+  host_switch_name          = "nsx"
+  host_switch_uplink_list = [
+    {
+      uplink_name     = "uplink-1"
+      vds_uplink_name = "Uplink 1"
+    }
+  ]
+  edge_deployment_size      = "MEDIUM"
+  edge_tep_ip_pool_gateway  = "10.0.9.1"
+  edge_tep_ip_pool_start_ip = "10.0.9.10"
+  edge_tep_ip_pool_end_ip   = "10.0.9.50"
+  edge_tep_ip_pool_cidr     = "10.0.9.0/24"
+  edge_tep_uplink_vlan      = 1009
+  external_uplink_vlan      = 1010
+  t0_gateway                = "10.0.10.1"
+  local_as_num              = 300 # <---
+  remote_as_num             = 200 # <---
+  edge_vm_list = [
+    {
+      management_ip = "10.0.0.84"
+      hostname      = "nsxe01"
+      t0_interfaces = [
+        {
+          ip            = "10.0.10.2" # <---
+          prefix_length = "24"
+        }
+      ]
+    }
+  ]
+  vpc = {
+    external_ip_block_cidr = "10.0.100.0/24" # <---
+    private_ip_block_cidr  = "10.100.0.0/16" # <---
+  }
+}
 ```
