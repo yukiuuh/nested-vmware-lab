@@ -272,7 +272,7 @@ variable "avi" {
 variable "vmware_depot_token" {
   default = ""
   validation {
-    condition     = var.nested_vcsa == null || !regex("VMware-vCenter-Server-Appliance-9.", var.nested_vcsa.remote_ovf_url) || !regex("VMware-VCSA-all-9", var.nested_vcsa.iso_path) || var.vmware_depot_token != ""
+    condition     = var.nested_vcsa == null || !can(regex("VMware-vCenter-Server-Appliance-9.", var.nested_vcsa.remote_ovf_url)) || !can(regex("VMware-VCSA-all-9", var.nested_vcsa.iso_path)) || var.vmware_depot_token != ""
     error_message = "Download token is required for vSphere 9.0 deployment"
   }
 }

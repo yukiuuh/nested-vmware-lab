@@ -241,7 +241,7 @@ resource "ansible_playbook" "provision_nsx_vpc" {
   playbook   = "${path.module}/../../playbooks/provision_nsx_vpc.yaml"
   count      = var.nsx != null && var.nsx.vpc != null ? 1 : 0
   name       = var.ip
-  replayable = true
+  replayable = false
   depends_on = [ansible_playbook.deploy_edge]
   verbosity  = 1
   extra_vars = {
