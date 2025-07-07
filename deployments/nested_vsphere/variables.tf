@@ -18,6 +18,8 @@ variable "ubuntu_ovf_url" { default = "https://cloud-images.ubuntu.com/noble/cur
 variable "esxi_iso_datastore" {}
 variable "esxi_iso_path" {}
 
+variable "create_tkg_client" { default = false }
+
 variable "gateway" { type = string }
 variable "nameservers" { type = list(string) }
 variable "subnet_mask" {
@@ -125,20 +127,33 @@ variable "storage" {
   nullable = true
   default  = null
   type = object({
-    ip            = string
-    storage1_ip   = string
-    storage2_ip   = string
-    storage1_vlan = number
-    storage2_vlan = number
-    mtu           = number
-    subnet_mask   = string
-    disk_size_gb  = number
-    lun_size_gb   = number
-    lun_count     = number
+    ip              = string
+    storage1_ip     = string
+    storage2_ip     = string
+    storage1_vlan   = number
+    storage2_vlan   = number
+    mtu             = number
+    subnet_mask     = string
+    disk_size_gb    = number
+    lun_size_gb     = number
+    lun_count       = number
+    zfs_nfs_dedup   = optional(string, "off")
+    zfs_compression = optional(string, "off")
   })
 }
 
-variable "sddc_manager" {
+variable "vcf_installer" { # for VCF 9.x
+  nullable = true
+  default  = null
+  type = object({
+    ip             = string
+    hostname       = string
+    remote_ovf_url = string
+    password       = string
+  })
+}
+
+variable "cloud_builder" { # for VCF 5.x
   nullable = true
   default  = null
   type = object({
@@ -178,6 +193,7 @@ variable "nsx" {
   nullable = true
   default  = null
   type = object({
+    managed_by_terraform    = optional(bool, true)
     manager_ova_path        = string
     manager_ova             = string
     manager_deployment_size = string
@@ -207,6 +223,8 @@ variable "nsx" {
     # external_uplink_vlan_list = list(number)
     external_uplink_vlan = number
     t0_gateway           = string
+    local_as_num         = optional(number, 65000)
+    remote_as_num        = optional(number, null)
     edge_vm_list = list(object({
       management_ip = string
       hostname      = string
@@ -217,6 +235,10 @@ variable "nsx" {
         }
       ))
     }))
+    vpc = optional(object({
+      external_ip_block_cidr = string
+      private_ip_block_cidr  = string
+    }), null)
   })
 }
 
@@ -224,10 +246,11 @@ variable "avi" {
   nullable = true
   default  = null
   type = object({
-    controller_ova_url = string
-    license            = string
-    password           = string
-    default_password   = string
+    managed_by_terraform = optional(bool, true)
+    controller_ova_url   = string
+    license              = string
+    password             = string
+    default_password     = string
     controllers = list(object(
       {
         hostname = string
@@ -243,6 +266,27 @@ variable "avi" {
       end_ip   = string
       type     = string
     }))
+  })
+}
+
+variable "vmware_depot_token" {
+  default = ""
+  validation {
+    condition     = var.nested_vcsa == null || !can(regex("VMware-vCenter-Server-Appliance-9.", var.nested_vcsa.remote_ovf_url)) || !can(regex("VMware-VCSA-all-9", var.nested_vcsa.iso_path)) || var.vmware_depot_token != ""
+    error_message = "Download token is required for vSphere 9.0 deployment"
+  }
+}
+variable "vmware_depot_fqdn" { default = "dl.broadcom.com" }
+
+variable "vrli" {
+  nullable = true
+  default  = null
+  type = object({
+    starting_ip       = string
+    single_node       = optional(bool, true)
+    hostname_prefix   = string
+    remote_ovf_url    = string
+    deployment_option = optional(string, "small")
   })
 }
 

@@ -1,21 +1,21 @@
 
 output "nsx_managers" {
-  value = var.nsx != null ? [for manager in var.nsx.managers : {
+  value = var.nsx != null ? [for manager in local.nsx_managers : {
     ip       = manager.ip
     hostname = "${manager.hostname}.${var.domain_name}"
     password = var.nsx.password
-    name     = manager.hostname
+    name     = manager.vmname
     source   = var.nsx.manager_ova
   }] : null
 }
 
 
 output "nsx_edges" {
-  value = var.nsx != null ? [for edge in var.nsx.edge_vm_list : {
+  value = var.nsx != null ? [for edge in local.nsx_edges : {
     ip       = edge.management_ip
     hostname = "${edge.hostname}.${var.domain_name}"
     password = var.nsx.password
-    name     = edge.hostname
+    name     = edge.vmname
     source   = var.nsx.manager_ova
   }] : null
 }
@@ -25,7 +25,7 @@ output "avi_controllers" {
     ip       = controller.ip
     hostname = "${controller.hostname}.${var.domain_name}"
     password = var.avi.password
-    name     = controller.hostname
+    name     = "${var.name_prefix}-${controller.hostname}"
     source   = var.avi.controller_ova_url
   }] : null
 }

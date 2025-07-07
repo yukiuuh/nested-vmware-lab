@@ -8,3 +8,4 @@
 **/*.tfvars*
 **/.env
 !templates/*tfvars*
+!examples/*tfvars*

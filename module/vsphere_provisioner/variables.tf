@@ -18,6 +18,7 @@ variable "bastion_password" {
 variable "ip" {}
 variable "password" {}
 variable "username" {}
+variable "name_prefix" {}
 
 variable "local_govc_path" {
   default = "/usr/bin/govc"
@@ -30,6 +31,9 @@ variable "nested_datacenter_name" { default = "Datacenter" }
 variable "nested_cluster_name" { default = "Cluster" }
 variable "nested_datastore_name" { default = "iscsi01" }
 variable "nested_management_portroup_name" { default = "VM Network" }
+
+variable "depot_token" { default = "" }
+variable "depot_fqdn" { default = "dl.broadcom.com" }
 
 variable "gateway" { type = string }
 variable "nameservers" { type = list(string) }
@@ -92,6 +96,7 @@ variable "nsx" {
   nullable = true
   default  = null
   type = object({
+    managed_by_terraform    = optional(bool, false)
     manager_ova_path        = string
     manager_ova             = string
     manager_deployment_size = string
@@ -121,6 +126,8 @@ variable "nsx" {
     # external_uplink_vlan_list = list(number)
     external_uplink_vlan = number
     t0_gateway           = string
+    local_as_num         = optional(number, 65000)
+    remote_as_num        = optional(number, null)
     edge_vm_list = list(object({
       management_ip = string
       hostname      = string
@@ -131,6 +138,10 @@ variable "nsx" {
         }
       ))
     }))
+    vpc = optional(object({
+      external_ip_block_cidr = string
+      private_ip_block_cidr  = string
+    }), null)
   })
 }
 
@@ -138,10 +149,11 @@ variable "avi" {
   nullable = true
   default  = null
   type = object({
-    controller_ova_url = string
-    license            = string
-    password           = string
-    default_password   = string
+    managed_by_terraform = optional(bool, true)
+    controller_ova_url   = string
+    license              = string
+    password             = string
+    default_password     = string
     controllers = list(object(
       {
         hostname = string

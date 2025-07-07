@@ -1,0 +1,63 @@
+---
+- name: Provision NSX Advanced Load Balancer
+  gather_facts: false
+  hosts: all
+  vars:
+    validate_certs: false
+    nsx_state: "present"
+  tasks:
+    - name: Setup variables for NSX Advanced Load Balancer
+      ansible.builtin.set_fact:
+        validate_certs: false
+        vc_address: '{{ vc_address }}'
+        vc_username: '{{ vc_username }}'
+        vc_password: '{{ vc_password }}'
+
+        domain: '{{ domain_name }}'
+        netmask: '{{ netmask }}'
+        gateway: '{{ gateway }}'
+        dns_server: '{{ dns_server }}'
+        ntp_server: '{{ ntp_server }}'
+
+        datacenter_name: '{{ datacenter_name }}'
+        cluster_name: '{{ cluster_name }}'
+        datastore_name: '{{ datastore_name }}'
+        management_portgroup_name: '{{ management_portgroup_name }}'
+
+        ovftool_path: '{{ ovftool_path }}'
+        avi_username: '{{ avi_username }}'
+        avi_password: '{{ avi_password }}'
+        avi_default_password: '{{ avi_default_password }}'
+
+        avi_ova_path: '{{ avi_ova_path }}'
+        avi_vm_name: '{{avi_vm_name}}'
+        avi_hostname: '{{ avi_hostname }}'
+        avi_management_ip: '{{ avi_management_ip }}'
+        avi_networks: '{{ avi_network_list | from_json | list }}'
+        avi_gateway: '{{ avi_gateway }}'
+        avi_ipam_usable_networks: '{{ avi_ipam_usable_network_list | from_json | list }}'
+
+        vcenter_host: '{{ vc_address }}'
+        vcenter_user: '{{ vc_username }}'
+        vcenter_password: '{{ vc_password }}'
+        con_datacenter: '{{ datacenter_name }}'
+        con_cluster: '{{ cluster_name }}'
+        con_mgmt_network: '{{ management_portgroup_name }}'
+        con_ova_path: '{{ avi_ova_path }}'
+        con_vm_name: '{{ avi_vm_name }}'
+        con_disk_mode: thin
+        con_datastore: '{{ datastore_name }}'
+        con_mgmt_ip: '{{ avi_management_ip }}'
+        con_mgmt_mask: '{{ netmask }}'
+        con_default_gw: '{{ gateway }}'
+        con_power_on: true
+
+        avi_default_ipam_name: "defaultipam"
+
+    - name: Configure Avi
+      ansible.builtin.import_role:
+        name: avi_001_provision
+
+    - name: Configure Default Cloud
+      ansible.builtin.import_role:
+        name: avi_010_vsphere_cloud

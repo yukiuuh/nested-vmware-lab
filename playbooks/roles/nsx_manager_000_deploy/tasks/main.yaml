@@ -5,7 +5,7 @@
     datastore: "{{ datastore_name }}"
     portgroup: "{{ management_portgroup_name }}"
     cluster: "{{ cluster_name }}"
-    vmname: "{{ nsx_node1.hostname }}"
+    vmname: "{{ nsx_node1.vmname }}"
     hostname: "{{ nsx_node1.hostname }}"
     dns_server: "{{ dns_server }}"
     dns_domain: "{{ domain }}"
@@ -25,8 +25,8 @@
 
 - name: Check manager status
   vmware.ansible_for_nsxt.nsxt_manager_status:
-      hostname: "{{ nsx_node1.ip }}"
-      username: "{{ nsx_username }}"
-      password: "{{ nsx_password }}"
-      validate_certs: "{{ validate_certs }}"
-      wait_time: 50
+    hostname: "{{ nsx_node1.ip }}"
+    username: "{{ nsx_username }}"
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    wait_time: 50

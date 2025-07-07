@@ -1,0 +1,134 @@
+---
+# tasks file for vsphere_host_depot_change using ansible.builtin.uri
+
+- name: "Fail if required variables are not defined for update"
+  ansible.builtin.fail:
+    msg: "When action is 'update', 'vsphere_host_depot_fqdn' and 'vsphere_host_depot_download_token' must be defined."
+  when:
+    - vsphere_host_depot_action == "update"
+    - (vsphere_host_depot_fqdn is not defined or vsphere_host_depot_download_token is not defined)
+
+- name: "Construct new depot URLs and descriptions"
+  ansible.builtin.set_fact:
+    new_depots:
+      - ["https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token }}/PROD/COMP/ESX_HOST/addon-main/vmw-depot-index.xml", "Partner provided Addons for ESXi"]
+      - ["https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token }}/PROD/COMP/ESX_HOST/main/vmw-depot-index.xml", "Download vSphere ESXi and ESX patches"]
+      - ["https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token }}/PROD/COMP/ESX_HOST/iovp-main/vmw-depot-index.xml", "VMware Certified Async Drivers for ESXi"]
+      - ["https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token }}/PROD/COMP/ESX_HOST/vmtools-main/vmw-depot-index.xml", "VMware Async Releases for VM-tools on ESXi"]
+  when: vsphere_host_depot_action == "update"
+
+- name: "vCenter API Block"
+  block:
+    - name: "Authenticate to vCenter and get session token"
+      ansible.builtin.uri:
+        url: "https://{{ vsphere_host_depot_vcenter_address }}/rest/com/vmware/cis/session"
+        method: POST
+        user: "{{ vsphere_host_depot_user }}"
+        password: "{{ vsphere_host_depot_password }}"
+        validate_certs: false
+        force_basic_auth: true
+      register: login_response
+
+    - name: "Set session token fact"
+      ansible.builtin.set_fact:
+        vcenter_session_token: "{{ login_response }}"
+
+    - name: "Get current online depots"
+      ansible.builtin.uri:
+        url: "https://{{ vsphere_host_depot_vcenter_address }}/api/esx/settings/depots/online"
+        method: GET
+        headers:
+          Cookie: "{{ vcenter_session_token.set_cookie }}"
+        validate_certs: false
+      register: current_depots_response
+      retries: 30
+      delay: 30
+      ignore_errors: true
+      until: current_depots_response is succeeded
+
+    - name: "Set current depots fact"
+      ansible.builtin.set_fact:
+        current_depots: "{{ current_depots_response.json }}"
+        current_depots_for_loop: "{{ current_depots_response.json | dict2items(key_name='depot') }}"
+
+    # --- CHECK ACTION ---
+    - name: "Action: CHECK - Display depot configuration"
+      when: vsphere_host_depot_action == "check"
+      block:
+        - name: "Display current depot info"
+          ansible.builtin.debug:
+            msg:
+              - "Description: {{ item.value.description }}"
+              - "Location: {{ item.value.location | default('N/A - System Defined') }}"
+              - "Enabled: {{ item.value.enabled }}"
+              - "System Defined: {{ item.value.system_defined }}"
+          loop: "{{ current_depots_for_loop }}"
+          loop_control:
+            label: "{{ item.value.description }}"
+
+    # --- UPDATE ACTION ---
+    - name: "Action: UPDATE - Modify depot configuration"
+      when: vsphere_host_depot_action == "update"
+      block:
+        - name: "Disable system-defined depots"
+          ansible.builtin.uri:
+            url: "https://{{ vsphere_host_depot_vcenter_address }}/api/esx/settings/depots/online/{{ item.depot }}"
+            method: PATCH
+            headers:
+              Cookie: "{{ vcenter_session_token.set_cookie }}"
+            body:
+              enabled: false
+            body_format: json
+            validate_certs: false
+            status_code: 204
+          loop: "{{ current_depots_for_loop | selectattr('value.system_defined', 'equalto', true) | selectattr('value.enabled', 'equalto', true) }}"
+          loop_control:
+            label: "Disabling {{ item.value.description }}"
+
+        - name: "Delete existing custom depots with matching descriptions"
+          ansible.builtin.uri:
+            url: "https://{{ vsphere_host_depot_vcenter_address }}/api/esx/settings/depots/online/{{ (current_depots_for_loop | selectattr('value.system_defined', 'equalto', false) | selectattr('value.description', 'equalto', item[1]))[0].depot }}"
+            method: DELETE
+            headers:
+              Cookie: "{{ vcenter_session_token.set_cookie }}"
+            validate_certs: false
+            status_code: 204
+          loop: "{{ new_depots }}"
+          when: "(current_depots_for_loop | selectattr('value.system_defined', 'equalto', false) | selectattr('value.description', 'equalto', item[1])) | length > 0"
+          loop_control:
+            label: "Deleting old depot: {{ item[1] }}"
+
+        - name: "Create new custom depots"
+          ansible.builtin.uri:
+            url: "https://{{ vsphere_host_depot_vcenter_address }}/api/esx/settings/depots/online"
+            method: POST
+            headers:
+              Cookie: "{{ vcenter_session_token.set_cookie }}"
+            body:
+              location: "{{ item[0] }}"
+              description: "{{ item[1] }}"
+            body_format: json
+            validate_certs: false
+            status_code: 201
+          loop: "{{ new_depots }}"
+          loop_control:
+            label: "Creating new depot: {{ item[1] }}"
+
+        - name: "Trigger depot sync"
+          ansible.builtin.uri:
+            url: "https://{{ vsphere_host_depot_vcenter_address }}/api/esx/settings/depots?action=sync&vmw-task=true"
+            method: POST
+            headers:
+              Cookie: "{{ vcenter_session_token.set_cookie }}"
+            validate_certs: false
+            status_code: 202
+
+  always:
+    - name: "Logout from vCenter"
+      ansible.builtin.uri:
+        url: "https://{{ vsphere_host_depot_vcenter_address }}/rest/com/vmware/cis/session"
+        method: DELETE
+        headers:
+          Cookie: "{{ vcenter_session_token.set_cookie }}"
+        validate_certs: false
+      when: vcenter_session_token is defined

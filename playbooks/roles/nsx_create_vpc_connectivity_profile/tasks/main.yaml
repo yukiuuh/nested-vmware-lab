@@ -1,0 +1,128 @@
+---
+- name: Create External IP Address Block for VPC
+  ansible.builtin.uri:
+    url: "https://{{ nsx_manager_hostname }}/policy/api/v1/infra/ip-blocks/{{ external_ip_block_name }}"
+    method: PATCH
+    user: "{{ nsx_manager_username }}"
+    password: "{{ nsx_manager_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    body_format: json
+    body:
+      cidr: "{{ external_ip_block_cidr }}"
+      display_name: "{{ external_ip_block_name }}"
+      visibility: "EXTERNAL"
+  register: external_ip_block
+
+- name: Create Private IP Address Block for Transit Gateway
+  ansible.builtin.uri:
+    url: "https://{{ nsx_manager_hostname }}/policy/api/v1/infra/ip-blocks/{{ private_ip_block_name }}"
+    method: PATCH
+    user: "{{ nsx_manager_username }}"
+    password: "{{ nsx_manager_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    body_format: json
+    body:
+      cidr: "{{ private_ip_block_cidr }}"
+      display_name: "{{ private_ip_block_name }}"
+      visibility: "PRIVATE"
+  register: private_ip_block
+
+- name: Create Gateway Connection to Tier-0
+  ansible.builtin.uri:
+    url: "https://{{ nsx_manager_hostname }}/policy/api/v1/infra/gateway-connections/{{ gateway_connection_name }}"
+    method: PATCH
+    user: "{{ nsx_manager_username }}"
+    password: "{{ nsx_manager_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    body_format: json
+    body:
+      display_name: "{{ gateway_connection_name }}"
+      tier0_path: "/infra/tier-0s/{{ tier0_gateway_name }}"
+  register: gateway_connection
+
+- name: Create Transit Gateway Attachment
+  ansible.builtin.uri:
+    url: "https://{{ nsx_manager_hostname }}/policy/api/v1/orgs/{{ org_id }}/projects/{{ project_id }}/transit-gateways/{{ transit_gateway_name }}/attachments/{{ gateway_connection_name }}"
+    method: PATCH
+    user: "{{ nsx_manager_username }}"
+    password: "{{ nsx_manager_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    body_format: json
+    body:
+      display_name: "{{ gateway_connection_name }}"
+      connection_path: "/infra/gateway-connections/{{ gateway_connection_name }}"
+  register: transit_gateway
+
+- name: Get Edge Clusters
+  ansible.builtin.uri:
+    url: "https://{{ nsx_manager_hostname }}/policy/api/v1/infra/sites/default/enforcement-points/default/edge-clusters"
+    method: GET
+    user: "{{ nsx_manager_username }}"
+    password: "{{ nsx_manager_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    return_content: true
+  register: edge_clusters
+
+- name: Extract Edge Cluster path
+  ansible.builtin.set_fact:
+    edge_cluster_path: "{{ edge_clusters.json.results | selectattr('display_name', 'equalto', edge_cluster_name) | map(attribute='path') | first }}"
+
+- name: Create VPC Connectivity Profile
+  vars:
+    vpc_profile_payload:
+      display_name: "{{ vpc_connectivity_profile_name }}"
+      transit_gateway_path: "/orgs/{{ org_id }}/projects/{{ project_id }}/transit-gateways/{{ transit_gateway_name }}"
+      external_ip_blocks:
+        - "/infra/ip-blocks/{{ external_ip_block_name }}"
+      private_tgw_ip_blocks:
+        - "/infra/ip-blocks/{{ private_ip_block_name }}"
+      service_gateway:
+        enable: true
+        nat_config:
+          enable_default_snat: true
+        edge_cluster_paths: ["{{ edge_cluster_path }}"]
+  ansible.builtin.uri:
+    url: "https://{{ nsx_manager_hostname }}/policy/api/v1/orgs/{{ org_id }}/projects/{{ project_id }}/vpc-connectivity-profiles/{{ vpc_connectivity_profile_name }}"
+    method: PATCH
+    user: "{{ nsx_manager_username }}"
+    password: "{{ nsx_manager_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    body_format: json
+    return_content: true
+    body: "{{ vpc_profile_payload | to_json }}"
+  register: vpc_connectivity_profile
+
+- name: Get Locale Services 
+  ansible.builtin.uri:
+    url: "https://{{ nsx_manager_hostname }}/policy/api/v1/infra/tier-0s/{{ tier0_gateway_name }}/locale-services"
+    method: GET
+    user: "{{ nsx_manager_username }}"
+    password: "{{ nsx_manager_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    return_content: true
+  register: locale_services
+
+- name: Add route distribution
+  ansible.builtin.uri:
+    url: "https://{{ nsx_manager_hostname }}/policy/api/v1/infra/tier-0s/{{ tier0_gateway_name }}/locale-services/{{ t0_locale_service_name }}"
+    method: PATCH
+    user: "{{ nsx_manager_username }}"
+    password: "{{ nsx_manager_password }}"
+    validate_certs: false
+    force_basic_auth: true
+    body_format: json
+    body:
+      route_redistribution_config:
+        bgp_enabled: true
+        redistribution_rules:
+          - name: "vpc_redistribution_rule"
+            route_redistribution_types:
+              - TGW_STATIC
+  register: external_ip_block

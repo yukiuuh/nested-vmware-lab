@@ -7,15 +7,26 @@ terraform {
   }
 }
 
+data "http" "check_download_token" {
+  count = var.depot_token != "" ? 1 : 0
+  url   = "https://${var.depot_fqdn}/${var.depot_token}/PROD/COMP/ESX_HOST/main/vmw-depot-index.xml"
+  lifecycle {
+    postcondition {
+      condition     = contains([200], self.status_code)
+      error_message = "Status code invalid. body: ${self.response_body}"
+    }
+  }
+}
+
 resource "random_id" "uuid" {
   byte_length = 4
 }
 locals {
-  name_prefix = random_id.uuid.hex
+  key_name = random_id.uuid.hex
 }
 resource "local_file" "private_key" {
   content         = var.ssh_private_key_openssh
-  filename        = "/tmp/${local.name_prefix}.pem"
+  filename        = "/tmp/${local.key_name}.pem"
   file_permission = "0600"
 }
 
@@ -81,6 +92,8 @@ resource "ansible_playbook" "provision_nested_vsphere" {
     drs_enabled          = var.drs_enabled ? "True" : "False"
     storage_policy_list  = jsonencode(var.storage_policy_list)
     content_library_list = jsonencode(var.content_library_list)
+    depot_fqdn           = var.depot_fqdn
+    depot_token          = var.depot_token
 
     ansible_hostname        = var.ip
     ansible_connection      = "ssh"
@@ -90,9 +103,23 @@ resource "ansible_playbook" "provision_nested_vsphere" {
   }
 }
 
+locals {
+  nsx_managers = var.nsx != null ? [for m in var.nsx.managers : ({
+    ip       = m.ip
+    hostname = m.hostname
+    vmname   = "${var.name_prefix}-${m.hostname}"
+  })] : []
+  nsx_edges = var.nsx != null ? [for e in var.nsx.edge_vm_list : ({
+    management_ip = e.management_ip
+    hostname      = e.hostname
+    t0_interfaces = e.t0_interfaces
+    vmname        = "${var.name_prefix}-${e.hostname}"
+  })] : []
+}
+
 resource "ansible_playbook" "deploy_nsx" {
   playbook   = "${path.module}/../../playbooks/deploy_nsx_manager.yaml"
-  count      = var.nsx != null ? 1 : 0
+  count      = var.nsx != null && !var.nsx.managed_by_terraform ? 1 : 0
   name       = var.ip
   replayable = false
   depends_on = [ansible_playbook.provision_nested_vsphere]
@@ -105,7 +132,7 @@ resource "ansible_playbook" "deploy_nsx" {
     cluster_name                = var.nested_cluster_name
     datastore_name              = var.nested_datastore_name
     management_portgroup_name   = var.nested_management_portroup_name
-    nsx_manager1                = jsonencode(var.nsx.managers[0])
+    nsx_manager1                = jsonencode(local.nsx_managers[0])
     nsx_username                = var.nsx.username
     ntp_server                  = var.ntp
     dns_server                  = var.nameservers[0]
@@ -139,7 +166,7 @@ resource "ansible_playbook" "provision_nsx_manager" {
     vc_address                 = var.vcsa_ip
     vc_username                = var.vcsa_username
     vc_password                = var.vcsa_password
-    nsx_hostname               = var.nsx.managers[0].ip
+    nsx_hostname               = local.nsx_managers[0].ip
     nsx_username               = var.nsx.username
     nsx_password               = var.nsx.password
     nsx_transport_cluster_name = var.nested_cluster_name
@@ -187,8 +214,10 @@ resource "ansible_playbook" "deploy_edge" {
     netmask     = var.subnet_mask
     domain_name = var.domain_name
 
+    nsx_local_as_num     = var.nsx.local_as_num
+    nsx_remote_as_num    = var.nsx.remote_as_num
     edge_deployment_size = var.nsx.edge_deployment_size
-    edge_vm_list         = jsonencode(var.nsx.edge_vm_list)
+    edge_vm_list         = jsonencode(local.nsx_edges)
     nsx_t0_gateway       = var.nsx.t0_gateway
     external_uplink_vlan = var.nsx.external_uplink_vlan
 
@@ -208,9 +237,35 @@ resource "ansible_playbook" "deploy_edge" {
   }
 }
 
+resource "ansible_playbook" "provision_nsx_vpc" {
+  playbook   = "${path.module}/../../playbooks/provision_nsx_vpc.yaml"
+  count      = var.nsx != null && var.nsx.vpc != null ? 1 : 0
+  name       = var.ip
+  replayable = false
+  depends_on = [ansible_playbook.deploy_edge]
+  verbosity  = 1
+  extra_vars = {
+    nsx_hostname = local.nsx_managers[0].ip
+    nsx_username = var.nsx.username
+    nsx_password = var.nsx.password
+
+    t0_name                 = "t0"
+    edge_cluster_name       = "edge_cluster"
+    external_ip_block_cidr  = var.nsx.vpc.external_ip_block_cidr
+    private_ip_block_cidr   = var.nsx.vpc.private_ip_block_cidr
+    t0_locale_service_name  = "tier0_ls"
+    ansible_hostname        = var.ip
+    ansible_connection      = "ssh"
+    ansible_ssh_pass        = var.password
+    ansible_user            = var.username
+    ansible_ssh_common_args = local.ansible_connection_args
+  }
+}
+
+
 resource "ansible_playbook" "deploy_avi" {
   playbook   = "${path.module}/../../playbooks/deploy_avi.yaml"
-  count      = var.avi != null ? 1 : 0
+  count      = var.avi != null && !var.avi.managed_by_terraform ? 1 : 0
   name       = var.ip
   replayable = false
   depends_on = [ansible_playbook.deploy_edge]
@@ -219,7 +274,51 @@ resource "ansible_playbook" "deploy_avi" {
     vc_address                   = var.vcsa_ip
     vc_username                  = var.vcsa_username
     vc_password                  = var.vcsa_password
-    avi_vm_name                  = var.avi.controllers[0].hostname
+    avi_hostname                 = var.avi.controllers[0].hostname
+    avi_vm_name                  = "${var.name_prefix}-${var.avi.controllers[0].hostname}"
+    avi_username                 = "admin"
+    avi_password                 = var.avi.password
+    avi_default_password         = var.avi.default_password
+    avi_ova_path                 = var.avi.controller_ova_url
+    avi_management_ip            = var.avi.controllers[0].ip
+    avi_network_list             = jsonencode(var.avi.networks)
+    avi_gateway                  = var.avi.gateway
+    avi_ipam_usable_network_list = jsonencode(var.avi.ipam_usable_networks)
+
+    ovftool_path = var.ovftool_path
+
+    datacenter_name           = var.nested_datacenter_name
+    cluster_name              = var.nested_cluster_name
+    datastore_name            = var.nested_datastore_name
+    management_portgroup_name = var.nested_management_portroup_name
+
+    ntp_server  = var.ntp
+    dns_server  = var.nameservers[0]
+    gateway     = var.gateway
+    netmask     = var.subnet_mask
+    domain_name = var.domain_name
+
+    ansible_hostname        = var.ip
+    ansible_connection      = "ssh"
+    ansible_ssh_pass        = var.password
+    ansible_user            = var.username
+    ansible_ssh_common_args = local.ansible_connection_args
+  }
+}
+
+resource "ansible_playbook" "provision_avi" {
+  playbook   = "${path.module}/../../playbooks/provision_avi.yaml"
+  count      = var.avi != null ? 1 : 0
+  name       = var.ip
+  replayable = false
+  depends_on = [ansible_playbook.deploy_avi]
+  verbosity  = 1
+  extra_vars = {
+    vc_address                   = var.vcsa_ip
+    vc_username                  = var.vcsa_username
+    vc_password                  = var.vcsa_password
+    avi_hostname                 = var.avi.controllers[0].hostname
+    avi_vm_name                  = "${var.name_prefix}-${var.avi.controllers[0].hostname}"
     avi_username                 = "admin"
     avi_password                 = var.avi.password
     avi_default_password         = var.avi.default_password

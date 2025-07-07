@@ -7,6 +7,5 @@
     portgroup_name: '{{ portgroup.name }}'
     switch_name: "{{ dvs_name }}"
     vlan_id: "{{ portgroup.vlan_id }}"
-    num_ports: 120
     port_binding: static
     state: present

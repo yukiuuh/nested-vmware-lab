@@ -5,6 +5,17 @@ provider "vsphere" {
   vsphere_server       = var.vsphere_server
 }
 
+data "http" "check_download_token" {
+  count = var.vmware_depot_token != "" ? 1 : 0
+  url   = "https://${var.vmware_depot_fqdn}/${var.vmware_depot_token}/PROD/COMP/ESX_HOST/main/vmw-depot-index.xml"
+  lifecycle {
+    postcondition {
+      condition     = contains([200], self.status_code)
+      error_message = "Status code invalid. body: ${self.response_body}"
+    }
+  }
+}
+
 module "vi" {
   source           = "../../module/common/vi"
   datacenter       = var.datacenter
@@ -15,6 +26,34 @@ module "vi" {
   vsphere_password = var.vsphere_password
   vsphere_server   = var.vsphere_server
   vsphere_user     = var.vsphere_user
+}
+
+locals {
+  check_ova_urls = concat(
+    [var.photon_ovf_url, var.ubuntu_ovf_url],
+    var.nested_vcsa != null && var.nested_vcsa.remote_ovf_url != "" ? [var.nested_vcsa.remote_ovf_url] : [],
+    var.vcf_installer != null ? [var.vcf_installer.remote_ovf_url] : [],
+    var.cloud_builder != null ? [var.cloud_builder.remote_ovf_url] : [],
+    var.avi != null ? [var.avi.controller_ova_url] : [],
+    var.nsx != null ? ["${var.nsx.manager_ova_path}${var.nsx.manager_ova}"] : [],
+    var.vrli != null ? [var.vrli.remote_ovf_url] : [],
+  )
+  check_datastore_files = concat([{
+    datastore_name = var.esxi_iso_datastore
+    path           = var.esxi_iso_path
+    }],
+    var.nested_vcsa != null && var.nested_vcsa.iso_path != "" ? [{
+      datastore_name = var.nested_vcsa.iso_datastore
+      path           = var.nested_vcsa.iso_path
+    }] : []
+  )
+}
+
+module "source_validator" {
+  source          = "../../module/common/source_validator"
+  vi              = module.vi
+  datastore_files = local.check_datastore_files
+  ova_urls        = local.check_ova_urls
 }
 
 resource "random_id" "uuid" {
@@ -41,6 +80,7 @@ locals {
   }
 }
 module "router" {
+  depends_on          = [module.source_validator]
   count               = var.external_network != null ? 1 : 0
   source              = "../../module/router"
   vi                  = module.vi
@@ -58,20 +98,71 @@ module "router" {
   http_proxy_port     = var.router_http_proxy_port
 }
 
-module "sddc_manager" {
-  count          = var.sddc_manager != null ? 1 : 0
-  source         = "../../module/sddc_manager"
+module "vrli_cluster" {
+  depends_on          = [module.router]
+  count               = var.vrli != null ? 1 : 0
+  source              = "../../module/vrli_cluster"
+  vi                  = module.vi
+  name_prefix         = local.name_prefix
+  starting_ip         = var.vrli.starting_ip
+  hostname_prefix     = var.vrli.hostname_prefix
+  deployment_option   = var.vrli.deployment_option
+  gateway             = var.gateway
+  ntp                 = var.ntp
+  remote_ovf_url      = var.vrli.remote_ovf_url
+  single_node         = var.vrli.single_node
+  ssh_authorized_keys = concat([tls_private_key.ed25519.public_key_openssh], var.ssh_authorized_keys)
+  nameservers         = var.nameservers
+  subnet_mask         = var.subnet_mask
+  domain_name         = var.domain_name
+  vm_password         = var.vm_password
+  network_name        = var.network_name
+}
+
+module "tkg_cli" {
+  count               = var.create_tkg_client ? 1 : 0
+  source              = "../../module/tkg_cli"
+  depends_on          = [module.router]
+  vi                  = module.vi
+  network_name        = var.network_name
+  ssh_authorized_keys = concat([tls_private_key.ed25519.public_key_openssh], var.ssh_authorized_keys)
+  ssh_rsa_private     = tls_private_key.ed25519.private_key_openssh
+  ssh_rsa_public      = tls_private_key.ed25519.public_key_openssh
+  name                = "${local.name_prefix}-tkg-cli"
+  ubuntu_ovf_url      = var.ubuntu_ovf_url
+}
+
+module "vcf_installer" {
+  count          = var.vcf_installer != null ? 1 : 0
+  source         = "../../module/vcf_installer"
   vi             = module.vi
-  name           = "${local.name_prefix}-${var.sddc_manager.hostname}"
+  name           = "${local.name_prefix}-${var.vcf_installer.hostname}"
   gateway        = var.gateway
   ntp            = var.ntp
-  remote_ovf_url = var.sddc_manager.remote_ovf_url
-  ip             = var.sddc_manager.ip
+  remote_ovf_url = var.vcf_installer.remote_ovf_url
+  ip             = var.vcf_installer.ip
   nameservers    = var.nameservers
   subnet_mask    = var.subnet_mask
   domain_name    = var.domain_name
-  hostname       = var.sddc_manager.hostname
-  vm_password    = var.sddc_manager.password
+  hostname       = var.vcf_installer.hostname
+  vm_password    = var.vcf_installer.password
+  network_name   = var.network_name
+}
+
+module "cloud_builder" {
+  count          = var.cloud_builder != null ? 1 : 0
+  source         = "../../module/cloud_builder"
+  vi             = module.vi
+  name           = "${local.name_prefix}-${var.cloud_builder.hostname}"
+  gateway        = var.gateway
+  ntp            = var.ntp
+  remote_ovf_url = var.cloud_builder.remote_ovf_url
+  ip             = var.cloud_builder.ip
+  nameservers    = var.nameservers
+  subnet_mask    = var.subnet_mask
+  domain_name    = var.domain_name
+  hostname       = var.cloud_builder.hostname
+  vm_password    = var.cloud_builder.password
   network_name   = var.network_name
 }
 
@@ -99,6 +190,8 @@ module "storage" {
   lun_count            = var.storage.lun_count
   network_name         = var.network_name
   ubuntu_ovf_url       = var.ubuntu_ovf_url
+  zfs_compression      = var.storage.zfs_compression
+  zfs_nfs_dedup        = var.storage.zfs_nfs_dedup
 }
 
 locals {
@@ -189,9 +282,51 @@ module "esxi_cluster" {
   photon_ovf_url              = var.photon_ovf_url
 }
 
+locals {
+  nsx_manager_nodes = var.nsx != null && var.nsx.managed_by_terraform ? var.nsx.managers : []
+}
+
+module "nsx_manager_cluster" {
+  source      = "../../module/common/nsx_manager"
+  for_each    = { for node in local.nsx_manager_nodes : node.hostname => node }
+  depends_on  = [module.router]
+  vi          = module.vi
+  name        = "${local.name_prefix}-${each.value.hostname}"
+  netmask     = var.subnet_mask
+  vm_password = var.nsx.password
+  domain_name = var.domain_name
+  dns_server  = var.nameservers[0]
+  ip_address  = each.value.ip
+  ssh_enabled = true
+  role        = "NSX Manager"
+
+  remote_ovf_url    = "${var.nsx.manager_ova_path}${var.nsx.manager_ova}"
+  hostname          = each.value.hostname
+  ntp               = var.ntp
+  gateway           = var.gateway
+  deployment_option = var.nsx.manager_deployment_size
+  network_name      = var.network_name
+}
+locals {
+  avi_controllers = var.avi != null && var.avi.managed_by_terraform ? var.avi.controllers : []
+}
+module "avi_controller" {
+  source         = "../../module/common/avi_controller"
+  for_each       = { for node in local.avi_controllers : node.hostname => node }
+  depends_on     = [module.router]
+  vi             = module.vi
+  name           = "${local.name_prefix}-${each.value.hostname}"
+  netmask        = var.subnet_mask
+  ip_address     = each.value.ip
+  remote_ovf_url = var.avi.controller_ova_url
+  gateway        = var.gateway
+  network_name   = var.network_name
+}
+
 module "vsphere_provisioner" {
   source                  = "../../module/vsphere_provisioner"
-  depends_on              = [module.vcsa_standalone, module.vsphere_kickstarter]
+  name_prefix             = local.name_prefix
+  depends_on              = [module.vcsa_standalone, module.vsphere_kickstarter, module.nsx_manager_cluster, module.avi_controller]
   count                   = var.nested_vcsa != null && var.vsphere_provisioner != null ? 1 : 0
   vcsa_ip                 = var.nested_vcsa.ip
   vcsa_password           = var.vm_password
@@ -209,6 +344,9 @@ module "vsphere_provisioner" {
   dvs_list                = var.vsphere_provisioner.dvs_list
   storage_policy_list     = var.vsphere_provisioner.storage_policy_list
   content_library_list    = var.vsphere_provisioner.content_library_list
+
+  depot_fqdn  = var.vmware_depot_fqdn
+  depot_token = var.vmware_depot_token
 
   vsan_enabled                    = var.vsphere_provisioner.vsan_enabled
   ha_enabled                      = var.vsphere_provisioner.ha_enabled

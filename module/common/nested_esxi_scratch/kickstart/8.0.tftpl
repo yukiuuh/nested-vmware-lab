@@ -5,6 +5,9 @@ entropy --sources=1
 network --bootproto=static --device=vmnic0 --ip=${ip} --netmask=${netmask} --vlanid=${vlan} --gateway=${gateway} --hostname=${hostname} --nameserver=${nameserver}
 reboot
 
+%post --interpreter=busybox
+sed -i '/kernelopt=/ s/$/ allowLegacyCPU=true/' /vmfs/volumes/BOOTBANK1/boot.cfg
+sed -i '/kernelopt=/ s/$/ allowLegacyCPU=true/' /vmfs/volumes/BOOTBANK2/boot.cfg
 %firstboot --interpreter=busybox
 
 %{ if ssh_enabled  }
@@ -13,6 +16,14 @@ vim-cmd hostsvc/start_ssh
 vim-cmd hostsvc/enable_esx_shell
 vim-cmd hostsvc/start_esx_shell
 esxcli system settings advanced set -o /UserVars/SuppressShellWarning -i 1
+%{ endif }
+
+%{ if vcf_mode }
+# recreate vmk0 to regenerate MAC address
+esxcli network ip interface remove --interface-name vmk0
+esxcli network ip interface add -p "Management Network" -i vmk0
+esxcli network ip interface ipv4 set -i vmk0 -t=static -I=${ip} -N=${netmask}
+esxcli network ip route ipv4 add -g ${gateway} -n default
 %{ endif }
 
 esxcli network vswitch standard set --vswitch-name=vSwitch0 --mtu=${mtu}
@@ -69,7 +80,8 @@ vmkfstools -C vmfs6 -S ${provision_datastore.datastore_name} /vmfs/devices/disks
 
 %{ if vcf_mode }
 /sbin/generate-certificates
-/etc/init.d/hostd restart && /etc/init.d/vpxa restart
+/bin/services.sh restart
+/sbin/auto-backup.sh
 %{ endif }
 
 date > /var/tmp/provisioned

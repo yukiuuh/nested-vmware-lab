@@ -48,6 +48,7 @@
       delay: 15
       register: add_nsx_license_result
       until: add_nsx_license_result is succeeded
+      when: nsx_license != ""
     # wait for nsx manager
 
     - name: "Add Compute Manager"
@@ -68,14 +69,14 @@
       register: cm_info
       until: cm_info is succeeded
       delay: 30
-      retries: 2
+      retries: 60
       ignore_errors: false
 
     - name: Add IP Pools
       ansible.builtin.include_role:
         name: nsx_create_ip_pool
       vars:
-        ip_pool: 
+        ip_pool:
           name: "{{ nsx_tep_ip_pool_name }}"
           start_ip: "{{ nsx_tep_ip_pool_start_ip }}"
           end_ip: "{{ nsx_tep_ip_pool_end_ip }}"

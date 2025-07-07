@@ -19,7 +19,7 @@ avi = {
       network  = "10.0.7.0/24"
       begin_ip = "10.0.7.128"
       end_ip   = "10.0.7.191"
-      type     = "STATIC_IPS_FOR_SE"
+      type     = "STATIC_IPS_FOR_VIP_AND_SE"
     },
     {
       name     = "frontend"

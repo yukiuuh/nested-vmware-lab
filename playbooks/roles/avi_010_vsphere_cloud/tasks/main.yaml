@@ -117,15 +117,15 @@
       controller: "{{ avi_management_ip }}"
       api_version: 22.1.5
     type: SSL_CERTIFICATE_TYPE_SYSTEM
-    name: '{{ avi_vm_name }}'
+    name: '{{ avi_hostname }}'
     certificate:
       self_signed: true
       subject:
-        common_name: '{{ avi_vm_name + "." + domain }}'
+        common_name: '{{ avi_hostname + "." + domain }}'
       key_params:
         algorithm: SSL_KEY_ALGORITHM_RSA
       subject_alt_names:
-        - '{{ avi_vm_name + "." + domain }}'
+        - '{{ avi_hostname + "." + domain }}'
         - '{{ con_mgmt_ip }}'
 
 - name: Attach new controller certificate
@@ -140,7 +140,7 @@
     portal_configuration:
       allow_basic_authentication: false
       sslkeyandcertificate_refs:
-        - '{{ "/api/sslkeyandcertificate/?name=" + avi_vm_name }}'
+        - '{{ "/api/sslkeyandcertificate/?name=" + avi_hostname }}'
     dns_configuration:
       search_domain: "{{ domain_name }}"
       server_list:

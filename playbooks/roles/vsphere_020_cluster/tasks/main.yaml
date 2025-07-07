@@ -21,7 +21,7 @@
     enable: "{{ ha_enabled }}"
   when: ha_enabled  | default(false)
 - name: Enable DRS
-  community.vmware.vmware_cluster_drs:
+  vmware.vmware.cluster_drs:
     hostname: "{{ vc_address }}"
     username: "{{ vc_username }}"
     password: "{{ vc_password }}"
