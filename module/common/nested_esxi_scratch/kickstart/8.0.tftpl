@@ -1,7 +1,11 @@
 vmaccepteula
 rootpw ${password}
 install --firstdisk --novmfsondisk --ignoreprereqwarnings --ignoreprereqerrors --forceunsupportedinstall
+
+%{ if !hardware_random_generator_enabled }
 entropy --sources=1
+%{ endif }
+
 network --bootproto=static --device=vmnic0 --ip=${ip} --netmask=${netmask} --vlanid=${vlan} --gateway=${gateway} --hostname=${hostname} --nameserver=${nameserver}
 reboot
 

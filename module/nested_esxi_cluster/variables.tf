@@ -87,12 +87,14 @@ variable "network_interfaces_override" {
 
 variable "nested_esxi_shape" {
   type = object({
-    num_cpus     = number
-    mem_gb       = number
-    nic_count    = number
-    tpm_enabled  = bool
-    nvme_enabled = bool
-    vcf_mode     = optional(bool, false)
+    num_cpus                          = number
+    mem_gb                            = number
+    nic_count                         = number
+    tpm_enabled                       = bool
+    nvme_enabled                      = bool
+    vcf_mode                          = optional(bool, false)
+    memory_reservation_enabled        = optional(bool, false)
+    hardware_random_generator_enabled = optional(bool, false)
     disks = list(object({
       label       = string
       size_gb     = number

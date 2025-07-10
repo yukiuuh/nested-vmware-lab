@@ -66,8 +66,11 @@ module "nested_esxi_scratch" {
   provision_datastores = each.value.provision_datastores
   ntp                  = var.ntp
 
-  mem_gb   = var.nested_esxi_shape.mem_gb
-  num_cpus = var.nested_esxi_shape.num_cpus
+  mem_gb                     = var.nested_esxi_shape.mem_gb
+  num_cpus                   = var.nested_esxi_shape.num_cpus
+  memory_reservation_enabled = var.nested_esxi_shape.memory_reservation_enabled
+
+  hardware_random_generator_enabled = var.nested_esxi_shape.hardware_random_generator_enabled
 
   dns                = element(var.nameservers, 0)
   password           = var.vm_password

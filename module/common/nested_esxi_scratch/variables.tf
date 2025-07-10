@@ -128,3 +128,10 @@ variable "bastion_password" {
 variable "vcf_mode" {
   default = false
 }
+variable "memory_reservation_enabled" {
+  default = false
+}
+
+variable "hardware_random_generator_enabled" {
+  default = true
+}

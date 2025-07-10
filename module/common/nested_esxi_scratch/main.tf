@@ -2,22 +2,23 @@ locals {
   ks_template_path = "${path.module}/kickstart/8.0.tftpl"
   ks = templatefile(local.ks_template_path,
     {
-      password             = var.password
-      ip                   = var.management_vmknic.ip
-      netmask              = var.management_vmknic.subnet
-      vlan                 = var.management_vmknic.vlan
-      gateway              = var.management_vmknic.gateway
-      hostname             = var.hostname
-      nameserver           = var.dns
-      ntp                  = var.ntp
-      ssh_enabled          = var.ssh_enabled
-      nfs_hosts            = var.nfs_hosts
-      iscsi_targets        = var.iscsi_targets
-      mtu                  = var.management_vmknic.mtu
-      storage1_vmknic      = var.storage1_vmknic
-      storage2_vmknic      = var.storage2_vmknic
-      provision_datastores = var.provision_datastores
-      vcf_mode             = var.vcf_mode
+      password                          = var.password
+      ip                                = var.management_vmknic.ip
+      netmask                           = var.management_vmknic.subnet
+      vlan                              = var.management_vmknic.vlan
+      gateway                           = var.management_vmknic.gateway
+      hostname                          = var.hostname
+      nameserver                        = var.dns
+      ntp                               = var.ntp
+      ssh_enabled                       = var.ssh_enabled
+      nfs_hosts                         = var.nfs_hosts
+      iscsi_targets                     = var.iscsi_targets
+      mtu                               = var.management_vmknic.mtu
+      storage1_vmknic                   = var.storage1_vmknic
+      storage2_vmknic                   = var.storage2_vmknic
+      provision_datastores              = var.provision_datastores
+      vcf_mode                          = var.vcf_mode
+      hardware_random_generator_enabled = var.hardware_random_generator_enabled
     }
   )
 
@@ -62,6 +63,7 @@ resource "vsphere_virtual_machine" "nested_esxi" {
   num_cpus              = var.num_cpus
   num_cores_per_socket  = var.num_cpus
   memory                = var.mem_gb * 1024
+  memory_reservation    = var.memory_reservation_enabled ? var.mem_gb * 1024 : 0
   datastore_id          = var.vi.datastore.id
   resource_pool_id      = var.vi.resource_pool.id
   host_system_id        = var.vi.compute_host.id
@@ -131,6 +133,10 @@ resource "vsphere_virtual_machine" "nested_esxi" {
   }
   provisioner "local-exec" {
     command = "${var.vi.govc_setup_cmd} KS_URL=http://${var.ks_server_ip}/${var.name}.cfg KS_NAMESERVER=${var.dns} KS_IP=${var.management_vmknic.ip} KS_NETMASK=${var.management_vmknic.subnet} KS_GATEWAY=${var.management_vmknic.gateway} VM_NAME=${var.name} KS_VLAN=${var.management_vmknic.vlan} bash ${path.module}/scripts/enter_kickstart.sh"
+    environment = {
+      ENTROPY_SOURCE = var.hardware_random_generator_enabled ? 0 : 1
+      DISABLE_HWRNG  = var.hardware_random_generator_enabled ? "FALSE" : "TRUE"
+    }
   }
   provisioner "local-exec" {
     command = "until govc guest.ls -l 'root:${var.password}' -vm ${var.name} /var/tmp/provisioned ; do sleep 60 ; done"

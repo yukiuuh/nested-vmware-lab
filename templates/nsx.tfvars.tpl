@@ -33,13 +33,15 @@ nsx = {
   # external_uplink_vlan_list = [1010, 1011]
   external_uplink_vlan = 1010
   t0_gateway           = "10.0.10.1"
+  local_as_num              = 300
+  remote_as_num             = 200
   edge_vm_list = [
     {
       management_ip = "10.0.0.84"
       hostname      = "nsxe01"
       t0_interfaces = [
         {
-          ip            = "10.0.10.84"
+          ip            = "10.0.10.2"
           prefix_length = "24"
         }
       ]

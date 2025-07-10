@@ -89,12 +89,14 @@ variable "provision_datastores" {
 
 variable "nested_esxi_shape" {
   type = object({
-    num_cpus     = number
-    mem_gb       = number
-    nic_count    = number
-    tpm_enabled  = bool
-    nvme_enabled = bool
-    vcf_mode     = optional(bool, false)
+    num_cpus                          = number
+    mem_gb                            = number
+    nic_count                         = number
+    tpm_enabled                       = bool
+    nvme_enabled                      = bool
+    vcf_mode                          = optional(bool, false)
+    memory_reservation_enabled        = optional(bool, false)
+    hardware_random_generator_enabled = optional(bool, false)
     disks = list(object({
       label       = string
       size_gb     = number
@@ -223,8 +225,8 @@ variable "nsx" {
     # external_uplink_vlan_list = list(number)
     external_uplink_vlan = number
     t0_gateway           = string
-    local_as_num         = optional(number, 65000)
-    remote_as_num        = optional(number, null)
+    local_as_num         = optional(number, 300)
+    remote_as_num        = optional(number, 200)
     edge_vm_list = list(object({
       management_ip = string
       hostname      = string
