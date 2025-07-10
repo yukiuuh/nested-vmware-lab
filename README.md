@@ -26,7 +26,7 @@ Create nested VCF / VVF / vSphere( + AVI or NSX) lab using Terraform and Ansible
 ## Usage
 1. Start bootstrap container
 ```bash
-docker run -v nested-vmware-lab-workspace:/app/workspace -u bootstrap  -it --rm ghcr.io/yukiuuh/nested-vmware-lab-bootstrap:0.0.2
+docker run -v nested-vmware-lab-workspace:/app/workspace -u bootstrap  -it --rm ghcr.io/yukiuuh/nested-vmware-lab-bootstrap:0.0.3
 ```
 2. Create working directory
 ```bash
