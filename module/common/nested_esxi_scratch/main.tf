@@ -36,7 +36,24 @@ data "vsphere_datastore" "iso_datastore" {
   datacenter_id = var.vi.datacenter.id
 }
 
+resource "local_file" "ks_cfg" {
+  content  = local.ks
+  filename = "/tmp/${var.name}.cfg"
+}
+
+resource "terraform_data" "kickstart_script_via_tools" {
+  count = var.copy_via_tools ? 1 : 0
+  provisioner "local-exec" {
+    command = "govc guest.upload -debug -l '${var.ks_server_user}:${var.ks_server_password}' -vm ${var.ks_server_name} ${local_file.ks_cfg.filename} ${var.ks_server_www_dir}/${var.name}.cfg"
+    environment = {
+      GOVC_URL        = nonsensitive(var.vi.govc_url)
+      GOVC_INSECURE   = "true"
+      GOVC_DATACENTER = var.vi.datacenter.name
+    }
+  }
+}
 resource "terraform_data" "kickstart_script" {
+  count = var.copy_via_tools ? 0 : 1
   connection {
     type             = "ssh"
     user             = var.ks_server_user
@@ -58,7 +75,7 @@ resource "terraform_data" "kickstart_script" {
 }
 
 resource "vsphere_virtual_machine" "nested_esxi" {
-  depends_on            = [terraform_data.kickstart_script]
+  depends_on            = [terraform_data.kickstart_script, terraform_data.kickstart_script_via_tools]
   name                  = var.name
   num_cpus              = var.num_cpus
   num_cores_per_socket  = var.num_cpus

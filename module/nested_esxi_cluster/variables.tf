@@ -10,6 +10,7 @@ variable "esxi_iso_path" {}
 
 variable "create_ks_server" { default = false }
 variable "ks_server_ip" { nullable = true }
+variable "ks_server_name" { default = "" }
 variable "ks_server_user" { default = "root" }
 variable "ks_server_password" { default = "VMware123!" }
 variable "ks_server_www_dir" { default = "/srv/" }

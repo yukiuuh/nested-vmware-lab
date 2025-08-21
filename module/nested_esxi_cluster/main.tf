@@ -21,10 +21,14 @@ locals {
   }
 }
 
+locals {
+  ks_server_name = "${var.name_prefix}-kickstarter"
+}
+
 module "ks_server" {
   count              = var.create_ks_server ? 1 : 0
   source             = "../kickstarter"
-  name               = "${var.name_prefix}-kickstarter"
+  name               = local.ks_server_name
   vm_password        = var.vm_password
   vi                 = var.vi
   ks_server_ip       = var.ks_server_ip
@@ -75,6 +79,8 @@ module "nested_esxi_scratch" {
   dns                = element(var.nameservers, 0)
   password           = var.vm_password
   ks_server_password = var.ks_server_password
+  ks_server_name     = var.ks_server_name != "" ? var.ks_server_name : (var.create_ks_server ? local.ks_server_name : "")
+  copy_via_tools     = var.create_ks_server
   ks_server_user     = local.ks_server_user
   ks_server_ip       = var.create_ks_server ? module.ks_server[0].ip : var.ks_server_ip
   ks_server_www_dir  = local.ks_server_www_dir

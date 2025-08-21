@@ -35,7 +35,8 @@ resource "vsphere_virtual_machine" "photon_with_cloudinit" {
     ignore_changes = [
       host_system_id,
       disk[0].io_share_count,
-      ovf_deploy[0].ovf_network_map
+      ovf_deploy[0].ovf_network_map,
+      cdrom[0].path,
     ]
   }
 

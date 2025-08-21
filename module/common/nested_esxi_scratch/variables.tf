@@ -110,6 +110,8 @@ variable "iso_path" {}
 variable "iso_datastore" {}
 
 variable "ks_server_ip" {}
+variable "ks_server_name" { default = "" }
+variable "copy_via_tools" { default = false }
 variable "ks_server_user" { default = "root" }
 variable "ks_server_password" {}
 variable "ks_server_www_dir" { default = "/var/www/html/" }
