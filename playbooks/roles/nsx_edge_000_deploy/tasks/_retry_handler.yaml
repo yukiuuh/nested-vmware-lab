@@ -1,0 +1,24 @@
+- name: "Deploy {{ item.vmname }} with retries"
+  block:
+    - name: "Attempt to deploy {{ item.vmname }} (Attempt #{{ retry_count | default(1) }})"
+      ansible.builtin.include_tasks: _deploy_edge_single_attempt.yaml
+  rescue:
+    - name: "Increment retry counter for {{ item.vmname }}"
+      ansible.builtin.set_fact:
+        retry_count: "{{ retry_count | default(1) | int + 1 }}"
+
+    - name: "Check retry count for {{ item.vmname }}"
+      ansible.builtin.fail:
+        msg: "Failed to deploy {{ item.vmname }} after 15 attempts."
+      when: retry_count|int > 15
+
+    - name: "Log retry attempt for {{ item.vmname }}"
+      ansible.builtin.debug:
+        msg: "Retrying deployment for {{ item.vmname }}, attempt {{ retry_count }}"
+
+    - name: "Wait 60s before retrying"
+      ansible.builtin.wait_for:
+        timeout: 60
+
+    - name: "Recursively call retry handler for {{ item.vmname }}"
+      ansible.builtin.include_tasks: _retry_handler.yaml

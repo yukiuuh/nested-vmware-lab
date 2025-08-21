@@ -1,0 +1,204 @@
+# Part 1: Check if the Edge is already successfully deployed
+- name: "Check for existing successful deployment of {{ item.vmname }}"
+  block:
+    - name: "Gather all transport nodes facts"
+      vmware.ansible_for_nsxt.nsxt_transport_nodes_facts:
+        hostname: "{{ nsx_hostname }}"
+        username: admin
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+      register: all_tns
+
+    - name: "Find existing transport node for {{ item.vmname }}"
+      ansible.builtin.set_fact:
+        existing_tn: "{{ all_tns.results | selectattr('display_name', 'equalto', item.vmname) | list | first | default({}) }}"
+
+    - name: "Check state of existing transport node for {{ item.vmname }}"
+      ansible.builtin.uri:
+        url: "https://{{ nsx_hostname }}/api/v1/transport-nodes/{{ existing_tn.node_id }}/state"
+        method: GET
+        user: admin
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        force_basic_auth: yes
+      register: existing_tn_state
+      when: existing_tn.node_id is defined
+
+    - name: "Check guest tools of existing VM for {{ item.vmname }}"
+      community.vmware.vmware_guest_tools_wait:
+        hostname: "{{ vc_address }}"
+        username: "{{ vc_username }}"
+        password: "{{ vc_password }}"
+        validate_certs: "{{ validate_certs }}"
+        datacenter: "{{ datacenter_name }}"
+        name: "{{ item.vmname }}"
+      register: existing_guest_tools_info
+      until: existing_guest_tools_info is succeeded
+      delay: 5
+      retries: 1
+      ignore_errors: true
+      when:
+        - existing_tn.node_id is defined
+        - existing_tn_state.status == 200
+        - "'FAILED' not in (existing_tn_state.json | json_query('node_deployment_state.state') | default(''))"
+
+    - name: "Determine if {{ item.vmname }} is already successfully deployed"
+      ansible.builtin.set_fact:
+        edge_is_already_deployed: "{{ existing_tn.node_id is defined and existing_guest_tools_info is succeeded and 'FAILED' not in (existing_tn_state.json | json_query('node_deployment_state.state') | default('')) | default(false) }}"
+
+    - name: "Report status and skip deployment if already deployed"
+      ansible.builtin.debug:
+        msg: "NSX Edge {{ item.vmname }} is already deployed and healthy. Skipping."
+      when:
+        - edge_is_already_deployed
+
+# Part 2: Deploy the Edge if it's not already deployed
+- name: "Deploy {{ item.vmname }} as it is not yet successfully deployed"
+  block:
+    - name: "Cleanup previous failed attempt for {{ item.vmname }}"
+      block:
+        - name: "Delete transport node {{ item.vmname }} if it exists"
+          vmware.ansible_for_nsxt.nsxt_transport_nodes:
+            hostname: "{{ nsx_hostname }}"
+            username: admin
+            password: "{{ nsx_password }}"
+            validate_certs: "{{ validate_certs }}"
+            display_name: "{{ item.vmname }}"
+            state: absent
+          when: existing_tn.node_id is defined
+
+        - name: "Wait for 30 seconds before re-deploying"
+          ansible.builtin.wait_for:
+            timeout: 30
+          when: existing_tn.node_id is defined
+
+    - name: "Deploy NSX Edge VM {{ item.vmname }} (Attempt)"
+      vmware.ansible_for_nsxt.nsxt_transport_nodes:
+        hostname: "{{ nsx_hostname }}"
+        username: admin
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ item.vmname }}"
+        host_switch_spec:
+          resource_type: StandardHostSwitchSpec
+          host_switches:
+            - host_switch_name: nvds
+              host_switch_type: NVDS
+              host_switch_mode: STANDARD
+              host_switch_profiles:
+                - name: "{{ edge_tep_uplink_profile_name }}"
+                  type: UplinkHostSwitchProfile
+              pnics:
+                - device_name: fp-eth0
+                  uplink_name: uplink-1
+              ip_assignment_spec:
+                resource_type: StaticIpPoolSpec
+                ip_pool_name: "{{ edge_tep_ip_pool_name }}"
+              transport_zone_endpoints:
+                - transport_zone_name: nsx-vlan-transportzone
+                - transport_zone_name: nsx-overlay-transportzone
+        node_deployment_info:
+          deployment_type: VIRTUAL_MACHINE
+          deployment_config:
+            form_factor: "{{ edge_deployment_size }}"
+            vm_deployment_config:
+              vc_name: "{{ vc_address }}"
+              vc_username: "{{ vc_username }}"
+              vc_password: "{{ vc_password }}"
+              storage: "{{ datastore_name }}"
+              compute: "{{ cluster_name }}"
+              data_networks:
+                - "{{ edge_uplink_segment_name }}"
+              default_gateway_addresses:
+                - "{{ gateway }}"
+              management_network: "{{ management_portgroup_name }}"
+              management_port_subnets:
+                - ip_addresses:
+                    - "{{ item.management_ip }}"
+                  prefix_length: 24
+              placement_type: VsphereDeploymentConfig
+            node_user_settings:
+              cli_username: admin
+              root_password: "{{ nsx_password }}"
+              cli_password: "{{ nsx_password }}"
+              audit_username: audit
+              audit_password: "{{ nsx_password }}"
+          node_settings:
+            allow_ssh_root_login: "True"
+            enable_ssh: "True"
+            hostname: "{{ item.hostname }}.{{ domain_name }}"
+            ntp_servers:
+              - "{{ ntp_server }}"
+            search_domains:
+              - "{{ domain_name }}"
+            dns_servers:
+              - "{{ dns_server }}"
+          resource_type: EdgeNode
+          display_name: "{{ item.vmname }}"
+        description: "{{ item.vmname }} is configured by ansible"
+        state: "{{ nsx_state }}"
+      async: 1800
+      poll: 0
+      register: result_async
+
+    - name: "Wait for 30 seconds"
+      ansible.builtin.wait_for:
+        timeout: 30
+
+    - name: "Get all transport nodes after deployment"
+      vmware.ansible_for_nsxt.nsxt_transport_nodes_facts:
+        hostname: "{{ nsx_hostname }}"
+        username: admin
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+      register: all_tns_after
+
+    - name: "Find the newly created transport node for {{ item.vmname }}"
+      ansible.builtin.set_fact:
+        tn_info_after: "{{ all_tns_after.results | selectattr('display_name', 'equalto', item.vmname) | list | first | default({}) }}"
+
+    - name: "Fail if transport node was not created"
+      ansible.builtin.fail:
+        msg: "Transport node {{ item.vmname }} was not created."
+      when: tn_info_after.node_id is not defined
+
+    - name: "Check NSX Edge VM deployment state for {{ item.vmname }}"
+      ansible.builtin.uri:
+        url: "https://{{ nsx_hostname }}/api/v1/transport-nodes/{{ tn_info_after.node_id }}/state"
+        method: GET
+        user: admin
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        force_basic_auth: yes
+      register: edge_deployment_status
+
+    - name: "Fail if deployment status is unexpected"
+      ansible.builtin.fail:
+        msg: "Deployment of Edge node {{ item.vmname }} is in FAILED state or API call failed."
+      when: >
+        edge_deployment_status.status != 200 or
+        'FAILED' in (edge_deployment_status.json | json_query('node_deployment_state.state') | default(''))
+
+    - name: "Wait for Edge guest tools for {{ item.vmname }}"
+      community.vmware.vmware_guest_tools_wait:
+        hostname: "{{ vc_address }}"
+        username: "{{ vc_username }}"
+        password: "{{ vc_password }}"
+        validate_certs: "{{ validate_certs }}"
+        datacenter: "{{ datacenter_name }}"
+        name: "{{ item.vmname }}"
+      register: guest_tools_info
+      until: guest_tools_info is succeeded
+      retries: 30
+      delay: 60
+
+    - name: Wait for Edge Deploy Job
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ result_async.results }}"
+      register: async_poll_results
+      until: async_poll_results.finished
+      retries: 30
+      delay: 60
+
+  when: not edge_is_already_deployed | default(false)
