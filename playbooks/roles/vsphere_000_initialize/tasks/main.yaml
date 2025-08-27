@@ -49,6 +49,11 @@
     associable_object_types:
       - Datastore
     state: present
+  register: datastore_category_info
+  until: datastore_category_info is succeeded
+  delay: 30
+  retries: 20
+# Wait for service
 
 - name: Create a tag
   community.vmware.vmware_tag:
