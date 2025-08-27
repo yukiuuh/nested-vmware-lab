@@ -37,6 +37,8 @@ locals {
     var.avi != null ? [var.avi.controller_ova_url] : [],
     var.nsx != null ? ["${var.nsx.manager_ova_path}${var.nsx.manager_ova}"] : [],
     var.vrli != null ? [var.vrli.remote_ovf_url] : [],
+    var.vrops != null ? [var.vrops.remote_ovf_url] : [],
+
   )
   check_datastore_files = concat([{
     datastore_name = var.esxi_iso_datastore
@@ -117,6 +119,24 @@ module "vrli_cluster" {
   domain_name         = var.domain_name
   vm_password         = var.vm_password
   network_name        = var.network_name
+}
+
+module "vrops_cluster" {
+  depends_on        = [module.router]
+  count             = var.vrops != null ? 1 : 0
+  source            = "../../module/vrops_cluster"
+  vi                = module.vi
+  name_prefix       = local.name_prefix
+  starting_ip       = var.vrops.starting_ip
+  hostname_prefix   = var.vrops.hostname_prefix
+  deployment_option = var.vrops.deployment_option
+  gateway           = var.gateway
+  remote_ovf_url    = var.vrops.remote_ovf_url
+  single_node       = var.vrops.single_node
+  nameservers       = var.nameservers
+  subnet_mask       = var.subnet_mask
+  domain_name       = var.domain_name
+  network_name      = var.network_name
 }
 
 module "tkg_cli" {

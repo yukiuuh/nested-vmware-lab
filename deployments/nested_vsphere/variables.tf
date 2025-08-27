@@ -292,6 +292,18 @@ variable "vrli" {
   })
 }
 
+variable "vrops" {
+  nullable = true
+  default  = null
+  type = object({
+    starting_ip       = string
+    single_node       = optional(bool, true)
+    hostname_prefix   = string
+    remote_ovf_url    = string
+    deployment_option = optional(string, "small")
+  })
+}
+
 variable "vsphere_provisioner" {
   nullable = true
   default  = null

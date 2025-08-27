@@ -32,6 +32,10 @@ output "vrli_cluster" {
   value = var.vrli != null ? module.vrli_cluster[0].vrli_nodes : null
 }
 
+output "vrops_cluster" {
+  value = var.vrops != null ? module.vrops_cluster[0].vrops_nodes : null
+}
+
 output "cloud_builder" {
   value = var.cloud_builder != null ? module.cloud_builder[0] : null
 }
