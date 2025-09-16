@@ -97,6 +97,8 @@ variable "nested_esxi_shape" {
     vcf_mode                          = optional(bool, false)
     memory_reservation_enabled        = optional(bool, false)
     hardware_random_generator_enabled = optional(bool, false)
+    additional_commands               = optional(set(string), [])
+    additional_vibs                   = optional(set(string), [])
     disks = list(object({
       label       = string
       size_gb     = number

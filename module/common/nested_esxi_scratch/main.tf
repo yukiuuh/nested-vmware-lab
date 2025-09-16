@@ -164,3 +164,37 @@ resource "vsphere_virtual_machine" "nested_esxi" {
     }
   }
 }
+
+resource "terraform_data" "install_additional_vibs" {
+  depends_on = [vsphere_virtual_machine.nested_esxi]
+  for_each   = var.additional_vibs
+  provisioner "local-exec" {
+    command = "govc guest.upload -f -debug -l 'root:${var.password}' -vm ${var.name} ${each.value} /var/tmp/${basename(each.value)}"
+    environment = {
+      GOVC_URL        = nonsensitive(var.vi.govc_url)
+      GOVC_INSECURE   = "true"
+      GOVC_DATACENTER = var.vi.datacenter.name
+    }
+  }
+  provisioner "local-exec" {
+    command = "until govc guest.run -l 'root:${var.password}' -vm ${var.name} /bin/esxcli software vib install -v /var/tmp/${each.value} --no-sig-check; do sleep 30 ; done"
+    environment = {
+      GOVC_URL        = nonsensitive(var.vi.govc_url)
+      GOVC_INSECURE   = "true"
+      GOVC_DATACENTER = var.vi.datacenter.name
+    }
+  }
+}
+
+resource "terraform_data" "exec_additional_commands" {
+  depends_on = [terraform_data.install_additional_vibs]
+  for_each   = var.additional_commands
+  provisioner "local-exec" {
+    command = "govc guest.run -l 'root:${var.password}' -vm ${var.name} /bin/sh -c \"${each.value}\""
+    environment = {
+      GOVC_URL        = nonsensitive(var.vi.govc_url)
+      GOVC_INSECURE   = "true"
+      GOVC_DATACENTER = var.vi.datacenter.name
+    }
+  }
+}

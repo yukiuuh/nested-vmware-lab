@@ -115,6 +115,23 @@ terraform destroy
 
 [vcf9.tfvars.example](examples/vcf9.tfvars.example) or [vcf5.tfvars.example](examples/vcf5.tfvars.example)
 
+#### vSAN ESA deployment
+
+specify William Lam's Nested vSAN ESA Hardware Mock vib path to `nested_esxi_shape.additional_vibs`
+
+* lamw/nested-vsan-esa-mock-hw-vib: Nested vSAN ESA Mock HW VIB
+https://github.com/lamw/nested-vsan-esa-mock-hw-vib/
+
+```sh
+nested_esxi_shape = {
+  "num_cpus"                          = 16
+  "mem_gb"                            = 64
+  "nic_count"                         = 4
+  "vcf_mode"                          = true
+  "nvme_enabled"                      = true # <---
+  "additional_vibs"                   = ["/app/vib/nested-vsan-esa-mock-hw.vib"] # <---
+```
+
 #### Re-deploy ESXi hosts
 
 ```bash

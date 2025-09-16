@@ -11,11 +11,12 @@ COPY --from=hairyhenderson/gomplate /gomplate /bin/gomplate
 RUN groupadd --gid $USER_GID $USERNAME && \
     useradd --uid $USER_UID --gid $USER_GID -m $USERNAME && \
     apt-get update && \
-    apt-get install -y vim ssh sshpass netcat-openbsd git ca-certificates --no-install-recommends && \
+    apt-get install -y vim ssh sshpass netcat-openbsd git ca-certificates curl --no-install-recommends && \
     pip install pip --upgrade && \
     pip install --no-cache-dir ansible==10.0.0a1 ansible-lint pyvmomi jmespath passlib netaddr git+https://github.com/vmware/vsphere-automation-sdk-python.git && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir -p /app/workspace && \
+    mkdir -p /app/vib && \
     chown -R ${USER_UID}:${USER_GID} /app
 USER ${USERNAME}
 RUN ansible-galaxy collection install community.general && \
@@ -35,6 +36,9 @@ COPY --chown=${USER_UID}:${USER_GID} ./templates /app/templates
 COPY --chown=${USER_UID}:${USER_GID} ./examples /app/examples
 
 RUN cd /app/deployments/nested_vsphere/ && terraform init -input=false
+
+WORKDIR /app/vib
+RUN curl -LO https://github.com/lamw/nested-vsan-esa-mock-hw-vib/releases/download/1.0/nested-vsan-esa-mock-hw.vib
 
 WORKDIR /app
 

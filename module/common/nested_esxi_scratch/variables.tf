@@ -133,7 +133,14 @@ variable "vcf_mode" {
 variable "memory_reservation_enabled" {
   default = false
 }
-
 variable "hardware_random_generator_enabled" {
   default = true
+}
+variable "additional_vibs" {
+  type    = set(string)
+  default = []
+}
+variable "additional_commands" {
+  type    = set(string)
+  default = []
 }

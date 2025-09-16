@@ -92,6 +92,9 @@ module "nested_esxi_scratch" {
   nfs_hosts          = var.nfs_hosts
   iscsi_targets      = var.iscsi_targets
   vcf_mode           = var.nested_esxi_shape.vcf_mode
+
+  additional_commands = var.nested_esxi_shape.additional_commands
+  additional_vibs     = var.nested_esxi_shape.additional_vibs
 }
 
 resource "terraform_data" "stop_kickstarter" {
