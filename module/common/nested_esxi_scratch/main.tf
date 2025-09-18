@@ -177,7 +177,7 @@ resource "terraform_data" "install_additional_vibs" {
     }
   }
   provisioner "local-exec" {
-    command = "until govc guest.run -l 'root:${var.password}' -vm ${var.name} /bin/esxcli software vib install -v /var/tmp/${each.value} --no-sig-check; do sleep 30 ; done"
+    command = "until govc guest.run -l 'root:${var.password}' -vm ${var.name} /bin/esxcli software vib install -v /var/tmp/${basename(each.value)} --no-sig-check; do sleep 30 ; done"
     environment = {
       GOVC_URL        = nonsensitive(var.vi.govc_url)
       GOVC_INSECURE   = "true"
