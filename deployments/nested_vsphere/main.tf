@@ -246,6 +246,7 @@ module "vsphere_kickstarter" {
   vcsa_deployment_size   = var.nested_vcsa.deployment_option
   vcsa_password          = var.vm_password
   vcsa_subnet_mask       = var.subnet_mask
+  vcsa_sso_domain_name   = var.nested_vcsa.sso_domain_name
 }
 
 module "vcsa_standalone" {
@@ -265,6 +266,7 @@ module "vcsa_standalone" {
   nameservers       = var.nameservers
   vm_password       = var.vm_password
   deployment_option = var.nested_vcsa.deployment_option
+  sso_domain_name   = var.nested_vcsa.sso_domain_name
 }
 
 module "esxi_cluster" {
@@ -350,7 +352,7 @@ module "vsphere_provisioner" {
   count                   = var.nested_vcsa != null && var.vsphere_provisioner != null ? 1 : 0
   vcsa_ip                 = var.nested_vcsa.ip
   vcsa_password           = var.vm_password
-  vcsa_username           = "administrator@vsphere.local"
+  vcsa_username           = "administrator@${var.nested_vcsa.sso_domain_name}"
   vcsa_vmname             = local.vcsa_vmname
   local_govc_path         = "/usr/bin/govc"
   ip                      = module.vsphere_kickstarter[0].ip

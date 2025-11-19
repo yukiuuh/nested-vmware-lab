@@ -124,6 +124,7 @@ variable "nested_vcsa" {
     iso_datastore     = string
     datastore         = string
     deployment_option = string
+    sso_domain_name   = optional(string, "vsphere.local")
   })
 }
 
