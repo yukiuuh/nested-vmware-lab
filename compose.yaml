@@ -6,9 +6,13 @@ services:
       context: .
       dockerfile: ./Dockerfile
     volumes:
-      - .:/work:cached
-    working_dir: /work
+      - workspace:/app/workspace
+    working_dir: /app/workspace
     platform: linux/amd64
     tty: true
     user: bootstrap
     init: true
+    entrypoint: ["/bin/sh", "-c", "cp -r /app/deployments/nested_vsphere /app/workspace/ && /bin/bash"]
+
+volumes:
+  workspace:
