@@ -221,7 +221,7 @@ locals {
 module "vsphere_kickstarter" {
   count                  = var.nested_vcsa != null ? 1 : 0
   source                 = "../../module/vsphere_kickstarter"
-  depends_on             = [module.router]
+  depends_on             = [module.router, module.esxi_cluster]
   network_interfaces     = [var.network_name]
   vsphere_kickstarter_ip = var.ks_server_ip
   gateway                = var.gateway
@@ -272,8 +272,8 @@ module "vcsa_standalone" {
 module "esxi_cluster" {
   source                      = "../../module/nested_esxi_cluster"
   depends_on                  = [module.storage]
-  create_ks_server            = local.is_vcsa_self_managed ? false : true
-  ks_server_ip                = local.is_vcsa_self_managed ? module.vsphere_kickstarter[0].ip : var.ks_server_ip
+  create_ks_server            = true
+  ks_server_ip                = var.ks_server_ip
   ks_server_user              = "root"
   ks_server_www_dir           = "/srv/"
   bastion_ip                  = var.external_network != null ? module.router[0].wan_ip : null
