@@ -73,4 +73,26 @@ resource "vsphere_virtual_machine" "nsx_manager" {
       "nsx_hostname"           = var.hostname
     }
   }
+
+  provisioner "local-exec" {
+    command = "until govc guest.run -l 'root:${var.vm_password}' -vm ${var.name} ls /root ; do sleep 60 ; done"
+    environment = {
+      GOVC_URL      = nonsensitive(var.vi.govc_url)
+      GOVC_INSECURE = "true"
+    }
+  }
+  provisioner "local-exec" {
+    command = "until govc guest.upload -l 'root:${var.vm_password}' -vm ${var.name} ${path.module}/files/disable_ovf_validation_flag.sh /root/disable_ovf_validation_flag.sh ; do sleep 60 ; done"
+    environment = {
+      GOVC_URL      = nonsensitive(var.vi.govc_url)
+      GOVC_INSECURE = "true"
+    }
+  }
+  provisioner "local-exec" {
+    command = "govc guest.run -l 'root:${var.vm_password}' -vm ${var.name} bash /root/disable_ovf_validation_flag.sh"
+    environment = {
+      GOVC_URL      = nonsensitive(var.vi.govc_url)
+      GOVC_INSECURE = "true"
+    }
+  }
 }
