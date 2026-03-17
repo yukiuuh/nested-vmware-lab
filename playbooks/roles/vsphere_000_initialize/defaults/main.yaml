@@ -1,0 +1,18 @@
+---
+# Connection & auth
+validate_certs: false
+
+# vCenter
+vc_address: ""
+vc_username: "administrator@vsphere.local"
+vc_password: ""
+
+# Target infrastructure
+datacenter_name: ""
+cluster_name: ""
+
+# Hosts & storage
+register_esxi_hostnames: []
+esxi_password: ""
+storage_policies: []
+content_libraries: []

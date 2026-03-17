@@ -2,32 +2,38 @@
 - name: Deploy nested NSX
   gather_facts: false
   hosts: all
-  vars:
-    validate_certs: false
   tasks:
     - name: Setup variables for NSX
       ansible.builtin.set_fact:
-        state: "present"
-        ovftool_path: '{{ ovftool_path }}'
         vc_address: '{{ vc_address }}'
         vc_username: '{{ vc_username }}'
         vc_password: '{{ vc_password }}'
-        nsx_username: '{{ nsx_username }}'
         nsx_password: '{{ nsx_password }}'
         nsx_ova_path: '{{ nsx_ova_path }}'
         nsx_ova: '{{ nsx_ova }}'
         nsx_node1: "{{ nsx_manager1 | from_json }}"
-        domain: '{{ domain_name }}'
+
+        domain_name: '{{ domain_name }}'
         netmask: '{{ netmask }}'
         gateway: '{{ gateway }}'
         dns_server: '{{ dns_server }}'
         ntp_server: '{{ ntp_server }}'
+
         datacenter_name: '{{ datacenter_name }}'
         cluster_name: '{{ cluster_name }}'
         datastore_name: '{{ datastore_name }}'
         management_portgroup_name: '{{ management_portgroup_name }}'
         nsx_manager_deployment_size: '{{ nsx_manager_deployment_size }}'
+        ovftool_path: '{{ ovftool_path }}'
 
     - name: Deploy NSX Manager
       ansible.builtin.include_role:
         name: nsx_manager_000_deploy
+
+    - name: Patch NSX Manager OVF Validation
+      ansible.builtin.include_role:
+        name: vsphere_vm_run_script
+      vars:
+        vm_name: "{{ nsx_node1.vmname }}"
+        vm_password: "{{ nsx_password }}"
+        vm_script_src: "disable_ovf_validation_flag.sh"

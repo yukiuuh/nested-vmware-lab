@@ -11,6 +11,7 @@ data "vsphere_ovf_vm_template" "ubuntu" {
   datastore_id      = var.vi.datastore.id
   host_system_id    = var.vi.compute_host.id
   remote_ovf_url    = var.remote_ovf_url
+  local_ovf_path    = var.remote_ovf_url == null ? var.local_ovf_path : null
   ovf_network_map = {
     "VM Network" : local.default_network_id
   }
@@ -52,12 +53,7 @@ resource "vsphere_virtual_machine" "ubuntu" {
     content {
       datastore_id  = cdrom.value.datastore_id
       path          = cdrom.value.path
-      client_device = cdrom.value.client_device
     }
-  }
-
-  cdrom {
-    client_device = true
   }
 
   dynamic "disk" {
@@ -76,6 +72,7 @@ resource "vsphere_virtual_machine" "ubuntu" {
   ovf_deploy {
     allow_unverified_ssl_cert = true
     remote_ovf_url            = var.remote_ovf_url
+    local_ovf_path            = var.remote_ovf_url == null ? var.local_ovf_path : null
     disk_provisioning         = "thin"
     ovf_network_map = {
       "VM Network" : local.default_network_id

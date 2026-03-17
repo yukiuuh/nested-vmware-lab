@@ -1,0 +1,11 @@
+---
+# Connection & auth
+vsphere_host_depot_vcenter_address: ""
+vsphere_host_depot_user: "administrator@vsphere.local"
+vsphere_host_depot_password: ""
+validate_certs: false
+
+# Depot settings
+vsphere_host_depot_fqdn: ""
+vsphere_host_depot_download_token: ""
+vsphere_host_depot_action: "update"

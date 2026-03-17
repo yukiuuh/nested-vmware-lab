@@ -1,0 +1,87 @@
+---
+- name: Wait for VMware Tools on {{ vm_name }}
+  community.vmware.vmware_guest_tools_wait:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    name: "{{ vm_name }}"
+  register: guest_tools_info
+  until: guest_tools_info is succeeded
+  retries: 30
+  delay: 10
+
+- name: Create temporary file on execution host
+  ansible.builtin.tempfile:
+    state: file
+    suffix: _script
+  register: host_temp_script
+
+- name: Transfer script from control node to execution host
+  ansible.builtin.copy:
+    src: "{{ (vm_script_src is abs) | ternary(vm_script_src, role_path + '/files/' + vm_script_src) }}"
+    dest: "{{ host_temp_script.path }}"
+    mode: '0755'
+
+- name: Upload script from execution host to {{ vm_name }}
+  community.vmware.vmware_guest_file_operation:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    vm_id: "{{ vm_name }}"
+    vm_username: "{{ vm_username }}"
+    vm_password: "{{ vm_password }}"
+    copy:
+      src: "{{ host_temp_script.path }}"
+      dest: "{{ vm_script_dest }}"
+      overwrite: true
+
+- name: Execute script on {{ vm_name }}
+  community.vmware.vmware_vm_shell:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    vm_id: "{{ vm_name }}"
+    vm_username: "{{ vm_username }}"
+    vm_password: "{{ vm_password }}"
+    vm_shell: "/bin/bash"
+    vm_shell_args: "{{ vm_script_dest }}{{ vm_script_args | ternary(' ' + vm_script_args, '') }}"
+    wait_for_process: true
+  register: script_result
+  failed_when: script_result.exit_code not in [0, 2]
+  changed_when: script_result.exit_code == 0
+
+- name: Debug script output for {{ vm_name }}
+  ansible.builtin.debug:
+    var: script_result
+  when: script_result.stdout is not defined or script_result.stdout == ""
+
+- name: Debug script output for {{ vm_name }} (stdout)
+  ansible.builtin.debug:
+    msg: "{{ script_result.stdout_lines }}"
+  when: script_result.stdout is defined and script_result.stdout != ""
+
+- name: Cleanup temporary file on execution host
+  ansible.builtin.file:
+    path: "{{ host_temp_script.path }}"
+    state: absent
+
+- name: Cleanup script on {{ vm_name }}
+  community.vmware.vmware_vm_shell:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    vm_id: "{{ vm_name }}"
+    vm_username: "{{ vm_username }}"
+    vm_password: "{{ vm_password }}"
+    vm_shell: "/bin/rm"
+    vm_shell_args: "-f {{ vm_script_dest }}"
+    wait_for_process: true
+  when: vm_script_cleanup | bool

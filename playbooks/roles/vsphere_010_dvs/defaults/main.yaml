@@ -1,0 +1,16 @@
+---
+# Connection & auth
+validate_certs: false
+vc_address: ""
+vc_username: "administrator@vsphere.local"
+vc_password: ""
+
+# DVS config
+dvs_name: "dvs-01"
+dvs_version: "7.0.3"
+dvs_mtu: 1500
+dvs_uplinks: []
+portgroups: []
+
+# datacenter
+datacenter_name: ""

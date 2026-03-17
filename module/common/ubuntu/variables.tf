@@ -33,7 +33,10 @@ variable "cdroms" {
 }
 
 variable "remote_ovf_url" {
-  default = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.ova"
+  default = null
+}
+variable "local_ovf_path" {
+  default = null
 }
 variable "disks" {
   type = list(object({

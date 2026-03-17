@@ -154,3 +154,18 @@
               {%- else -%}                               DNS
               {%- endif -%}
             addr: "{{ ntp_server }}"
+
+- name: Configure Default-Group Service Engine Group
+  vmware.alb.avi_serviceenginegroup:
+    avi_credentials:
+      username: "admin"
+      password: "{{ avi_password }}"
+      controller: "{{ avi_management_ip }}"
+      api_version: 22.1.5
+    name: Default-Group
+    cloud_ref: /api/cloud/?name=Default-Cloud
+    vcenter_datastores:
+      - datastore_name: "{{ con_datastore }}"
+    vcenter_datastores_include: true
+    max_vs_per_se: 1000
+    state: present

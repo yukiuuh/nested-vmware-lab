@@ -1,0 +1,58 @@
+---
+# Parallel Orchestrator for NSX Edge
+
+# Step 0: Initialize
+- name: "Initialize status and flags"
+  ansible.builtin.set_fact:
+    nodes_health_status: []
+    triggered_nodes: []
+    any_cleanup_performed: false
+
+# Step 1: Sequential check (fast) to see what needs work
+- name: "Determine node status for all requested Edges"
+  ansible.builtin.include_tasks: _check_node_status.yaml
+  loop: "{{ edge_vms }}"
+  loop_control:
+    loop_var: node_item
+
+- name: "Filter nodes needing deployment"
+  ansible.builtin.set_fact:
+    nodes_to_trigger: "{{ nodes_health_status | default([]) | selectattr('deployed', 'equalto', false) | list }}"
+
+# Step 2: Phase 1 - Cleanup all target nodes (Sequential deletion, no wait)
+- name: "Deployment Block"
+  block:
+    - name: "Reporting nodes needing deployment"
+      ansible.builtin.debug:
+        msg: >-
+          Nodes identified for deployment: {{ nodes_to_trigger | map(attribute='item.vmname') | list }}.
+          (Processed {{ nodes_health_status | length }} total nodes).
+
+    - name: "Phase 1: Concurrent deletion of failed/incomplete nodes"
+      ansible.builtin.include_tasks: _cleanup_node_only.yaml
+      loop: "{{ nodes_to_trigger }}"
+      loop_control:
+        loop_var: node_info
+
+    - name: "Phase 2: Global wait period if cleanup occurred"
+      ansible.builtin.wait_for:
+        timeout: 30
+      when: any_cleanup_performed | default(false)
+
+    - name: "Phase 3: Trigger Simultaneous Node Deployment"
+      ansible.builtin.include_tasks: _deploy_node_async.yaml
+      loop: "{{ nodes_to_trigger }}"
+      loop_control:
+        loop_var: node_info
+
+    - name: "Phase 4: Parallel Verification (Polling)"
+      ansible.builtin.include_tasks: _verify_node_post_deploy.yaml
+      loop: "{{ triggered_nodes }}"
+      loop_control:
+        loop_var: node_status
+
+  when: nodes_to_trigger | length > 0
+  rescue:
+    - name: "Orchestration failed"
+      ansible.builtin.fail:
+        msg: "Parallel deployment orchestration failed. Check logs for details."

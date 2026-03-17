@@ -1,0 +1,35 @@
+---
+# Connection & auth
+validate_certs: false
+
+# Deployment state
+state: present
+
+# VC Connection
+vc_address: ""
+vc_username: "administrator@vsphere.local"
+vc_password: ""
+
+# NSX Manager Auth (for initial setup)
+nsx_username: admin
+nsx_password: ""
+
+# OVF
+nsx_ova_path: ""
+nsx_ova: ""
+ovftool_path: ""
+
+# Infrastructure
+datacenter_name: ""
+cluster_name: ""
+datastore_name: ""
+management_portgroup_name: ""
+
+# Guest
+nsx_node1: {}
+domain_name: ""
+netmask: ""
+gateway: ""
+dns_server: ""
+ntp_server: ""
+nsx_manager_deployment_size: MEDIUM

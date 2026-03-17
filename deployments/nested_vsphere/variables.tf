@@ -14,7 +14,16 @@ variable "vm_password" { default = "VMware123!" }
 variable "name_prefix" { type = string }
 
 variable "photon_ovf_url" { default = "https://packages.vmware.com/photon/5.0/GA/ova/photon-hw15-5.0-dde71ec57.x86_64.ova" }
-variable "ubuntu_ovf_url" { default = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.ova" }
+variable "unified_ova_url" {
+  description = "Remote URL for the unified NVL OVA (router/storage). Either this or unified_ova_path must be set."
+  type        = string
+  default     = null
+}
+variable "unified_ova_path" {
+  description = "Local file path for the unified NVL OVA (router/storage). Either this or unified_ova_url must be set."
+  type        = string
+  default     = null
+}
 variable "esxi_iso_datastore" {}
 variable "esxi_iso_path" {}
 
@@ -132,16 +141,20 @@ variable "storage" {
   nullable = true
   default  = null
   type = object({
-    ip              = string
-    storage1_ip     = string
-    storage2_ip     = string
-    storage1_vlan   = number
-    storage2_vlan   = number
-    mtu             = number
-    subnet_mask     = string
-    disk_size_gb    = number
-    lun_size_gb     = number
-    lun_count       = number
+    ip            = string
+    storage1_ip   = string
+    storage2_ip   = string
+    storage1_vlan = number
+    storage2_vlan = number
+    mtu           = number
+    subnet_mask   = string
+    disk_size_gb  = number
+    num_cpus      = optional(number, 4)
+    mem_gb        = optional(number, 4)
+    luns = list(object({
+      name    = string
+      size_gb = number
+    }))
     zfs_nfs_dedup   = optional(string, "off")
     zfs_compression = optional(string, "off")
   })

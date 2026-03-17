@@ -1,0 +1,29 @@
+---
+# Connection & auth
+validate_certs: false
+nsx_state: present
+
+# vCenter
+vc_address: ""
+vc_username: "administrator@vsphere.local"
+vc_password: ""
+
+# Unified vars (standardized across playbooks)
+domain_name: ""
+netmask: ""
+gateway: ""
+datacenter_name: ""
+cluster_name: ""
+datastore_name: ""
+management_portgroup_name: ""
+ovftool_path: ""
+
+# Avi specific
+avi_ova_path: ""
+avi_vm_name: ""
+avi_hostname: ""
+avi_management_ip: ""
+
+# Role internal mappings (historical con_* prefix)
+con_disk_mode: thin
+con_power_on: true

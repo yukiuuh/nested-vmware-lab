@@ -2,30 +2,29 @@
 - name: Provision nested vSphere
   gather_facts: false
   hosts: all
-  vars:
-    validate_certs: false
   tasks:
     - name: Setup variables for vSphere
       ansible.builtin.set_fact:
-        register_esxi_hostnames: '{{ esxi_hosts | from_json | list }}'
         vc_address: '{{ vc_address }}'
         vc_username: '{{ vc_username }}'
         vc_password: '{{ vc_password }}'
         datacenter_name: '{{ datacenter_name }}'
         cluster_name: '{{ cluster_name }}'
         esxi_password: '{{ esxi_password }}'
+
+        register_esxi_hostnames: '{{ esxi_hosts | from_json | list }}'
         vsan_enabled: '{{ vsan_enabled }}'
         ha_enabled: '{{ ha_enabled }}'
         drs_enabled: '{{ drs_enabled }}'
-        storage_policies: '{{ storage_policy_list | from_json | list  }}'
-        content_libraries: '{{ content_library_list | from_json  | list }}'
+        storage_policies: '{{ storage_policy_list | from_json | list }}'
+        content_libraries: '{{ content_library_list | from_json | list }}'
+
     - name: Setup online depot
       ansible.builtin.include_role:
         name: vsphere_host_depot_change
       vars:
         vsphere_host_depot_fqdn: '{{ depot_fqdn }}'
         vsphere_host_depot_download_token: '{{ depot_token }}'
-        vsphere_host_depot_action: "update"
         vsphere_host_depot_vcenter_address: '{{ vc_address }}'
         vsphere_host_depot_user: '{{ vc_username }}'
         vsphere_host_depot_password: '{{ vc_password }}'

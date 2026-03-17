@@ -20,6 +20,7 @@ module "tkg_cli" {
   vi                 = var.vi
   name               = var.name
   remote_ovf_url     = var.ubuntu_ovf_url
+  local_ovf_path     = var.ubuntu_ovf_path
   userdata           = local.tkg_cli_userdata
   network_interfaces = [var.network_name]
   num_cpus           = 4

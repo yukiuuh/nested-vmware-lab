@@ -1,0 +1,165 @@
+#cloud-config
+
+users:
+  - name: ${user}
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    groups: sudo, adm, docker, cdrom, dip, lxd
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: '${password}'
+%{ if length(ssh_authorized_keys) > 0  }
+    ssh_authorized_keys:
+%{ for key in ssh_authorized_keys ~}
+      - ${key}
+%{ endfor ~}
+%{ else }
+# NO AUTHORIZED KEY
+%{ endif }
+
+
+
+write_files:
+  - content: |
+      net.ipv4.ip_forward=1
+      net.ipv6.conf.all.forwarding=1
+      nf_conntrack_max=131072
+    path: /etc/sysctl.d/99-routing.conf
+  - content: |
+      network:
+        version: 2
+        ethernets:
+          ens192:
+%{ if ip_address == "" || ip_address == null ~}
+            dhcp4: true
+%{ else ~}
+            addresses:
+              - ${ip_address}/${subnet_mask}
+            routes:
+              - to: default
+                via: ${gateway}
+            dhcp4: false
+            nameservers:
+              addresses:
+%{ for nameserver in nameservers ~}
+                - ${nameserver}
+%{ endfor ~}
+%{ endif ~}
+          ens224:
+            mtu: ${vlan_mtu}
+            dhcp4: false
+            dhcp6: false
+            addresses: [ "${cidrhost(management_network_address, 1)}/24" ]
+        vlans:
+%{ for vlan_network in vlan_networks ~}
+          vlan.${vlan_network.vlan}:
+            id: ${vlan_network.vlan}
+            link: ens224
+            dhcp6: false
+            addresses: [ "${cidrhost(vlan_network.address,1)}/24" ]
+            mtu: ${vlan_mtu}
+%{ endfor ~}
+    path: /etc/netplan/99-static.yaml
+    permissions: '0600'
+  - path: /etc/squid/squid.conf
+    content: |
+      acl SSL_ports port 443
+      acl Safe_ports port 80          # http
+      acl Safe_ports port 21          # ftp
+      acl Safe_ports port 443         # https
+      acl Safe_ports port 70          # gopher
+      acl Safe_ports port 210         # wais
+      acl Safe_ports port 1025-65535  # unregistered ports
+      acl Safe_ports port 280         # http-mgmt
+      acl Safe_ports port 488         # gss-http
+      acl Safe_ports port 591         # filemaker
+      acl Safe_ports port 777         # multiling http
+      acl CONNECT method CONNECT
+      include /etc/squid/conf.d/*
+      http_access allow all
+      http_port ${http_proxy_port}
+      coredump_dir /var/spool/squid
+      refresh_pattern ^ftp:           1440    20%     10080
+      refresh_pattern ^gopher:        1440    0%      1440
+      refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
+      refresh_pattern \/(Packages|Sources)(|\.bz2|\.gz|\.xz)$ 0 0% 0 refresh-ims
+      refresh_pattern \/Release(|\.gpg)$ 0 0% 0 refresh-ims
+      refresh_pattern \/InRelease$ 0 0% 0 refresh-ims
+      refresh_pattern \/(Translation-.*)(|\.bz2|\.gz|\.xz)$ 0 0% 0 refresh-ims
+      refresh_pattern .               0       20%     4320
+  - content: ${hosts_base64}
+    encoding: b64
+    path: /etc/hosts
+  - content: |
+%{ for nameserver in nameservers ~}
+      nameserver ${nameserver}
+%{ endfor ~}
+    path: /etc/dnsmasq.resolv.conf
+  - content: |
+      domain=${domain}
+      domain-needed
+      bogus-priv
+      listen-address=0.0.0.0
+      resolv-file=/etc/dnsmasq.resolv.conf
+      strict-order
+    path: /etc/dnsmasq.d/dns.conf
+  - content: |
+      log-dhcp
+      interface=ens224
+      dhcp-range=tag:ens224,${cidrhost(management_network_address, 200)},${cidrhost(management_network_address, 250)},30m
+      dhcp-option=tag:ens224,option:router,${cidrhost(management_network_address, 1)}
+      dhcp-option=option:netmask,255.255.255.0
+      dhcp-option=option:dns-server,${cidrhost(management_network_address, 1)}
+%{ for enable_dhcp_network in enable_dhcp_networks ~}
+      interface=vlan.${enable_dhcp_network.vlan}
+      dhcp-range=tag:vlan.${enable_dhcp_network.vlan},${enable_dhcp_network.start_ip},${enable_dhcp_network.end_ip},30m
+      dhcp-option=tag:vlan.${enable_dhcp_network.vlan},option:netmask,${enable_dhcp_network.netmask}
+      dhcp-option=tag:vlan.${enable_dhcp_network.vlan},option:router,${enable_dhcp_network.gateway}
+%{ endfor ~}
+    path: /etc/dnsmasq.d/dhcp.conf
+  - content: ${frr_conf_base64}
+    encoding: b64
+    path: /tmp/frr.conf
+  - content: |
+      allow 0.0.0.0/0
+    path: /etc/chrony/conf.d/99-allow-all.conf
+  - content: |
+      PasswordAuthentication yes
+    path: /etc/ssh/sshd_config.d/00-allow-password.conf
+
+runcmd:
+  - systemctl restart ssh
+  - systemctl restart netfilter-persistent
+  - systemctl enable netfilter-persistent
+  - sysctl -p /etc/sysctl.d/99-routing.conf
+  - netplan apply
+  - hostnamectl set-hostname ${hostname}.${domain}
+  - iptables -A INPUT -j ACCEPT
+  - iptables -A FORWARD -j ACCEPT
+  - iptables -t nat -o ens192 -A POSTROUTING -j MASQUERADE
+  - iptables -t nat -A PREROUTING -p tcp -i ens192 --dport 10022 -j DNAT --to 10.0.0.2:22
+  - iptables -t nat -A PREROUTING -p tcp -i ens192 --dport 3389 -j DNAT --to 10.0.0.2
+  - iptables -t nat -A PREROUTING -p udp -i ens192 --dport 3389 -j DNAT --to 10.0.0.2
+  - iptables-save > /etc/iptables/rules.v4
+  - iptables-restore < /etc/iptables/rules.v4
+  - sysctl -p
+  - modprobe nf_conntrack
+  #DNS
+  - ln -fs /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  - systemctl stop systemd-resolved
+  - systemctl disable systemd-resolved
+  - systemctl restart dnsmasq
+  - systemctl enable dnsmasq
+  # NTP
+  - systemctl enable chrony
+  - systemctl start chrony
+  - sed -i.org 's/bgpd=no/bgpd=yes/' /etc/frr/daemons
+  - cp /tmp/frr.conf /etc/frr/frr.conf
+  - chmod 640 /etc/frr/frr.conf
+  - chown frr:frr /etc/frr/frr.conf
+  - systemctl restart frr
+  - systemctl enable frr
+  - systemctl restart squid
+  - systemctl enable squid
+  - systemctl enable apache2
+  - systemctl start apache2
+  - echo > /var/tmp/provisioned

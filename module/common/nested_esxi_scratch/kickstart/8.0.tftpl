@@ -39,7 +39,7 @@ esxcli network vswitch standard portgroup set -v ${vlan} -p "VM Network"
 
 %{ if storage1_vmknic != null ~}
 esxcli network vswitch standard add --vswitch-name=vSwitch1
-esxcli network vswitch standard set --vswitch-name=vSwitch1 --mtu=${mtu}
+esxcli network vswitch standard set --vswitch-name=vSwitch1 --mtu=${storage1_vmknic.mtu}
 esxcli network vswitch standard uplink add --vswitch-name=vSwitch1 --uplink-name=vmnic2
 esxcli network vswitch standard portgroup add --vswitch-name=vSwitch1 -p Storage1
 esxcli network vswitch standard portgroup set -p Storage1 -v ${storage1_vmknic.vlan}
@@ -49,7 +49,7 @@ esxcli network ip interface ipv4 set -i vmk1 -t=static -I=${storage1_vmknic.ip} 
 
 %{ if storage2_vmknic != null  ~}
 esxcli network vswitch standard add --vswitch-name=vSwitch2
-esxcli network vswitch standard set --vswitch-name=vSwitch2 --mtu=${mtu}
+esxcli network vswitch standard set --vswitch-name=vSwitch2 --mtu=${storage2_vmknic.mtu}
 esxcli network vswitch standard uplink add --vswitch-name=vSwitch2 --uplink-name=vmnic3
 esxcli network vswitch standard portgroup add --vswitch-name=vSwitch2 -p Storage2
 esxcli network vswitch standard portgroup set -p Storage2 -v ${storage2_vmknic.vlan}

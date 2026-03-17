@@ -1,0 +1,80 @@
+
+
+module "management_address" {
+  source     = "../common/netmask2prefix"
+  ip_address = var.ip
+  netmask    = var.subnet_mask
+}
+module "storage_address" {
+  source     = "../common/netmask2prefix"
+  ip_address = var.storage1_ip
+  netmask    = var.storage_subnet_mask
+}
+locals {
+  storage_hostname  = "storage"
+  storage_user      = "labadmin"
+  storage_nfs_share = "/pool01/nfs"
+  storage_userdata = templatefile("${path.module}/templates/userdata.tftpl",
+    {
+      ssh_authorized_keys = var.ssh_authorized_keys
+      password            = var.vm_password
+      user                = local.storage_user
+      ip_address          = var.ip
+      prefix              = module.management_address.prefix_length
+      storage_prefix      = module.storage_address.prefix_length
+      gateway             = var.gateway
+      nameservers         = var.nameservers
+      domain              = var.domain_name
+      hostname            = local.storage_hostname
+      storage_mtu         = var.storage_mtu
+      storage1_ip         = var.storage1_ip
+      storage2_ip         = var.storage2_ip
+      storage1_vlan       = var.storage1_vlan
+      storage2_vlan       = var.storage2_vlan
+      luns                = var.luns
+      zfs_compression     = var.zfs_compression
+      zfs_nfs_dedup       = var.zfs_nfs_dedup
+    }
+  )
+}
+
+module "storage" {
+  source             = "../common/ubuntu"
+  vi                 = var.vi
+  name               = var.name
+  remote_ovf_url     = var.ubuntu_ovf_url
+  local_ovf_path     = var.local_ovf_path
+  userdata           = local.storage_userdata
+  network_interfaces = [var.network_name, var.network_name, var.network_name]
+  num_cpus           = var.num_cpus 
+  mem_gb             = var.mem_gb
+  disks = [
+    {
+      "label"       = "disk0"
+      "size_gb"     = 16
+      "unit_number" = 0
+    },
+    {
+      "label"       = "disk1"
+      "size_gb"     = var.storage_disk_size_gb
+      "unit_number" = 1
+    }
+  ]
+}
+
+resource "terraform_data" "wait_for_storage_vm" {
+  depends_on = [module.storage]
+  input = {
+    name     = var.name
+    password = var.vm_password
+    username = local.storage_user
+  }
+  provisioner "local-exec" {
+    command = "until govc guest.ls -l '${self.input.username}:${self.input.password}' -vm ${self.input.name} /var/tmp/provisioned; do sleep 60 ; done"
+    environment = {
+      GOVC_URL        = var.vi.govc_url
+      GOVC_INSECURE   = "true"
+      GOVC_DATACENTER = var.vi.datacenter.name
+    }
+  }
+}

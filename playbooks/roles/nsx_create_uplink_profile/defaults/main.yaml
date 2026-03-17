@@ -1,0 +1,12 @@
+---
+# Connection & auth (defaults to NSX manager)
+nsx_hostname: ""
+nsx_password: ""
+nsx_username: admin
+validate_certs: false
+nsx_state: present
+
+# Uplink Profile spec
+uplink_profile:
+  name: ""
+  vlan: 0

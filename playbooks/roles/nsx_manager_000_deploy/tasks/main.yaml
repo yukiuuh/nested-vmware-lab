@@ -1,27 +1,54 @@
-- name: Deploy NSX Manager OVA
-  vmware.ansible_for_nsxt.nsxt_deploy_ova:
-    ovftool_path: "{{ ovftool_path }}"
+- name: Deploy NSX Manager VM (No Power On)
+  community.vmware.vmware_deploy_ovf:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
     datacenter: "{{ datacenter_name }}"
-    datastore: "{{ datastore_name }}"
-    portgroup: "{{ management_portgroup_name }}"
     cluster: "{{ cluster_name }}"
-    vmname: "{{ nsx_node1.vmname }}"
-    hostname: "{{ nsx_node1.hostname }}"
-    dns_server: "{{ dns_server }}"
-    dns_domain: "{{ domain }}"
-    ntp_server: "{{ ntp_server }}"
-    gateway: "{{ gateway }}"
-    ip_address: "{{ nsx_node1.ip }}"
-    netmask: "{{ netmask }}"
-    admin_password: "{{ nsx_password }}"
-    cli_password: "{{ nsx_password }}"
-    path_to_ova: "{{ nsx_ova_path }}"
-    ova_file: "{{ nsx_ova }}"
-    vcenter: "{{ vc_address }}"
-    vcenter_user: "{{ vc_username }}"
-    vcenter_passwd: "{{ vc_password }}"
-    deployment_size: "{{ nsx_manager_deployment_size }}"
-    role: "NSX Manager"
+    datastore: "{{ datastore_name }}"
+    name: "{{ nsx_node1.vmname }}"
+    ovf: "{{ nsx_ova_path }}/{{ nsx_ova }}"
+    deployment_option: "{{ nsx_manager_deployment_size | lower }}"
+    power_on: no
+    networks:
+      "Network 1": "{{ management_portgroup_name }}"
+    properties:
+      nsx_hostname: "{{ nsx_node1.hostname }}"
+      nsx_ip_0: "{{ nsx_node1.ip }}"
+      nsx_netmask_0: "{{ netmask }}"
+      nsx_gateway_0: "{{ gateway }}"
+      nsx_dns1_0: "{{ dns_server }}"
+      nsx_domain_0: "{{ domain_name }}"
+      nsx_ntp_0: "{{ ntp_server }}"
+      nsx_isSSHEnabled: "True"
+      nsx_allowSSHRootLogin: "True"
+      nsx_passwd_0: "{{ nsx_password }}"
+      nsx_cli_passwd_0: "{{ nsx_password }}"
+      nsx_cli_audit_passwd_0: "{{ nsx_password }}"
+      nsx_role: "NSX Manager"
+
+- name: Remove Resource Reservations for NSX Manager
+  community.vmware.vmware_guest:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: false
+    name: "{{ nsx_node1.vmname }}"
+    hardware:
+      memory_reservation: 0
+      cpu_reservation: 0
+    state: present
+
+- name: Power on NSX Manager
+  community.vmware.vmware_guest:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    name: "{{ nsx_node1.vmname }}"
+    state: poweredon
 
 - name: Check manager status
   vmware.ansible_for_nsxt.nsxt_manager_status:

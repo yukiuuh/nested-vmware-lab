@@ -1,0 +1,56 @@
+---
+# ── Connection & auth ──────────────────────────────
+validate_certs: false
+nsx_state: present
+
+# vCenter
+vc_address: ""
+vc_username: "administrator@vsphere.local"
+vc_password: ""
+
+# NSX Manager
+nsx_hostname: ""
+nsx_username: admin
+nsx_password: ""
+
+# ── Infrastructure placement ──────────────────────
+datacenter_name: ""
+cluster_name: ""
+datastore_name: ""
+management_portgroup_name: ""
+nsx_host_switch_name: ""
+
+# ── Network ───────────────────────────────────────
+domain_name: ""
+netmask: "255.255.255.0"
+gateway: ""
+dns_server: ""
+ntp_server: ""
+
+# ── Edge VM deployment ────────────────────────────
+edge_deployment_size: MEDIUM
+edge_vms: []
+
+# ── BGP ───────────────────────────────────────────
+nsx_local_as_num: 300
+nsx_remote_as_num: 200
+nsx_t0_gateway: ""
+external_uplink_vlan: 0
+
+# ── NSX object naming & settings ─────────────────
+edge_uplink_segment_name: edge_uplink_segment
+external_uplink_segment_name: external_uplink
+
+# Edge TEP IP Pool
+edge_tep_ip_pool_name: edge_ip_pool_tep
+edge_tep_ip_pool_start_ip: ""
+edge_tep_ip_pool_end_ip: ""
+edge_tep_ip_pool_cidr: ""
+edge_tep_ip_pool_gateway: ""
+
+# Edge Uplink Profile
+edge_tep_uplink_profile_name: edge_uplink_profile
+edge_tep_uplink_vlan: 0
+
+edge_host_switch_profile_name: edge_host_switch_profile
+nsx_edge_cluster_name: edge_cluster

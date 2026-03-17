@@ -1,0 +1,16 @@
+---
+# Connection & auth
+validate_certs: false
+
+# vCenter (Legacy con_* prefix for this role)
+vcenter_host: ""
+vcenter_user: "administrator@vsphere.local"
+vcenter_password: ""
+con_datacenter: ""
+con_cluster: ""
+con_mgmt_network: ""
+con_datastore: ""
+
+# Avi infrastructure
+avi_default_ipam_name: "defaultipam"
+avi_ipam_usable_networks: []

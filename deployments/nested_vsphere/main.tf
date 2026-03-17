@@ -30,7 +30,8 @@ module "vi" {
 
 locals {
   check_ova_urls = concat(
-    [var.photon_ovf_url, var.ubuntu_ovf_url],
+    var.unified_ova_url != null ? [var.unified_ova_url] : [],
+    var.photon_ovf_url != null ? [var.photon_ovf_url] : [],
     var.nested_vcsa != null && var.nested_vcsa.remote_ovf_url != "" ? [var.nested_vcsa.remote_ovf_url] : [],
     var.vcf_installer != null ? [var.vcf_installer.remote_ovf_url] : [],
     var.cloud_builder != null ? [var.cloud_builder.remote_ovf_url] : [],
@@ -38,7 +39,6 @@ locals {
     var.nsx != null ? ["${var.nsx.manager_ova_path}${var.nsx.manager_ova}"] : [],
     var.vrli != null ? [var.vrli.remote_ovf_url] : [],
     var.vrops != null ? [var.vrops.remote_ovf_url] : [],
-
   )
   check_datastore_files = concat([{
     datastore_name = var.esxi_iso_datastore
@@ -84,7 +84,7 @@ locals {
 module "router" {
   depends_on          = [module.source_validator]
   count               = var.external_network != null ? 1 : 0
-  source              = "../../module/router"
+  source              = "../../module/nvl-router"
   vi                  = module.vi
   name                = "${local.name_prefix}-router"
   network_name        = var.network_name
@@ -92,7 +92,8 @@ module "router" {
   nameservers         = var.external_network.nameservers
   subnet_mask         = var.external_network.subnet_mask
   vm_password         = var.vm_password
-  ubuntu_ovf_url      = var.ubuntu_ovf_url
+  ubuntu_ovf_url      = var.unified_ova_url
+  local_ovf_path      = var.unified_ova_path
   ip                  = var.external_network.ip
   wan_network_name    = var.external_network.name
   ssh_authorized_keys = concat([tls_private_key.ed25519.public_key_openssh], var.ssh_authorized_keys)
@@ -149,7 +150,8 @@ module "tkg_cli" {
   ssh_rsa_private     = tls_private_key.ed25519.private_key_openssh
   ssh_rsa_public      = tls_private_key.ed25519.public_key_openssh
   name                = "${local.name_prefix}-tkg-cli"
-  ubuntu_ovf_url      = var.ubuntu_ovf_url
+  ubuntu_ovf_url      = var.unified_ova_url
+  ubuntu_ovf_path     = var.unified_ova_path
 }
 
 module "vcf_installer" {
@@ -188,7 +190,7 @@ module "cloud_builder" {
 
 module "storage" {
   count                = var.storage != null ? 1 : 0
-  source               = "../../module/storage"
+  source               = "../../module/nvl-storage"
   depends_on           = [module.router]
   vi                   = module.vi
   name                 = "${local.name_prefix}-storage"
@@ -199,6 +201,8 @@ module "storage" {
   subnet_mask          = var.subnet_mask
   ssh_authorized_keys  = var.ssh_authorized_keys
   vm_password          = var.vm_password
+  num_cpus             = var.storage.num_cpus
+  mem_gb               = var.storage.mem_gb
   storage1_ip          = var.storage.storage1_ip
   storage2_ip          = var.storage.storage2_ip
   storage1_vlan        = var.storage.storage1_vlan
@@ -206,10 +210,10 @@ module "storage" {
   storage_mtu          = var.storage.mtu
   storage_subnet_mask  = var.storage.subnet_mask
   storage_disk_size_gb = var.storage.disk_size_gb
-  lun_size_gb          = var.storage.lun_size_gb
-  lun_count            = var.storage.lun_count
+  luns                 = var.storage.luns
   network_name         = var.network_name
-  ubuntu_ovf_url       = var.ubuntu_ovf_url
+  ubuntu_ovf_url       = var.unified_ova_url
+  local_ovf_path       = var.unified_ova_path
   zfs_compression      = var.storage.zfs_compression
   zfs_nfs_dedup        = var.storage.zfs_nfs_dedup
 }

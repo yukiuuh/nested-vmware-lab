@@ -1,0 +1,15 @@
+---
+# Connection & auth
+validate_certs: false
+vc_address: ""
+vc_username: "administrator@vsphere.local"
+vc_password: ""
+
+# Cluster placement
+datacenter_name: ""
+cluster_name: ""
+
+# Cluster settings
+vsan_enabled: false
+ha_enabled: false
+drs_enabled: false

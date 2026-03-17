@@ -2,38 +2,39 @@
 - name: Provisioning NSX Manager
   gather_facts: false
   hosts: all
-  vars:
-    nsx_hostname: "{{ nsx_hostname }}"
-    nsx_username: "{{ nsx_username }}"
-    nsx_password: "{{ nsx_password }}"
-    vc_address: "{{ vc_address }}"
-    vc_password: "{{ vc_password }}"
-    vc_username: "{{ vc_username }}"
-    nsx_license: "{{ nsx_license }}"
-    nsx_tep_ip_pool_gateway: "{{ nsx_tep_ip_pool_gateway }}"
-    nsx_tep_ip_pool_start_ip: "{{ nsx_tep_ip_pool_start_ip }}"
-    nsx_tep_ip_pool_end_ip: "{{ nsx_tep_ip_pool_end_ip }}"
-    nsx_tep_ip_pool_cidr: "{{ nsx_tep_ip_pool_cidr }}"
-    nsx_transport_cluster_name: "{{ nsx_transport_cluster }}"
-    nsx_tep_uplink_vlan: "{{ nsx_tep_uplink_vlan }}"
-    nsx_host_switch_uplinks: "{{ nsx_host_switch_uplink_list | from_json }}"
-    nsx_host_switch_name: "{{ nsx_host_switch_name }}"
-    nsx_set_as_oidc_provider: True
-    nsx_tep_ip_pool_name: "{{ nsx_tep_ip_pool | default('ip_pool_tep')}}"
-    nsx_transport_node_profile_name: "{{ nsx_transport_node_profile | default('transport_node_profile')}}"
-    nsx_host_switch_profile_name: "{{ nsx_host_switch_profile | default('host_switch_profile')}}"
-    nsx_tep_uplink_profile_name: "{{ nsx_tep_uplink_profile | default('tep_uplink_profile')}}"
-    nsx_state: present
-    validate_certs: false
-
   tasks:
+    - name: Setup variables for NSX Manager provisioning
+      ansible.builtin.set_fact:
+        vc_address: "{{ vc_address }}"
+        vc_password: "{{ vc_password }}"
+        vc_username: "{{ vc_username }}"
+        nsx_hostname: "{{ nsx_hostname }}"
+        nsx_password: "{{ nsx_password }}"
+        nsx_username: "{{ nsx_username }}"
+
+        nsx_license: "{{ nsx_license }}"
+        nsx_transport_cluster_name: "{{ nsx_transport_cluster }}"
+        nsx_host_switch_uplinks: "{{ nsx_host_switch_uplink_list | from_json }}"
+        nsx_host_switch_name: "{{ nsx_host_switch_name }}"
+
+        nsx_tep_ip_pool_name: "{{ nsx_tep_ip_pool | default('ip_pool_tep') }}"
+        nsx_transport_node_profile_name: "{{ nsx_transport_node_profile | default('transport_node_profile') }}"
+        nsx_host_switch_profile_name: "{{ nsx_host_switch_profile | default('host_switch_profile') }}"
+        nsx_tep_uplink_profile_name: "{{ nsx_tep_uplink_profile | default('tep_uplink_profile') }}"
+
+        nsx_tep_ip_pool_gateway: "{{ nsx_tep_ip_pool_gateway }}"
+        nsx_tep_ip_pool_start_ip: "{{ nsx_tep_ip_pool_start_ip }}"
+        nsx_tep_ip_pool_end_ip: "{{ nsx_tep_ip_pool_end_ip }}"
+        nsx_tep_ip_pool_cidr: "{{ nsx_tep_ip_pool_cidr }}"
+        nsx_tep_uplink_vlan: "{{ nsx_tep_uplink_vlan }}"
+
     - name: Check manager status
       vmware.ansible_for_nsxt.nsxt_manager_status:
-          hostname: "{{ nsx_hostname }}"
-          username: "{{ nsx_username }}"
-          password: "{{ nsx_password }}"
-          validate_certs: "{{ validate_certs }}"
-          wait_time: 50
+        hostname: "{{ nsx_hostname }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        wait_time: 50
 
     - name: Add NSX-T License
       vmware.ansible_for_nsxt.nsxt_licenses:
@@ -43,13 +44,11 @@
         validate_certs: "{{ validate_certs }}"
         license_key: "{{ nsx_license }}"
         state: "{{ nsx_state }}"
-      # retries: 0
       retries: "{{ 0 if ansible_check_mode else 60 }}"
       delay: 15
       register: add_nsx_license_result
       until: add_nsx_license_result is succeeded
       when: nsx_license != ""
-    # wait for nsx manager
 
     - name: "Add Compute Manager"
       vmware.ansible_for_nsxt.nsxt_fabric_compute_managers:
@@ -60,7 +59,7 @@
         display_name: "{{ vc_address }}"
         server: "{{ vc_address }}"
         origin_type: vCenter
-        set_as_oidc_provider: "{{ nsx_set_as_oidc_provider }}"
+        set_as_oidc_provider: "{{ nsx_set_as_oidc_provider | default(true) }}"
         credential:
           credential_type: UsernamePasswordLoginCredential
           username: "{{ vc_username }}"
@@ -70,7 +69,6 @@
       until: cm_info is succeeded
       delay: 30
       retries: 60
-      ignore_errors: false
 
     - name: Add IP Pools
       ansible.builtin.include_role:
@@ -147,6 +145,17 @@
         validate_certs: "{{ validate_certs }}"
       register: transport_cluster_info
 
-    - name: Debug ansible facts 
-      ansible.builtin.debug:
-        var: ansible_facts
+    - name: Wait for NSX Host Preparation
+      ansible.builtin.uri:
+        url: "https://{{ nsx_hostname }}/api/v1/transport-node-collections/{{ tc_info.id }}/state"
+        user: admin
+        password: "{{ nsx_password }}"
+        method: GET
+        force_basic_auth: yes
+        validate_certs: "{{ validate_certs }}"
+        status_code: 200
+      register: tnc_status
+      until: tnc_status.json.state == 'SUCCESS'
+      retries: 100
+      delay: 30
+      when: nsx_state == 'present'

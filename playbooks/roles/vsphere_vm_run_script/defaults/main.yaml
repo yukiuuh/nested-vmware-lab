@@ -1,0 +1,20 @@
+---
+# Role defaults for vsphere_vm_run_script
+
+# VMware connection info (should be provided by caller or global vars)
+vc_address: ""
+vc_username: ""
+vc_password: ""
+datacenter_name: ""
+validate_certs: false
+
+# Guest VM info
+vm_name: ""
+vm_username: "root"
+vm_password: ""
+
+# Script info
+vm_script_src: ""
+vm_script_dest: "/tmp/script_via_tools.sh"
+vm_script_args: ""
+vm_script_cleanup: true

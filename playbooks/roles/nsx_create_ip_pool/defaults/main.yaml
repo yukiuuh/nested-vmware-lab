@@ -1,0 +1,15 @@
+---
+# Connection & auth (defaults to NSX manager)
+nsx_hostname: ""
+nsx_password: ""
+nsx_username: admin
+validate_certs: false
+nsx_state: present
+
+# IP Pool spec
+ip_pool:
+  name: ""
+  start_ip: ""
+  end_ip: ""
+  cidr: ""
+  gateway: ""

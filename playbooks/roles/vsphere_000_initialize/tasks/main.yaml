@@ -98,7 +98,7 @@
   register: storage_policy_info
   until: storage_policy_info is succeeded
   delay: 60
-  retries: 20
+  retries: 60
 
 - name: Create Local Content Library
   community.vmware.vmware_content_library_manager:

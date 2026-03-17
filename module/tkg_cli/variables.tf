@@ -20,3 +20,4 @@ variable "ssh_authorized_keys" {
 
 variable "ssh_rsa_private" {}
 variable "ssh_rsa_public" {}
+variable "ubuntu_ovf_path" { default = null }

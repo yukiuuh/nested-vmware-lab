@@ -1,0 +1,69 @@
+---
+# This task is called in a loop for triggered nodes
+- name: "Wait for Edge VM to be created and boot for {{ node_status.item.vmname }}"
+  community.vmware.vmware_guest_tools_wait:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    name: "{{ node_status.item.vmname }}"
+  register: guest_tools_info
+  until: guest_tools_info is succeeded
+  retries: 60
+  delay: 10
+
+- name: "Workaround for Ryzen on {{ node_status.item.vmname }}"
+  community.vmware.vmware_vm_shell:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    cluster: "{{ cluster_name }}"
+    vm_id: "{{ node_status.item.vmname }}"
+    vm_password: "{{ nsx_password }}"
+    vm_username: "root"
+    vm_shell: /usr/bin/sed
+    vm_shell_args: "-i 's/if\ \"AMD\"\ in\ vendor_info/if\ False/' /opt/vmware/nsx-edge/bin/config.py"
+    vm_shell_env:
+      - "PATH=/bin:/sbin:/usr/bin"
+    wait_for_process: true
+
+- name: "Wait for Edge Deploy Job for {{ node_status.item.vmname }}"
+  ansible.builtin.async_status:
+    jid: "{{ node_status.deploy_job_id }}"
+  register: async_poll_result
+  until: async_poll_result.finished
+  retries: 30
+  delay: 60
+
+- name: "Get transport node facts after deployment for {{ node_status.item.vmname }}"
+  vmware.ansible_for_nsxt.nsxt_transport_nodes_facts:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+  register: all_tns_after
+
+- name: "Find the transport node for {{ node_status.item.vmname }}"
+  ansible.builtin.set_fact:
+    tn_info_after: "{{ all_tns_after.results | selectattr('display_name', 'equalto', node_status.item.vmname) | list | first | default({}) }}"
+
+- name: "Verify transport node creation for {{ node_status.item.vmname }}"
+  ansible.builtin.fail:
+    msg: "Transport node {{ node_status.item.vmname }} was not created."
+  when: tn_info_after.node_id is not defined
+
+- name: "Wait for Edge deployment state to be healthy for {{ node_status.item.vmname }}"
+  ansible.builtin.uri:
+    url: "https://{{ nsx_hostname }}/api/v1/transport-nodes/{{ tn_info_after.node_id }}/state"
+    method: GET
+    user: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    force_basic_auth: yes
+  register: edge_deployment_status
+  until: "edge_deployment_status.status == 200 and 'FAILED' not in (edge_deployment_status.json | json_query('node_deployment_state.state') | default(''))"
+  retries: 30
+  delay: 60

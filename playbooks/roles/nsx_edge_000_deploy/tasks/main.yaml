@@ -1,21 +1,36 @@
 - name: Add Edge IP Pool
-  ansible.builtin.include_role:
-    name: nsx_create_ip_pool
-  vars:
-    ip_pool:
-      name: "{{ edge_tep_ip_pool_name }}"
-      start_ip: "{{ edge_tep_ip_pool_start_ip }}"
-      end_ip: "{{ edge_tep_ip_pool_end_ip }}"
-      cidr: "{{ edge_tep_ip_pool_cidr }}"
-      gateway: "{{ edge_tep_ip_pool_gateway }}"
+  vmware.ansible_for_nsxt.nsxt_policy_ip_pool:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "{{ edge_tep_ip_pool_name }}"
+    pool_static_subnets:
+      - display_name: "{{ edge_tep_ip_pool_name }}-subnet"
+        allocation_ranges:
+          - start: "{{ edge_tep_ip_pool_start_ip }}"
+            end: "{{ edge_tep_ip_pool_end_ip }}"
+        cidr: "{{ edge_tep_ip_pool_cidr }}"
+        gateway_ip: "{{ edge_tep_ip_pool_gateway }}"
+        state: "{{ nsx_state }}"
+    state: "{{ nsx_state }}"
+    do_wait_till_create: true
 
 - name: Add Edge Uplink Profile
-  ansible.builtin.include_role:
-    name: nsx_create_uplink_profile
-  vars:
-    uplink_profile:
-      name: "{{ edge_tep_uplink_profile_name }}"
-      vlan: "{{ edge_tep_uplink_vlan }}"
+  vmware.ansible_for_nsxt.nsxt_uplink_profiles:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "{{ edge_tep_uplink_profile_name }}"
+    resource_type: "UplinkHostSwitchProfile"
+    teaming:
+      active_list:
+        - uplink_name: "uplink-1"
+          uplink_type: PNIC
+      policy: FAILOVER_ORDER
+    transport_vlan: "{{ edge_tep_uplink_vlan }}"
+    state: "{{ nsx_state }}"
 
 - name: "Creating Uplink Segment"
   vmware.ansible_for_nsxt.nsxt_policy_segment:
@@ -66,11 +81,15 @@
   vars:
     dvpg_query: "[?portgroup_name=='{{ edge_uplink_segment_name }}']"
 
-- name: Deploy and verify NSX Edge VMs
-  ansible.builtin.include_tasks: _retry_handler.yaml
-  loop: "{{ edge_vms }}"
-  loop_control:
-    loop_var: item
+- name: Parallel Deployment and verification of NSX Edge VMs
+  block:
+    - name: Initialize deployment lists
+      ansible.builtin.set_fact:
+        nodes_health_status: []
+        triggered_nodes: []
+
+    - name: Run Orchestrator
+      ansible.builtin.include_tasks: _orchestrate_deployment.yaml
 
 - name: List Transport Nodes
   vmware.ansible_for_nsxt.nsxt_transport_nodes_facts:
@@ -78,24 +97,6 @@
     username: admin
     password: "{{ nsx_password }}"
     validate_certs: "{{ validate_certs }}"
-
-- name: "Workaround for Ryzen"
-  community.vmware.vmware_vm_shell:
-    hostname: "{{ vc_address }}"
-    username: "{{ vc_username }}"
-    password: "{{ vc_password }}"
-    validate_certs: "{{ validate_certs }}"
-    datacenter: "{{ datacenter_name }}"
-    cluster: "{{ cluster_name }}"
-    vm_id: "{{ item.vmname }}"
-    vm_password: "{{ nsx_password }}"
-    vm_username: "root"
-    vm_shell: /usr/bin/sed
-    vm_shell_args: "-i 's/if\ \"AMD\"\ in\ vendor_info/if\ False/' /opt/vmware/nsx-edge/bin/config.py"
-    vm_shell_env:
-      - "PATH=/bin:/sbin:/usr/bin"
-    wait_for_process: true
-  loop: "{{ edge_vms }}"
 
 - name: Add edge cluster
   vmware.ansible_for_nsxt.nsxt_edge_clusters:
@@ -116,7 +117,6 @@
   register: edge_cluster_info
   retries: 60
   delay: 30
-  ignore_errors: true
   until: edge_cluster_info is succeeded
 
 - name: Create T0 gateway
@@ -147,20 +147,26 @@
         preferred_edge_nodes_info:
           - edge_cluster_display_name: "{{ nsx_edge_cluster_name }}"
             edge_node_display_name: "{{ edge_vms[0].vmname }}"
-        interfaces:
-          - display_name: "{{ edge_vms[0].vmname }}_interface"
-            state: "{{ nsx_state }}"
-            subnets: |
-              {% set subnets = [] %}
-              {% for interface in edge_vms[0].t0_interfaces %}
-              {% set _ = subnets.append({'ip_addresses': interface.ip, 'prefix_len': interface.prefix_length}) %}
-              {% endfor %}
-              {{ subnets }}
-            segment_id: "{{ external_uplink_segment_name }}"
-            do_wait_till_create: true
-            edge_node_info:
-              edge_cluster_display_name: "{{ nsx_edge_cluster_name }}"
-              edge_node_display_name: "{{ edge_vms[0].vmname }}"
+        interfaces: |
+          {% set interfaces = [] %}
+          {% for edge in edge_vms %}
+          {% for interface in edge.t0_interfaces %}
+          {% set _ = interfaces.append({
+            'display_name': edge.vmname + '_if' + loop.index0 | string,
+            'state': nsx_state,
+            'subnets': [{
+              'ip_addresses': interface.ip,
+              'prefix_len': interface.prefix_length | int
+            }],
+            'segment_id': external_uplink_segment_name,
+            'edge_node_info': {
+              'edge_cluster_display_name': nsx_edge_cluster_name,
+              'edge_node_display_name': edge.vmname
+            }
+          }) %}
+          {% endfor %}
+          {% endfor %}
+          {{ interfaces }}
     static_routes:
       - state: "{{ nsx_state }}"
         display_name: "default"

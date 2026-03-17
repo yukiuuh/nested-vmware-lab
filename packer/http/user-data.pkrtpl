@@ -1,0 +1,77 @@
+#cloud-config
+autoinstall:
+  update: all
+  kernel:
+    package: linux-virtual
+  apt:
+    geoip: true
+    preserve_sources_list: false
+    primary:
+      - arches: [amd64, i386]
+        uri: http://archive.ubuntu.com/ubuntu
+      - arches: [default]
+        uri: http://ports.ubuntu.com/ubuntu-ports
+  version: 1
+  early-commands:
+    - systemctl stop ssh
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  storage:
+    swap:
+      size: 0
+    layout:
+      name: direct
+  network:
+    network:
+      version: 2
+      ethernets:
+        ens192:
+          dhcp4: true
+  identity:
+    hostname: ${hostname}
+    username: ${ssh_username}
+    password: "${ssh_password}"
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - open-vm-tools
+    - openssh-server
+    - cloud-init
+    - targetcli-fb
+    - apache2
+    - nfs-kernel-server
+    - zfsutils-linux
+    - chrony
+    - dnsmasq
+    - iptables-persistent
+    - frr
+    - squid
+    - git
+    - sshpass
+    - unzip
+    - gnupg
+    - software-properties-common
+    - vim
+    - xorriso
+    - rclone
+  user-data:
+    disable_root: true
+    timezone: UTC
+  late-commands:
+    - "echo '${ssh_username} ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/${ssh_username}"
+    - sed -i -e 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/g' /target/etc/ssh/sshd_config
+    - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/${ssh_username}
+    - curtin in-target --target=/target -- bash -c "add-apt-repository ppa:deadsnakes/ppa -y"
+    - curtin in-target --target=/target -- apt-get update
+    - curtin in-target --target=/target -- apt-get install -y python3.11 python3.11-venv
+    - curtin in-target --target=/target -- sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*$/GRUB_CMDLINE_LINUX_DEFAULT=""/' /etc/default/grub
+    - curtin in-target --target=/target -- update-grub
+    - curtin in-target --target=/target -- systemctl disable nfs-kernel-server
+    - curtin in-target --target=/target -- systemctl disable apache2
+    - curtin in-target --target=/target -- systemctl disable chrony
+    - curtin in-target --target=/target -- systemctl disable dnsmasq
+    - curtin in-target --target=/target -- systemctl disable frr
+    - curtin in-target --target=/target -- systemctl disable squid
+    - curtin in-target --target=/target -- systemctl disable netfilter-persistent

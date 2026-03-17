@@ -1,0 +1,32 @@
+---
+# This task is only the deletion, no waiting.
+- name: "Delete transport node {{ node_info.item.vmname }} if it exists"
+  vmware.ansible_for_nsxt.nsxt_transport_nodes:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    display_name: "{{ node_info.item.vmname }}"
+    state: absent
+  when: node_info.existing_tn_id is not none
+  register: tn_delete_result
+
+- name: "Delete VM {{ node_info.item.vmname }} from vCenter if it exists"
+  community.vmware.vmware_guest:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    name: "{{ node_info.item.vmname }}"
+    state: absent
+    force: true
+  when: node_info.vm_exists | default(false)
+  register: vm_delete_result
+
+- name: "Set deletion flag"
+  ansible.builtin.set_fact:
+    any_cleanup_performed: true
+  when: >
+    (node_info.existing_tn_id is not none and tn_delete_result is changed) or
+    (node_info.vm_exists | default(false) and vm_delete_result is changed)

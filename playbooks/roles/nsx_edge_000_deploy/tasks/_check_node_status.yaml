@@ -1,0 +1,74 @@
+---
+# Check if the Edge is already successfully deployed
+- name: "Gather all transport nodes facts for {{ node_item.vmname }}"
+  vmware.ansible_for_nsxt.nsxt_transport_nodes_facts:
+    hostname: "{{ nsx_hostname }}"
+    username: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+  register: all_tns
+
+- name: "Find existing transport node for {{ node_item.vmname }}"
+  ansible.builtin.set_fact:
+    existing_tn: "{{ all_tns.results | selectattr('display_name', 'equalto', node_item.vmname) | list | first | default({}) }}"
+
+- name: "Check state of existing transport node for {{ node_item.vmname }}"
+  ansible.builtin.uri:
+    url: "https://{{ nsx_hostname }}/api/v1/transport-nodes/{{ existing_tn.node_id }}/state"
+    method: GET
+    user: admin
+    password: "{{ nsx_password }}"
+    validate_certs: "{{ validate_certs }}"
+    force_basic_auth: yes
+  register: existing_tn_status_api
+  when: existing_tn.node_id is defined
+  ignore_errors: true
+
+- name: "Check if VM exists in vCenter for {{ node_item.vmname }}"
+  community.vmware.vmware_guest_info:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    name: "{{ node_item.vmname }}"
+  register: existing_vm_info
+  ignore_errors: true
+
+- name: "Check guest tools of existing VM for {{ node_item.vmname }}"
+  community.vmware.vmware_guest_tools_wait:
+    hostname: "{{ vc_address }}"
+    username: "{{ vc_username }}"
+    password: "{{ vc_password }}"
+    validate_certs: "{{ validate_certs }}"
+    datacenter: "{{ datacenter_name }}"
+    name: "{{ node_item.vmname }}"
+  register: existing_guest_tools_wait
+  until: existing_guest_tools_wait is succeeded
+  delay: 2
+  retries: 2
+  ignore_errors: true
+  when:
+    - existing_vm_info.instance is defined
+    - existing_tn.node_id is defined
+    - existing_tn_status_api is succeeded
+    - existing_tn_status_api.status | default(0) == 200
+    - "'FAILED' not in (existing_tn_status_api.json | json_query('node_deployment_state.state') | default(''))"
+
+- name: "Set temporary status fact for {{ node_item.vmname }}"
+  ansible.builtin.set_fact:
+    temp_node_status_info:
+      item: "{{ node_item }}"
+      deployed: "{{ (existing_tn.node_id is defined and
+                    existing_vm_info.instance is defined and
+                    existing_guest_tools_wait is succeeded and
+                    existing_tn_status_api is succeeded and
+                    existing_tn_status_api.status | default(0) == 200 and
+                    'FAILED' not in (existing_tn_status_api.json | json_query('node_deployment_state.state') | default(''))) | default(false) }}"
+      existing_tn_id: "{{ existing_tn.node_id | default(none) }}"
+      existing_vm_id: "{{ existing_vm_info.instance.hw_eth0.macaddress if existing_vm_info.instance is defined else none }}" # Just a flag to say VM exists
+      vm_exists: "{{ existing_vm_info.instance is defined }}"
+
+- name: "Collect node health in list"
+  ansible.builtin.set_fact:
+    nodes_health_status: "{{ nodes_health_status | default([]) + [temp_node_status_info] }}"

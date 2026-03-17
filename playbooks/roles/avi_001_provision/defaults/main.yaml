@@ -1,0 +1,20 @@
+---
+# Connection & auth
+validate_certs: false
+
+# controller
+avi_management_ip: ""
+avi_hostname: ""
+avi_username: admin
+avi_password: ""
+avi_default_password: ""
+
+# network config
+avi_networks: []
+avi_gateway: ""
+avi_ipam_usable_networks: []
+
+# DNS/NTP
+dns_server: ""
+ntp_server: ""
+domain_name: ""

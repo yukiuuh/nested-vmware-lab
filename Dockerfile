@@ -4,10 +4,6 @@ ARG USERNAME=bootstrap
 ARG USER_UID=999
 ARG USER_GID=$USER_UID
 
-COPY --from=hashicorp/terraform /bin/terraform /bin/terraform
-COPY --from=vmware/govc /govc /bin/govc
-COPY --from=hairyhenderson/gomplate /gomplate /bin/gomplate
-
 RUN groupadd --gid $USER_GID $USERNAME && \
     useradd --uid $USER_UID --gid $USER_GID -m $USERNAME && \
     apt-get update && \
@@ -19,15 +15,20 @@ RUN groupadd --gid $USER_GID $USERNAME && \
     mkdir -p /app/vib && \
     chown -R ${USER_UID}:${USER_GID} /app
 USER ${USERNAME}
-RUN ansible-galaxy collection install community.general && \
-    ansible-galaxy collection install community.vmware && \
-    ansible-galaxy collection install ansible.utils && \
-    ansible-galaxy collection install vmware.alb && \
-    ansible-galaxy collection install vmware.vmware && \
-    ansible-galaxy collection install git+https://github.com/vmware/ansible-for-nsxt
+RUN ansible-galaxy collection install \
+    community.general \
+    community.vmware \
+    ansible.utils \
+    vmware.alb \
+    vmware.vmware \
+    git+https://github.com/vmware/ansible-for-nsxt
 
 RUN pip install -r ~/.ansible/collections/ansible_collections/vmware/alb/requirements.txt
+RUN pip cache purge
 
+COPY --from=hashicorp/terraform /bin/terraform /bin/terraform
+COPY --from=vmware/govc /govc /bin/govc
+COPY --from=hairyhenderson/gomplate /gomplate /bin/gomplate
 COPY --chown=${USER_UID}:${USER_GID} ./deployments /app/deployments
 COPY --chown=${USER_UID}:${USER_GID} ./module /app/module
 COPY --chown=${USER_UID}:${USER_GID} ./playbooks /app/playbooks

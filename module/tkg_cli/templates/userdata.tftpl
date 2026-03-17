@@ -69,6 +69,10 @@ runcmd:
   - curl -LO https://github.com/vmware/govmomi/releases/download/v0.51.0/govc_Linux_x86_64.tar.gz
   - tar zxpf govc*.tar.gz
   - mv govc /usr/local/bin/govc
+  - curl -LO https://get.helm.sh/helm-v4.0.1-linux-amd64.tar.gz
+  - tar zxpf helm*.tar.gz
+  - mv linux-amd64/helm /usr/local/bin/helm
   - echo 'source <(kubectl completion bash)' >> /etc/profile
   - echo 'source <(tanzu completion bash)' >> /etc/profile
+  - echo 'source <(helm completion bash)' >> /etc/profile
   - date > /var/tmp/provisioned
