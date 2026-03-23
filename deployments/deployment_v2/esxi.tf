@@ -1,3 +1,13 @@
+data "vsphere_datastore" "esxi_install_source_datastore" {
+  for_each = {
+    for name, source in local.install_sources : name => source
+    if try(source.type, "") == "datastore_iso"
+  }
+
+  name          = each.value.datastore
+  datacenter_id = module.vi.datacenter.id
+}
+
 module "esxi_hosts" {
   for_each = local.esxi_group_hosts
 
@@ -30,12 +40,19 @@ module "esxi_hosts" {
 
   num_cpus = local.esxi_group_runtime[each.value.group_name].shape.num_cpus
   mem_gb   = local.esxi_group_runtime[each.value.group_name].shape.mem_gb
-  firmware = try(local.esxi_group_runtime[each.value.group_name].boot.firmware, "efi")
+  firmware = "efi"
 
   network_interfaces = [
     for _ in range(local.esxi_group_runtime[each.value.group_name].shape.nic_count) :
     local.esxi_group_runtime[each.value.group_name].network.network_name
   ]
+
+  cdroms = try(local.esxi_group_runtime[each.value.group_name].install.source.type, "") == "datastore_iso" ? [
+    {
+      datastore_id = data.vsphere_datastore.esxi_install_source_datastore[local.esxi_group_runtime[each.value.group_name].install.install_source].id
+      path         = local.esxi_group_runtime[each.value.group_name].install.source.path
+    }
+  ] : []
 
   disks = local.esxi_group_runtime[each.value.group_name].shape.disks
 

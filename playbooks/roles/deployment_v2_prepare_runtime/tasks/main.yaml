@@ -466,9 +466,18 @@
     loop_var: deployment_v2_router_runtime_iso_source
   when: not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
 
+- name: Render host-specific kickstart artifacts
+  ansible.builtin.include_tasks: stage_host_kickstart.yaml
+  loop: "{{ deployment_v2_router_runtime_group_items | subelements('value.hosts') }}"
+  loop_control:
+    loop_var: deployment_v2_router_runtime_group_host_item
+  when:
+    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+    - deployment_v2_router.services.http | default(false)
+
 - name: Render host-specific PXE artifacts
   ansible.builtin.include_tasks: stage_host_pxe.yaml
-  loop: "{{ deployment_v2_router_runtime_group_items | subelements('value.hosts') }}"
+  loop: "{{ deployment_v2_router_runtime_group_items | selectattr('value.install.method', 'equalto', 'ansible_router_pxe') | list | subelements('value.hosts') }}"
   loop_control:
     loop_var: deployment_v2_router_runtime_group_host_item
   when:

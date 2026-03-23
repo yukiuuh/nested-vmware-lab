@@ -1,0 +1,82 @@
+---
+- name: Power off datastore_iso ESXi VM before forcing EFI boot setup
+  vmware.vmware.vm_powerstate:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+    name: "{{ deployment_v2_datastore_iso_vm_name }}"
+    state: powered-off
+    force: true
+  delegate_to: localhost
+
+- name: Force EFI boot setup on datastore_iso ESXi VM
+  community.vmware.vmware_guest_boot_manager:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    name: "{{ deployment_v2_datastore_iso_vm_name }}"
+    boot_firmware: efi
+    enter_bios_setup: true
+  delegate_to: localhost
+
+- name: Power on datastore_iso ESXi VM
+  vmware.vmware.vm_powerstate:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+    name: "{{ deployment_v2_datastore_iso_vm_name }}"
+    state: powered-on
+  delegate_to: localhost
+
+- name: Wait briefly for EFI boot manager on datastore_iso ESXi VM
+  ansible.builtin.pause:
+    seconds: 5
+
+- name: Open EFI boot options for datastore_iso ESXi VM
+  community.vmware.vmware_guest_sendkey:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+    name: "{{ deployment_v2_datastore_iso_vm_name }}"
+    keys_send:
+      - ENTER
+      - SPACE
+      - SPACE
+      - SPACE
+      - SPACE
+      - SPACE
+    string_send: "O"
+    sleep_time: 1
+  delegate_to: localhost
+
+- name: Inject kickstart kernel options for datastore_iso ESXi VM
+  community.vmware.vmware_guest_sendkey:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+    name: "{{ deployment_v2_datastore_iso_vm_name }}"
+    string_send: "{{ deployment_v2_datastore_iso_boot_kernel_options }}"
+    sleep_time: 0
+  delegate_to: localhost
+
+- name: Submit kickstart kernel options for datastore_iso ESXi VM
+  community.vmware.vmware_guest_sendkey:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+    name: "{{ deployment_v2_datastore_iso_vm_name }}"
+    keys_send:
+      - ENTER
+    sleep_time: 0
+  delegate_to: localhost

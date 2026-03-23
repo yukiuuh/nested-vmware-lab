@@ -32,12 +32,9 @@ locals {
     "physical_vsphere",
   ])
 
-  supported_esxi_boot_modes = toset([
-    "pxe",
-  ])
-
   supported_esxi_install_methods = toset([
     "ansible_router_pxe",
+    "ansible_vsphere_iso_boot",
   ])
 
   supported_esxi_kickstart_templates = toset([
@@ -47,6 +44,7 @@ locals {
   supported_esxi_install_source_types = toset([
     "http_iso",
     "rclone_iso",
+    "datastore_iso",
   ])
 
   router_source_refs = {
@@ -196,19 +194,20 @@ locals {
       ntp_servers = try(group.ntp_servers, [])
 
       shape = group.shape
-      boot  = group.boot
       install = {
         method         = group.install.method
         install_source = group.install.source.install_source
-        pxe            = try(group.install.pxe, null)
+        kickstart      = try(group.install.kickstart, null)
         source         = local.install_sources[group.install.source.install_source]
+        boot_mode = (
+          group.install.method == "ansible_router_pxe" ? "pxe" : "cdrom"
+        )
       }
       managed_by = try(group.managed_by, [])
     }
     if contains(keys(local.routers), group.router)
     && local.esxi_group_networks[name] != null
     && contains(local.supported_esxi_group_placements, try(group.placement.kind, ""))
-    && contains(local.supported_esxi_boot_modes, try(group.boot.mode, ""))
     && contains(local.supported_esxi_install_methods, try(group.install.method, ""))
     && contains(keys(local.install_sources), try(group.install.source.install_source, ""))
     && contains(local.supported_esxi_install_source_types, try(local.install_sources[group.install.source.install_source].type, ""))
@@ -255,19 +254,40 @@ locals {
       router_runtime       = local.router_runtime_paths[local.esxi_group_runtime[host.group_name].router]
       router_ansible       = local.router_ansible[local.esxi_group_runtime[host.group_name].router]
       network              = local.esxi_group_runtime[host.group_name].network
-      boot                 = local.esxi_group_runtime[host.group_name].boot
       install_method       = local.esxi_group_runtime[host.group_name].install.method
       install_source_ref   = local.esxi_group_runtime[host.group_name].install.install_source
       install_source       = local.esxi_group_runtime[host.group_name].install.source
       pxe = {
-        kickstart_template = try(local.esxi_group_runtime[host.group_name].install.pxe.ks_template, null)
+        kickstart_template = try(local.esxi_group_runtime[host.group_name].install.kickstart.template, null)
         kickstart_url = format(
-          "http://%s/%s-%s-%s.cfg",
+          "http://%s/kickstart/%s/%s/%s.cfg",
           local.router_management_ips[local.esxi_group_runtime[host.group_name].router],
-          local.deployment_name_prefix,
+          local.esxi_group_runtime[host.group_name].install.install_source,
           host.group_name,
           host.hostname
         )
+        boot_kernel_options = join("", compact([
+          format(" ks=%s", format(
+            "http://%s/kickstart/%s/%s/%s.cfg",
+            local.router_management_ips[local.esxi_group_runtime[host.group_name].router],
+            local.esxi_group_runtime[host.group_name].install.install_source,
+            host.group_name,
+            host.hostname
+          )),
+          try(length(local.esxi_group_runtime[host.group_name].network.nameservers), 0) > 0 ? format(" nameserver=%s", local.esxi_group_runtime[host.group_name].network.nameservers[0]) : "",
+          format(" ip=%s", host.ip),
+          format(" netmask=%s", local.esxi_group_runtime[host.group_name].network.subnet_mask),
+          format(" gateway=%s", local.esxi_group_runtime[host.group_name].network.gateway),
+          format(
+            " entropySources=%d",
+            try(local.esxi_group_runtime[host.group_name].shape.hardware_random_generator_enabled, true) ? 0 : 1
+          ),
+          format(
+            " disableHwrng=%s",
+            try(local.esxi_group_runtime[host.group_name].shape.hardware_random_generator_enabled, true) ? "FALSE" : "TRUE"
+          ),
+          " allowLegacyCPU=true",
+        ]))
       }
     }
     if contains(keys(local.esxi_group_runtime), host.group_name)
@@ -296,7 +316,6 @@ locals {
       router      = group.router
       network     = group.network
       ntp_servers = group.ntp_servers
-      boot        = group.boot
       install     = group.install
       managed_by  = group.managed_by
       hosts = [
@@ -318,6 +337,7 @@ locals {
             router_management_ip = local.esxi_host_execution[host.key].router_management_ip
             kickstart_url        = local.esxi_host_execution[host.key].pxe.kickstart_url
             kickstart_template   = local.esxi_host_execution[host.key].pxe.kickstart_template
+            boot_kernel_options  = local.esxi_host_execution[host.key].pxe.boot_kernel_options
             install_source       = local.esxi_host_execution[host.key].install_source
             install_source_ref   = local.esxi_host_execution[host.key].install_source_ref
             install_method       = local.esxi_host_execution[host.key].install_method

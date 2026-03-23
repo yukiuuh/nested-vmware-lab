@@ -50,7 +50,7 @@
       ignore_errors: true
 
     - name: Reset ESXi VM when management API is not yet reachable
-      community.vmware.vmware_guest_powerstate:
+      vmware.vmware.vm_powerstate:
         hostname: "{{ deployment_v2.credentials.vsphere.server }}"
         username: "{{ deployment_v2.credentials.vsphere.user }}"
         password: "{{ deployment_v2.credentials.vsphere.password }}"
@@ -65,7 +65,20 @@
         label: "{{ item.item.1.fqdn }}"
       when:
         - item.failed | default(false)
+        - item.item.0.value.install.method == "ansible_router_pxe"
       delegate_to: localhost
+
+    - name: Bootstrap datastore_iso ESXi VMs that are not yet reachable
+      ansible.builtin.include_tasks: tasks/deployment_v2_esxi_datastore_iso_bootstrap.yaml
+      vars:
+        deployment_v2_datastore_iso_vm_name: "{{ item.item.1.name }}"
+        deployment_v2_datastore_iso_boot_kernel_options: "{{ item.item.1.pxe.boot_kernel_options }}"
+      loop_control:
+        label: "{{ item.item.1.fqdn }}"
+      loop: "{{ deployment_v2_esxi_api_checks.results | default([]) }}"
+      when:
+        - item.failed | default(false)
+        - item.item.0.value.install.method == "ansible_vsphere_iso_boot"
 
 - name: Verify deployment_v2 ESXi bootstrap completed
   hosts: deployment_v2_esxi

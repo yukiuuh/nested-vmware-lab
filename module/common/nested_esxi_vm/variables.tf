@@ -36,6 +36,14 @@ variable "network_interfaces" {
   type = list(string)
 }
 
+variable "cdroms" {
+  type = list(object({
+    datastore_id = string
+    path         = string
+  }))
+  default = []
+}
+
 variable "disks" {
   type = list(object({
     label       = string

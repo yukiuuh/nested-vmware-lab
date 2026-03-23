@@ -23,6 +23,11 @@
         "type": "http_iso",
         "url": "https://repo.example.local/iso/VMware-VMvisor-Installer-8.0U3-24022510.x86_64.iso"
       },
+      "esxi_8u3_datastore_installer": {
+        "type": "datastore_iso",
+        "datastore": "ISO_DATASTORE",
+        "path": "/template/iso/VMware-VMvisor-Installer-8.0U3-24022510.x86_64.iso"
+      },
       "vcsa_8u3_installer": {
         "type": "rclone_iso",
         "url": "https://repo.example.local/iso/VMware-VCSA-all-8.0.3-24022515.iso"
@@ -111,17 +116,13 @@
             }
           ]
         },
-        "boot": {
-          "mode": "pxe",
-          "firmware": "efi"
-        },
         "install": {
-          "method": "ansible_router_pxe",
+          "method": "ansible_vsphere_iso_boot",
           "source": {
-            "install_source": "esxi_8u3_installer"
+            "install_source": "esxi_8u3_datastore_installer"
           },
-          "pxe": {
-            "ks_template": "esxi-8.0"
+          "kickstart": {
+            "template": "esxi-8.0"
           }
         },
         "managed_by": [
@@ -166,17 +167,13 @@
             }
           ]
         },
-        "boot": {
-          "mode": "pxe",
-          "firmware": "efi"
-        },
         "install": {
           "method": "ansible_router_pxe",
           "source": {
             "install_source": "esxi_8u3_installer"
           },
-          "pxe": {
-            "ks_template": "esxi-8.0"
+          "kickstart": {
+            "template": "esxi-8.0"
           }
         },
         "managed_by": [

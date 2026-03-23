@@ -37,8 +37,10 @@ Current implementation notes:
 - ESXi group creation currently supports `placement.kind = "physical_vsphere"` only
 - ESXi placement overrides are not implemented yet; ESXi placement currently resolves from `provider_config`
 - ESXi creation instantiates VMs in Terraform; current bootstrap preparation is handled by `playbooks/deployment_v2_prepare.yaml`
-- ESXi install media currently validates `install_sources` of type `http_iso` or `rclone_iso`
+- ESXi install media currently validates `install_sources` of type `http_iso`, `rclone_iso`, or `datastore_iso`
 - each `esxi_groups` entry must define `ntp_servers`; deployment_v2 prepare renders that list into the ESXi kickstart with `esxcli system ntp set`
+- ESXi bootstrap is now described only by `install`; boot mode is derived internally from `install.method`
+- use `install.kickstart.template`, not `install.pxe.ks_template`; the kickstart template is shared by both PXE and datastore ISO workflows
 - `output.ansible_inventory_seed` is the contract for downstream Ansible work; use `scripts/render_ansible_inventory.sh` to turn it into an Ansible inventory JSON document
 - ESXi kickstart rendering now assumes VCF-style firstboot handling for all deployment_v2 hosts; `shape.vcf_mode` is kept only as compatibility metadata
 
@@ -47,13 +49,17 @@ Ansible integration helpers:
 - `scripts/render_ansible_inventory.sh` renders `output.ansible_inventory_seed` into dynamic inventory JSON for Ansible
 - `scripts/run_prepare.sh` renders inventory and runs `playbooks/deployment_v2_prepare.yaml`
 - `playbooks/deployment_v2_prepare.yaml` consumes that inventory and prepares the current deployment_v2 bootstrap runtime on Router VMs for HTTP, PXE, and optional `rclone`
+- `install.method = "ansible_router_pxe"` derives a PXE boot path from Router-hosted TFTP + HTTP assets
+- `install.method = "ansible_vsphere_iso_boot"` derives a datastore-ISO boot path from a virtual CD/DVD plus VMware API key injection
 - ESXi boot uses TFTP-hosted `mboot.efi` and `boot.cfg`; HTTP is used only to publish kickstart files and the mounted ISO tree referenced by `prefix=`
 - `http_iso` means a Router-managed HTTP ISO reference; deployment_v2 prepare downloads the ISO with `curl`/`get_url` into `/srv/install-sources/<source>/source.iso` and loop-mounts it into `/srv/install-sources/<source>/mounted`
 - `rclone_iso` means a Router-managed HTTP ISO reference that is exposed via `rclone mount` under `/srv/install-sources/<source>/remote` and then loop-mounted into `/srv/install-sources/<source>/mounted`
+- `datastore_iso` means a vSphere datastore-backed ISO path that Terraform connects directly to each ESXi VM as a virtual CD/DVD; deployment_v2 prepare still renders host-specific kickstart files on the Router, then uses Ansible VMware modules to enter EFI setup and inject `ks=` arguments for each host
 - mounted ESXi ISOs are staged per install source into `tftp_root/<source>/...` and `http_root/iso/<source>/...`, so multiple installer ISOs can coexist without path collisions
 - MAC-based PXE assignment expects `primary_mac_address` to be present in `terraform output -json ansible_inventory_seed`; refresh or apply Terraform before rendering inventory after output shape changes
 - `vm_admin_password` is now carried inside `ansible_inventory_seed.credentials.vm_admin_password`, so deployment_v2 prepare no longer needs an extra-vars root password for the normal `http_iso` flow
 - Routers serving `rclone_iso` sources must keep `router.execution.enable_rclone = true`
+- Routers serving `datastore_iso` ESXi installs must keep `router.execution.enable_http = true`, because kickstart files are still published from the Router over HTTP
 
 Prepare vars template:
 
@@ -62,7 +68,7 @@ cp deployments/deployment_v2/tfvars/prepare.vars.yaml.example \
   deployments/deployment_v2/tfvars/prepare.vars.yaml
 ```
 
-For the current `http_iso` and `rclone_iso` flows, deployment_v2 prepare now works from Terraform output alone.
+For the current `http_iso`, `rclone_iso`, and `datastore_iso` flows, deployment_v2 prepare now works from Terraform output alone.
 
 Minimal prepare example:
 
@@ -76,6 +82,7 @@ nix develop -c deployments/deployment_v2/scripts/run_prepare.sh
 Current scope of `deployment_v2_prepare`:
 
 - Router-hosted ESXi PXE / kickstart bootstrap
+- vSphere datastore ISO bootstrap for ESXi via virtual CD/DVD and EFI boot option injection
 - ESXi post-install verification through vSphere guest operations
 
 Planned expansion of `deployment_v2_prepare`:

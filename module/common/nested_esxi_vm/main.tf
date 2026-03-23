@@ -63,6 +63,14 @@ resource "vsphere_virtual_machine" "nested_esxi" {
     }
   }
 
+  dynamic "cdrom" {
+    for_each = var.cdroms
+    content {
+      datastore_id = cdrom.value.datastore_id
+      path         = cdrom.value.path
+    }
+  }
+
   dynamic "vtpm" {
     for_each = local.vtpms
     content {

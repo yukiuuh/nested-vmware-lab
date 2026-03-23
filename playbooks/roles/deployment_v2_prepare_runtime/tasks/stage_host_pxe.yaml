@@ -60,16 +60,6 @@
         )
       }}
 
-- name: Ensure host-specific kickstart directory exists for {{ deployment_v2_router_runtime_host.fqdn }}
-  ansible.builtin.file:
-    path: >-
-      {{ deployment_v2_router.runtime.http_root }}/{{ deployment_v2_router_runtime_http_kickstart_root_name }}/{{
-      deployment_v2_router_runtime_host_install_source }}/{{ deployment_v2_router_runtime_group_name }}
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
 - name: Ensure host-specific boot.cfg directories exist for {{ deployment_v2_router_runtime_host.fqdn }}
   ansible.builtin.file:
     path: "{{ item }}"
@@ -78,16 +68,6 @@
     group: root
     mode: "0755"
   loop: "{{ deployment_v2_router_runtime_host_bootcfg_dir_paths }}"
-
-- name: Render host-specific kickstart for {{ deployment_v2_router_runtime_host.fqdn }}
-  ansible.builtin.template:
-    src: esxi-8.0.ks.j2
-    dest: >-
-      {{ deployment_v2_router.runtime.http_root }}/{{ deployment_v2_router_runtime_host_kickstart_relpath }}
-    owner: root
-    group: root
-    mode: "0644"
-  when: deployment_v2_router_runtime_group.install.pxe.ks_template == "esxi-8.0"
 
 - name: Seed host-specific TFTP boot.cfg for {{ deployment_v2_router_runtime_host.fqdn }}
   ansible.builtin.copy:

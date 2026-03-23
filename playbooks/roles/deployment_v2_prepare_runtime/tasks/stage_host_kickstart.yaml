@@ -1,0 +1,34 @@
+---
+- name: Set host-specific kickstart facts for {{ deployment_v2_router_runtime_group_host_item.1.fqdn }}
+  ansible.builtin.set_fact:
+    deployment_v2_router_runtime_group_name: "{{ deployment_v2_router_runtime_group_host_item.0.key }}"
+    deployment_v2_router_runtime_group: "{{ deployment_v2_router_runtime_group_host_item.0.value }}"
+    deployment_v2_router_runtime_host: "{{ deployment_v2_router_runtime_group_host_item.1 }}"
+    deployment_v2_router_runtime_host_install_source: "{{ deployment_v2_router_runtime_group_host_item.0.value.install.install_source }}"
+    deployment_v2_router_runtime_host_kickstart_relpath: >-
+      {{
+        deployment_v2_router_runtime_http_kickstart_root_name ~ '/' ~
+        deployment_v2_router_runtime_group_host_item.0.value.install.install_source ~ '/' ~
+        deployment_v2_router_runtime_group_host_item.0.key ~ '/' ~
+        deployment_v2_router_runtime_group_host_item.1.hostname ~ '.cfg'
+      }}
+
+- name: Ensure host-specific kickstart directory exists for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.file:
+    path: >-
+      {{ deployment_v2_router.runtime.http_root }}/{{ deployment_v2_router_runtime_http_kickstart_root_name }}/{{
+      deployment_v2_router_runtime_host_install_source }}/{{ deployment_v2_router_runtime_group_name }}
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render host-specific kickstart for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.template:
+    src: esxi-8.0.ks.j2
+    dest: >-
+      {{ deployment_v2_router.runtime.http_root }}/{{ deployment_v2_router_runtime_host_kickstart_relpath }}
+    owner: root
+    group: root
+    mode: "0644"
+  when: deployment_v2_router_runtime_group.install.kickstart.template == "esxi-8.0"

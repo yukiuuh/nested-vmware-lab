@@ -54,14 +54,25 @@ locals {
     && !contains(local.supported_esxi_install_source_types, local.install_sources[group.install.source.install_source].type)
   ]
 
+  esxi_groups_install_source_method_mismatch = [
+    for name, group in local.esxi_groups : "${name}:${local.install_sources[group.install.source.install_source].type}:${try(group.install.method, "unset")}"
+    if try(group.install.source.install_source, null) != null
+    && contains(keys(local.install_sources), try(group.install.source.install_source, ""))
+    && (
+      (
+        try(group.install.method, "") == "ansible_router_pxe"
+        && !contains(["http_iso", "rclone_iso"], local.install_sources[group.install.source.install_source].type)
+      )
+      || (
+        try(group.install.method, "") == "ansible_vsphere_iso_boot"
+        && local.install_sources[group.install.source.install_source].type != "datastore_iso"
+      )
+    )
+  ]
+
   esxi_groups_unsupported_placement = [
     for name, group in local.esxi_groups : "${name}:${try(group.placement.kind, "unset")}"
     if !contains(local.supported_esxi_group_placements, try(group.placement.kind, ""))
-  ]
-
-  esxi_groups_unsupported_boot_mode = [
-    for name, group in local.esxi_groups : "${name}:${try(group.boot.mode, "unset")}"
-    if !contains(local.supported_esxi_boot_modes, try(group.boot.mode, ""))
   ]
 
   esxi_groups_unsupported_install_method = [
@@ -70,9 +81,9 @@ locals {
   ]
 
   esxi_groups_unsupported_kickstart_template = [
-    for name, group in local.esxi_groups : "${name}:${try(group.install.pxe.ks_template, "unset")}"
-    if try(group.install.pxe.ks_template, null) != null
-    && !contains(local.supported_esxi_kickstart_templates, try(group.install.pxe.ks_template, ""))
+    for name, group in local.esxi_groups : "${name}:${try(group.install.kickstart.template, "unset")}"
+    if try(group.install.kickstart.template, null) != null
+    && !contains(local.supported_esxi_kickstart_templates, try(group.install.kickstart.template, ""))
   ]
 
   esxi_groups_placement_overrides = [
@@ -157,7 +168,7 @@ resource "terraform_data" "validate_esxi_group_inputs" {
 
     precondition {
       condition     = length(local.esxi_groups_invalid_install_source_type) == 0
-      error_message = "ESXi install_source type must currently be http_iso or rclone_iso. Invalid: ${join(", ", local.esxi_groups_invalid_install_source_type)}"
+      error_message = "ESXi install_source type must currently be http_iso, rclone_iso, or datastore_iso. Invalid: ${join(", ", local.esxi_groups_invalid_install_source_type)}"
     }
 
     precondition {
@@ -166,18 +177,18 @@ resource "terraform_data" "validate_esxi_group_inputs" {
     }
 
     precondition {
-      condition     = length(local.esxi_groups_unsupported_boot_mode) == 0
-      error_message = "ESXi boot.mode currently supports only pxe. Invalid: ${join(", ", local.esxi_groups_unsupported_boot_mode)}"
+      condition     = length(local.esxi_groups_unsupported_install_method) == 0
+      error_message = "ESXi install.method currently supports ansible_router_pxe or ansible_vsphere_iso_boot. Invalid: ${join(", ", local.esxi_groups_unsupported_install_method)}"
     }
 
     precondition {
-      condition     = length(local.esxi_groups_unsupported_install_method) == 0
-      error_message = "ESXi install.method currently supports only ansible_router_pxe. Invalid: ${join(", ", local.esxi_groups_unsupported_install_method)}"
+      condition     = length(local.esxi_groups_install_source_method_mismatch) == 0
+      error_message = "ESXi install_source type must match install.method. Use http_iso/rclone_iso with ansible_router_pxe, and datastore_iso with ansible_vsphere_iso_boot. Invalid: ${join(", ", local.esxi_groups_install_source_method_mismatch)}"
     }
 
     precondition {
       condition     = length(local.esxi_groups_unsupported_kickstart_template) == 0
-      error_message = "ESXi install.pxe.ks_template currently supports only esxi-8.0. Invalid: ${join(", ", local.esxi_groups_unsupported_kickstart_template)}"
+      error_message = "ESXi install.kickstart.template currently supports only esxi-8.0. Invalid: ${join(", ", local.esxi_groups_unsupported_kickstart_template)}"
     }
 
     precondition {
