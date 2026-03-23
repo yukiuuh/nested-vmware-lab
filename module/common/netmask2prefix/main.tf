@@ -42,5 +42,5 @@ output "prefix_length" {
 }
 
 output "address_with_prefix" {
-  value = "${var.ip_address}/${local.prefix_length}"
+  value = var.ip_address != null ? "${var.ip_address}/${local.prefix_length}" : null
 }

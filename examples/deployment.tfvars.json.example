@@ -1,0 +1,229 @@
+{
+  "name_prefix": "lab-a",
+  "vm_admin_password": "VMware123!",
+  "ssh_authorized_keys": [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEXAMPLE replace-this-with-your-public-key"
+  ],
+  "provider_config": {
+      "datacenter": "Datacenter",
+      "resource_pool": "Resources",
+      "compute_host": "esxi.example.local",
+      "datastore": "datastore1",
+      "default_networks": {
+        "wan": "VM Network",
+        "lan": "Nested-Trunk"
+      }
+  },
+  "install_sources": {
+      "router_ova": {
+        "type": "http_ovf",
+        "url": "https://repo.example.local/ova/router/ubuntu-router.ova"
+      },
+      "esxi_8u3_installer": {
+        "type": "http_iso",
+        "url": "https://repo.example.local/iso/VMware-VMvisor-Installer-8.0U3-24022510.x86_64.iso"
+      },
+      "vcsa_8u3_installer": {
+        "type": "rclone_iso",
+        "url": "https://repo.example.local/iso/VMware-VCSA-all-8.0.3-24022515.iso"
+      }
+  },
+  "routers": {
+      "router_a": {
+        "source": {
+          "install_source": "router_ova"
+        },
+        "placement": {
+          "kind": "physical_vsphere",
+          "host": "esxi.example.local",
+          "datastore": "datastore1",
+          "network": "VM Network"
+        },
+        "networks": {
+          "wan": {
+            "network_name": "VM Network",
+            "ip": null,
+            "subnet_mask": "255.255.255.0",
+            "gateway": "192.168.1.1",
+            "nameservers": [
+              "192.168.1.1",
+              "8.8.8.8"
+            ]
+          },
+          "lan": {
+            "network_name": "Nested-Trunk",
+            "domain_name": "lab.local",
+            "network": "10.0.0.0",
+            "vlan_starts_with": 1001,
+            "vlan_network_count": 20,
+            "mtu": 1700
+          }
+        },
+        "execution": {
+          "enable_pxe": true,
+          "enable_http": true,
+          "enable_rclone": false,
+          "http_root": "/var/www/html",
+          "tftp_root": "/srv/tftp"
+        }
+      }
+  },
+  "esxi_groups": {
+      "management_a": {
+        "router": "router_a",
+        "placement": {
+          "kind": "physical_vsphere",
+          "host": "esxi.example.local",
+          "datastore": "datastore1",
+          "network": "Nested-Trunk"
+        },
+        "count": 3,
+        "hostname_prefix": "esx-a",
+        "starting_ip": "10.0.0.11",
+        "domain_name": "lab.local",
+        "gateway": "10.0.0.1",
+        "nameservers": [
+          "10.0.0.1"
+        ],
+        "ntp_servers": [
+          "10.0.0.1"
+        ],
+        "subnet_mask": "255.255.255.0",
+        "shape": {
+          "num_cpus": 16,
+          "mem_gb": 64,
+          "nic_count": 4,
+          "tpm_enabled": true,
+          "nvme_enabled": true,
+          "memory_reservation_enabled": false,
+          "hardware_random_generator_enabled": true,
+          "vcf_mode": true,
+          "disks": [
+            {
+              "label": "disk0",
+              "size_gb": 32,
+              "unit_number": 0
+            },
+            {
+              "label": "disk1",
+              "size_gb": 200,
+              "unit_number": 1
+            }
+          ]
+        },
+        "boot": {
+          "mode": "pxe",
+          "firmware": "efi"
+        },
+        "install": {
+          "method": "ansible_router_pxe",
+          "source": {
+            "install_source": "esxi_8u3_installer"
+          },
+          "pxe": {
+            "ks_template": "esxi-8.0"
+          }
+        },
+        "managed_by": [
+          "vcsa_a"
+        ]
+      },
+      "management_b": {
+        "router": "router_a",
+        "placement": {
+          "kind": "nested_vsphere",
+          "vcenter": "vcsa_a",
+          "cluster": "cluster-a",
+          "datastore": "iscsi01",
+          "network": "VM Network"
+        },
+        "count": 2,
+        "hostname_prefix": "esx-b",
+        "starting_ip": "10.0.0.21",
+        "domain_name": "lab.local",
+        "gateway": "10.0.0.1",
+        "nameservers": [
+          "10.0.0.1"
+        ],
+        "ntp_servers": [
+          "10.0.0.1"
+        ],
+        "subnet_mask": "255.255.255.0",
+        "shape": {
+          "num_cpus": 8,
+          "mem_gb": 32,
+          "nic_count": 2,
+          "tpm_enabled": false,
+          "nvme_enabled": false,
+          "memory_reservation_enabled": false,
+          "hardware_random_generator_enabled": true,
+          "vcf_mode": true,
+          "disks": [
+            {
+              "label": "disk0",
+              "size_gb": 32,
+              "unit_number": 0
+            }
+          ]
+        },
+        "boot": {
+          "mode": "pxe",
+          "firmware": "efi"
+        },
+        "install": {
+          "method": "ansible_router_pxe",
+          "source": {
+            "install_source": "esxi_8u3_installer"
+          },
+          "pxe": {
+            "ks_template": "esxi-8.0"
+          }
+        },
+        "managed_by": [
+          "vcsa_b"
+        ]
+      }
+  },
+  "vcenters": {
+      "vcsa_a": {
+        "router": "router_a",
+        "placement": {
+          "kind": "physical_vsphere",
+          "host": "esxi.example.local",
+          "datastore": "datastore1",
+          "network": "Nested-Trunk"
+        },
+        "hostname": "vcsa-a",
+        "ip": "10.0.0.50",
+        "deployment_size": "tiny",
+        "source": {
+          "install_source": "vcsa_8u3_installer"
+        },
+        "manages": [
+          "management_a"
+        ],
+        "sso_domain_name": "vsphere.local"
+      },
+      "vcsa_b": {
+        "router": "router_a",
+        "placement": {
+          "kind": "nested_vsphere",
+          "vcenter": "vcsa_a",
+          "cluster": "cluster-a",
+          "datastore": "iscsi01",
+          "network": "VM Network"
+        },
+        "hostname": "vcsa-b",
+        "ip": "10.0.0.60",
+        "deployment_size": "tiny",
+        "source": {
+          "install_source": "vcsa_8u3_installer"
+        },
+        "manages": [
+          "management_b"
+        ],
+        "sso_domain_name": "vsphere.local"
+      }
+  },
+  "services": {}
+}

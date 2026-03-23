@@ -1,0 +1,26 @@
+---
+deployment_v2_router_runtime_required_commands_iso:
+  - mount
+  - mountpoint
+  - systemctl
+  - timeout
+  - umount
+  - fusermount
+
+deployment_v2_router_runtime_required_commands_rclone:
+  - rclone
+
+deployment_v2_router_runtime_state_dir: /etc/nested-vmware-lab
+deployment_v2_router_runtime_install_source_root: /srv/install-sources
+deployment_v2_router_runtime_remote_dirname: remote
+deployment_v2_router_runtime_iso_local_filename: source.iso
+deployment_v2_router_runtime_rclone_cache_dir: /var/cache/rclone
+deployment_v2_router_runtime_rclone_config_path: /etc/nested-vmware-lab/rclone.conf
+deployment_v2_router_runtime_rclone_vfs_cache_mode: minimal
+deployment_v2_router_runtime_rclone_vfs_read_chunk_size: 32M
+deployment_v2_router_runtime_rclone_vfs_read_chunk_size_limit: "off"
+deployment_v2_router_runtime_dnsmasq_pxe_filename: mboot.efi
+deployment_v2_router_runtime_dnsmasq_conf_path: /etc/dnsmasq.d/90-deployment_v2_pxe.conf
+deployment_v2_router_runtime_iso_efi_source_dir: efi/boot
+deployment_v2_router_runtime_http_iso_root_name: iso
+deployment_v2_router_runtime_http_kickstart_root_name: kickstart

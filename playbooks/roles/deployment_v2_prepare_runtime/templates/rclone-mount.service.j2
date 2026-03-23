@@ -1,0 +1,15 @@
+[Unit]
+Description=deployment_v2 rclone mount for {{ item }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/rclone mount {{ deployment_v2_router_runtime_rclone_remote_name_map[item] }}: {{ deployment_v2_router_runtime_install_source_root }}/{{ item }}/{{ deployment_v2_router_runtime_remote_dirname }} --config {{ deployment_v2_router_runtime_rclone_config_path }} --read-only --allow-other --cache-dir {{ deployment_v2_router_runtime_rclone_cache_dir }} --vfs-cache-mode {{ deployment_v2_router_runtime_rclone_vfs_cache_mode }} --vfs-read-chunk-size {{ deployment_v2_router_runtime_rclone_vfs_read_chunk_size }} --vfs-read-chunk-size-limit {{ deployment_v2_router_runtime_rclone_vfs_read_chunk_size_limit }}
+ExecStop=/bin/fusermount -uz {{ deployment_v2_router_runtime_install_source_root }}/{{ item }}/{{ deployment_v2_router_runtime_remote_dirname }}
+Restart=on-failure
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

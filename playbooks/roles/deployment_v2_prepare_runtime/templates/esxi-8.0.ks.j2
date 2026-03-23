@@ -1,0 +1,32 @@
+vmaccepteula
+rootpw {{ deployment_v2.credentials.vm_admin_password }}
+install --firstdisk --novmfsondisk --ignoreprereqwarnings --ignoreprereqerrors --forceunsupportedinstall
+{% if not (deployment_v2_router_runtime_group.shape.hardware_random_generator_enabled | default(true)) %}
+entropy --sources=1
+{% endif %}
+network --bootproto=static --device=vmnic0 --ip={{ deployment_v2_router_runtime_host.ip }} --netmask={{ deployment_v2_router_runtime_group.network.subnet_mask }} --gateway={{ deployment_v2_router_runtime_group.network.gateway }} --hostname={{ deployment_v2_router_runtime_host.fqdn }} --nameserver={{ deployment_v2_router_runtime_group.network.nameservers[0] }}
+reboot
+
+%post --interpreter=busybox
+sed -i '/kernelopt=/ s/$/ allowLegacyCPU=true/' /vmfs/volumes/BOOTBANK1/boot.cfg
+sed -i '/kernelopt=/ s/$/ allowLegacyCPU=true/' /vmfs/volumes/BOOTBANK2/boot.cfg
+%firstboot --interpreter=busybox
+vim-cmd hostsvc/enable_ssh
+vim-cmd hostsvc/start_ssh
+vim-cmd hostsvc/enable_esx_shell
+vim-cmd hostsvc/start_esx_shell
+esxcli system settings advanced set -o /UserVars/SuppressShellWarning -i 1
+esxcli network ip interface remove --interface-name vmk0
+esxcli network ip interface add -p "Management Network" -i vmk0
+esxcli network ip interface ipv4 set -i vmk0 -t=static -I={{ deployment_v2_router_runtime_host.ip }} -N={{ deployment_v2_router_runtime_group.network.subnet_mask }}
+esxcli network ip route ipv4 add -g {{ deployment_v2_router_runtime_group.network.gateway }} -n default
+esxcli network vswitch standard set --vswitch-name=vSwitch0 --mtu={{ deployment_v2_router.networks.lan.mtu }}
+esxcli network ip interface set -i vmk0 -m {{ deployment_v2_router.networks.lan.mtu }}
+esxcli network vswitch standard portgroup set -v 0 -p "VM Network"
+esxcli system ntp set -e true -s {{ deployment_v2_router_runtime_group.ntp_servers | join(',') }}
+chkconfig ntpd on
+/etc/init.d/ntpd restart
+/sbin/generate-certificates
+/bin/services.sh restart
+/sbin/auto-backup.sh
+date > /var/tmp/provisioned

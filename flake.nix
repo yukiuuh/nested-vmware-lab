@@ -45,6 +45,9 @@
             echo "🔧 Nested VMware Lab — Nix devshell"
             echo ""
 
+            export NVL_ROOT="$PWD"
+            export PATH="$PWD/scripts:$PATH"
+
             # Create/activate a venv for pip-managed Python packages
             VENV_DIR="''${PWD}/.venv"
             if [ ! -d "$VENV_DIR" ]; then

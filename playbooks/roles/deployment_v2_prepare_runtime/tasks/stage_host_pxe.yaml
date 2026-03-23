@@ -1,0 +1,242 @@
+---
+- name: Set host-specific PXE facts for {{ deployment_v2_router_runtime_group_host_item.1.fqdn }}
+  ansible.builtin.set_fact:
+    deployment_v2_router_runtime_group_name: "{{ deployment_v2_router_runtime_group_host_item.0.key }}"
+    deployment_v2_router_runtime_group: "{{ deployment_v2_router_runtime_group_host_item.0.value }}"
+    deployment_v2_router_runtime_host: "{{ deployment_v2_router_runtime_group_host_item.1 }}"
+    deployment_v2_router_runtime_host_install_source: "{{ deployment_v2_router_runtime_group_host_item.0.value.install.install_source }}"
+    deployment_v2_router_runtime_host_kickstart_relpath: >-
+      {{
+        deployment_v2_router_runtime_http_kickstart_root_name ~ '/' ~
+        deployment_v2_router_runtime_group_host_item.0.value.install.install_source ~ '/' ~
+        deployment_v2_router_runtime_group_host_item.0.key ~ '/' ~
+        deployment_v2_router_runtime_group_host_item.1.hostname ~ '.cfg'
+      }}
+    deployment_v2_router_runtime_host_tftp_relroot: >-
+      {{
+        deployment_v2_router_runtime_group_host_item.0.value.install.install_source ~ '/hosts/' ~
+        deployment_v2_router_runtime_group_host_item.0.key ~ '/' ~
+        deployment_v2_router_runtime_group_host_item.1.hostname
+      }}
+    deployment_v2_router_runtime_host_bootfile: >-
+      {{
+        deployment_v2_router_runtime_group_host_item.0.value.install.install_source ~ '/hosts/' ~
+        deployment_v2_router_runtime_group_host_item.0.key ~ '/' ~
+        deployment_v2_router_runtime_group_host_item.1.hostname ~ '/' ~
+        deployment_v2_router_runtime_dnsmasq_pxe_filename
+      }}
+    deployment_v2_router_runtime_host_mac_bootcfg_relroots: >-
+      {{
+        (
+          deployment_v2_router_runtime_group_host_item.1.mac_addresses
+          | default([])
+          | map('lower')
+          | map('replace', ':', '-')
+          | map('regex_replace', '^', '01-')
+          | unique
+          | list
+        )
+      }}
+    deployment_v2_router_runtime_host_bootcfg_dir_paths: >-
+      {{
+        [
+          deployment_v2_router.runtime.tftp_root ~ '/' ~
+          deployment_v2_router_runtime_group_host_item.0.value.install.install_source ~ '/hosts/' ~
+          deployment_v2_router_runtime_group_host_item.0.key ~ '/' ~
+          deployment_v2_router_runtime_group_host_item.1.hostname
+        ]
+        + (
+          (
+            deployment_v2_router_runtime_group_host_item.1.mac_addresses
+            | default([])
+            | map('lower')
+            | map('replace', ':', '-')
+            | map('regex_replace', '^', '01-')
+            | unique
+            | list
+          )
+          | map('regex_replace', '^', deployment_v2_router.runtime.tftp_root ~ '/')
+          | list
+        )
+      }}
+
+- name: Ensure host-specific kickstart directory exists for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.file:
+    path: >-
+      {{ deployment_v2_router.runtime.http_root }}/{{ deployment_v2_router_runtime_http_kickstart_root_name }}/{{
+      deployment_v2_router_runtime_host_install_source }}/{{ deployment_v2_router_runtime_group_name }}
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure host-specific boot.cfg directories exist for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ deployment_v2_router_runtime_host_bootcfg_dir_paths }}"
+
+- name: Render host-specific kickstart for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.template:
+    src: esxi-8.0.ks.j2
+    dest: >-
+      {{ deployment_v2_router.runtime.http_root }}/{{ deployment_v2_router_runtime_host_kickstart_relpath }}
+    owner: root
+    group: root
+    mode: "0644"
+  when: deployment_v2_router_runtime_group.install.pxe.ks_template == "esxi-8.0"
+
+- name: Seed host-specific TFTP boot.cfg for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.copy:
+    src: "{{ deployment_v2_router_runtime_iso_boot_cfg_source_path }}"
+    dest: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/boot.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+
+- name: Provide host-specific mboot.efi for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.copy:
+    src: "{{ deployment_v2_router_runtime_iso_mboot_source_path }}"
+    dest: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/{{
+      deployment_v2_router_runtime_dnsmasq_pxe_filename }}
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+
+- name: Provide host-specific crypto64.efi for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.copy:
+    src: "{{ deployment_v2_router_runtime_iso_crypto_source_path }}"
+    dest: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/crypto64.efi
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+
+- name: Provide host-specific safeboot.efi for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.copy:
+    src: "{{ deployment_v2_router_runtime_iso_safeboot_source_path }}"
+    dest: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/safeboot.efi
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+
+- name: Set host-specific boot.cfg prefix in TFTP path for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.replace:
+    path: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/boot.cfg
+    regexp: '^prefix=.*$'
+    replace: >-
+      prefix={{ deployment_v2_router_runtime_host_install_source }}/iso/
+
+- name: Remove leading slash from kernel path in TFTP boot.cfg for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.replace:
+    path: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/boot.cfg
+    regexp: '^kernel=/+'
+    replace: 'kernel='
+
+- name: Remove leading slashes from module paths in TFTP boot.cfg for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.replace:
+    path: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/boot.cfg
+    regexp: '(^modules=| --- )/'
+    replace: '\1'
+
+- name: Append kickstart URL to TFTP boot.cfg for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.replace:
+    path: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/boot.cfg
+    regexp: '^kernelopt=.*$'
+    replace: >-
+      kernelopt=runweasel ks=http://{{ deployment_v2_router.management_ip }}/{{
+      deployment_v2_router_runtime_host_kickstart_relpath }} allowLegacyCPU=true
+
+- name: Remove cdromBoot from TFTP boot.cfg for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.replace:
+    path: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/boot.cfg
+    regexp: ' cdromBoot'
+    replace: ''
+
+- name: Publish MAC-addressed TFTP boot.cfg aliases for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.copy:
+    src: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/boot.cfg
+    dest: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ item }}/boot.cfg
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+  loop: "{{ deployment_v2_router_runtime_host_mac_bootcfg_relroots }}"
+
+- name: Publish MAC-addressed TFTP mboot.efi aliases for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.copy:
+    src: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/{{
+      deployment_v2_router_runtime_dnsmasq_pxe_filename }}
+    dest: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ item }}/{{
+      deployment_v2_router_runtime_dnsmasq_pxe_filename }}
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+  loop: "{{ deployment_v2_router_runtime_host_mac_bootcfg_relroots }}"
+
+- name: Publish MAC-addressed TFTP crypto64.efi aliases for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.copy:
+    src: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/crypto64.efi
+    dest: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ item }}/crypto64.efi
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+  loop: "{{ deployment_v2_router_runtime_host_mac_bootcfg_relroots }}"
+
+- name: Publish MAC-addressed TFTP safeboot.efi aliases for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.copy:
+    src: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_host_tftp_relroot }}/safeboot.efi
+    dest: >-
+      {{ deployment_v2_router.runtime.tftp_root }}/{{ item }}/safeboot.efi
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+  loop: "{{ deployment_v2_router_runtime_host_mac_bootcfg_relroots }}"
+
+- name: Record host-specific PXE manifest for {{ deployment_v2_router_runtime_host.fqdn }}
+  ansible.builtin.copy:
+    dest: >-
+      {{ deployment_v2_router_runtime_state_dir }}/deployment_v2_pxe_{{
+      deployment_v2_router_runtime_group_name }}_{{ deployment_v2_router_runtime_host.hostname }}.json
+    content: >-
+      {{
+        {
+          "group": deployment_v2_router_runtime_group_name,
+          "hostname": deployment_v2_router_runtime_host.hostname,
+          "fqdn": deployment_v2_router_runtime_host.fqdn,
+          "install_source": deployment_v2_router_runtime_host_install_source,
+          "kickstart_path": deployment_v2_router.runtime.http_root ~ "/" ~ deployment_v2_router_runtime_host_kickstart_relpath,
+          "kickstart_url": "http://" ~ deployment_v2_router.management_ip ~ "/" ~ deployment_v2_router_runtime_host_kickstart_relpath,
+          "tftp_bootfile": deployment_v2_router_runtime_host_bootfile,
+          "tftp_bootcfg_path":
+            deployment_v2_router.runtime.tftp_root ~ "/" ~ deployment_v2_router_runtime_host_tftp_relroot ~ "/boot.cfg"
+        } | to_nice_json
+      }}
+    owner: root
+    group: root
+    mode: "0644"

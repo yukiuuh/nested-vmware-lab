@@ -1,0 +1,23 @@
+---
+- name: Wait for rclone-mounted ISO file for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.wait_for:
+    path: >-
+      {{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/{{
+      deployment_v2_router_runtime_remote_dirname }}/{{ deployment_v2_router_runtime_rclone_source_map[deployment_v2_router_runtime_iso_source].filename }}
+    timeout: 300
+
+- name: Mount ISO from rclone-backed file for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/timeout
+      - "60"
+      - /usr/bin/mount
+      - -t
+      - iso9660
+      - -o
+      - loop,ro
+      - >-
+        {{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/{{
+        deployment_v2_router_runtime_remote_dirname }}/{{ deployment_v2_router_runtime_rclone_source_map[deployment_v2_router_runtime_iso_source].filename }}
+      - "{{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/mounted"
+  changed_when: true

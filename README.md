@@ -11,7 +11,7 @@ Create nested VCF / VVF / vSphere( + AVI or NSX) lab using Terraform and Ansible
  - 2 portgroups
    - WAN(Management): DHCP, internet reachable
    - LAN(Nested): isolated, allow DHCP trafic, VLAN trunk network with Promiscuous or MAC Learning, MAC address changes, Forged transmit
- - Docker
+ - Nix with flakes enabled
  - Product binaries(installer iso, ova)
 
 ## Setup
@@ -24,19 +24,22 @@ Create nested VCF / VVF / vSphere( + AVI or NSX) lab using Terraform and Ansible
  - NSX/AVI: put ova on http server reachable from WAN network
 
 ## Usage
-1. Start bootstrap container
+1. Enter the Nix development environment
 ```bash
-docker run -v nested-vmware-lab-workspace:/app/workspace -u bootstrap  -it --rm ghcr.io/yukiuuh/nested-vmware-lab-bootstrap:0.0.3
+nix develop
 ```
-2. Create working directory
+
+The first run installs Python packages into `.venv` and Ansible collections into `$HOME/.ansible/collections`.
+
+2. Create a working directory
 ```bash
-cp -r ./deployments/nested_vsphere/ ./workspace/
+cp -r ./deployments/nested_vsphere/ ./workspace/nested_vsphere
 ```
 
 3. Create config file
 ```bash
 cd ./workspace/nested_vsphere
-cp /app/examples/config.yaml ./
+cp ../../examples/config.yaml ./
 vim config.yaml # edit
 
 setup_vars.sh -c ./config.yaml -m <vsphere|avi|nsx> > terraform.tfvars # generate tfvars file
@@ -129,7 +132,7 @@ nested_esxi_shape = {
   "nic_count"                         = 4
   "vcf_mode"                          = true
   "nvme_enabled"                      = true # <---
-  "additional_vibs"                   = ["/app/vib/nested-vsan-esa-mock-hw.vib"] # <---
+  "additional_vibs"                   = ["/absolute/path/to/nested-vsan-esa-mock-hw.vib"] # <---
 ```
 
 #### Re-deploy ESXi hosts

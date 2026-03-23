@@ -1,0 +1,19 @@
+# Managed by Ansible for deployment_v2.
+log-dhcp
+enable-tftp
+tftp-no-blocksize
+tftp-root={{ deployment_v2_router.runtime.tftp_root }}
+dhcp-match=set:efi-x86_64,option:client-arch,7
+dhcp-option-force=tag:efi-x86_64,66,{{ deployment_v2_router.management_ip }}
+{% for group_name, group in (deployment_v2.esxi_groups | default({})).items() %}
+{% if group.router == deployment_v2_router_name %}
+{% for host in (group.hosts | default([])) %}
+{% for mac in (host.mac_addresses | default([])) %}
+{% if mac %}
+dhcp-host={{ mac | lower }},set:deployment_v2_{{ group_name }}_{{ host.hostname }},set:deployment_v2_{{ group_name }}_{{ host.hostname }}_{{ mac | lower | replace(':', '_') }}
+dhcp-boot=tag:deployment_v2_{{ group_name }}_{{ host.hostname }}_{{ mac | lower | replace(':', '_') }},01-{{ mac | lower | replace(':', '-') }}/{{ deployment_v2_router_runtime_dnsmasq_pxe_filename }}
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% endfor %}

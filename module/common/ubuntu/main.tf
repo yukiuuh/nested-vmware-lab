@@ -1,3 +1,11 @@
+terraform {
+  required_providers {
+    vsphere = {
+      source = "vmware/vsphere"
+    }
+  }
+}
+
 
 locals {
   userdata           = base64encode(var.userdata)
@@ -51,8 +59,8 @@ resource "vsphere_virtual_machine" "ubuntu" {
   dynamic "cdrom" {
     for_each = var.cdroms
     content {
-      datastore_id  = cdrom.value.datastore_id
-      path          = cdrom.value.path
+      datastore_id = cdrom.value.datastore_id
+      path         = cdrom.value.path
     }
   }
 

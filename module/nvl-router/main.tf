@@ -1,4 +1,10 @@
-
+terraform {
+  required_providers {
+    vsphere = {
+      source = "vmware/vsphere"
+    }
+  }
+}
 
 module "wan_address" {
   source     = "../common/netmask2prefix"
@@ -105,10 +111,14 @@ resource "terraform_data" "wait_for_router" {
   }
   provisioner "local-exec" {
     command = "until govc guest.ls -l '${self.input.username}:${self.input.password}' -vm ${self.input.name} /var/tmp/provisioned ; do sleep 60 ; done"
-    environment = {
-      GOVC_URL        = var.vi.govc_url
-      GOVC_INSECURE   = "true"
-      GOVC_DATACENTER = var.vi.datacenter.name
-    }
+    environment = merge(
+      {
+        GOVC_INSECURE   = "true"
+        GOVC_DATACENTER = var.vi.datacenter.name
+      },
+      var.vi.govc_url != null ? {
+        GOVC_URL = var.vi.govc_url
+      } : {}
+    )
   }
 }

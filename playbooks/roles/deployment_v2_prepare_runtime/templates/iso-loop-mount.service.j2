@@ -1,0 +1,15 @@
+[Unit]
+Description=deployment_v2 ISO loop mount for {{ item }}
+After=network-online.target
+Wants=network-online.target
+Requires=deployment-v2-rclone-{{ item }}.service
+After=deployment-v2-rclone-{{ item }}.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/mount -o loop,ro {{ deployment_v2_router_runtime_install_source_root }}/{{ item }}/{{ deployment_v2_router_runtime_remote_dirname }}/{{ deployment_v2_router_runtime_rclone_source_map[item].filename }} {{ deployment_v2_router_runtime_install_source_root }}/{{ item }}/mounted
+ExecStop=/usr/bin/umount {{ deployment_v2_router_runtime_install_source_root }}/{{ item }}/mounted
+
+[Install]
+WantedBy=multi-user.target

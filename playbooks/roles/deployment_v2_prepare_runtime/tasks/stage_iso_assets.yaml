@@ -1,0 +1,208 @@
+---
+- name: Check mounted ISO root for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.stat:
+    path: "{{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/mounted"
+  register: deployment_v2_router_runtime_iso_mount_root
+
+- name: Check lowercase EFI boot asset directory for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.stat:
+    path: "{{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/mounted/efi/boot"
+  register: deployment_v2_router_runtime_iso_efi_dir_lower
+
+- name: Check uppercase EFI boot asset directory for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.stat:
+    path: "{{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/mounted/EFI/BOOT"
+  register: deployment_v2_router_runtime_iso_efi_dir_upper
+
+- name: Check lowercase boot.cfg for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.stat:
+    path: "{{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/mounted/boot.cfg"
+  register: deployment_v2_router_runtime_iso_boot_cfg_lower
+
+- name: Check uppercase BOOT.CFG for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.stat:
+    path: "{{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/mounted/BOOT.CFG"
+  register: deployment_v2_router_runtime_iso_boot_cfg_upper
+
+- name: Resolve extracted ESXi ISO asset paths for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.set_fact:
+    deployment_v2_router_runtime_iso_efi_dir_path: >-
+      {{
+        deployment_v2_router_runtime_iso_efi_dir_upper.stat.exists
+        | ternary(
+            deployment_v2_router_runtime_install_source_root ~ "/" ~ deployment_v2_router_runtime_iso_source ~ "/mounted/EFI/BOOT",
+            deployment_v2_router_runtime_install_source_root ~ "/" ~ deployment_v2_router_runtime_iso_source ~ "/mounted/efi/boot"
+          )
+      }}
+    deployment_v2_router_runtime_iso_boot_cfg_source_path: >-
+      {{
+        deployment_v2_router_runtime_iso_boot_cfg_upper.stat.exists
+        | ternary(
+            deployment_v2_router_runtime_install_source_root ~ "/" ~ deployment_v2_router_runtime_iso_source ~ "/mounted/BOOT.CFG",
+            deployment_v2_router_runtime_install_source_root ~ "/" ~ deployment_v2_router_runtime_iso_source ~ "/mounted/boot.cfg"
+          )
+      }}
+
+- name: Check uppercase BOOTX64.EFI for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.stat:
+    path: "{{ deployment_v2_router_runtime_iso_efi_dir_path }}/BOOTX64.EFI"
+  register: deployment_v2_router_runtime_iso_mboot_upper
+
+- name: Check lowercase bootx64.efi for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.stat:
+    path: "{{ deployment_v2_router_runtime_iso_efi_dir_path }}/bootx64.efi"
+  register: deployment_v2_router_runtime_iso_mboot_lower
+
+- name: Resolve mboot.efi source path for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.set_fact:
+    deployment_v2_router_runtime_iso_mboot_source_path: >-
+      {{
+        deployment_v2_router_runtime_iso_mboot_upper.stat.exists
+        | ternary(
+            deployment_v2_router_runtime_iso_efi_dir_path ~ "/BOOTX64.EFI",
+            deployment_v2_router_runtime_iso_efi_dir_path ~ "/bootx64.efi"
+          )
+      }}
+    deployment_v2_router_runtime_iso_crypto_source_path: "{{ deployment_v2_router_runtime_iso_efi_dir_path }}/crypto64.efi"
+    deployment_v2_router_runtime_iso_safeboot_source_path: "{{ deployment_v2_router_runtime_iso_efi_dir_path }}/safeboot.efi"
+
+- name: Assert expected ESXi ISO assets exist for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_router_runtime_iso_mount_root.stat.exists
+      - deployment_v2_router_runtime_iso_efi_dir_lower.stat.exists or deployment_v2_router_runtime_iso_efi_dir_upper.stat.exists
+      - deployment_v2_router_runtime_iso_boot_cfg_lower.stat.exists or deployment_v2_router_runtime_iso_boot_cfg_upper.stat.exists
+      - deployment_v2_router_runtime_iso_mboot_upper.stat.exists or deployment_v2_router_runtime_iso_mboot_lower.stat.exists
+    fail_msg: >-
+      Mounted ISO for {{ deployment_v2_router_runtime_iso_source }} is missing expected ESXi boot assets under
+      EFI/BOOT or efi/boot and a BOOT.CFG/boot.cfg file
+
+- name: Remove stale staged TFTP tree for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.file:
+    path: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}"
+    state: absent
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Ensure staged TFTP root exists for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.file:
+    path: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Provide mboot.efi in TFTP root for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.copy:
+    src: "{{ deployment_v2_router_runtime_iso_mboot_source_path }}"
+    dest: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/mboot.efi"
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Copy boot.cfg into TFTP root for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.copy:
+    src: "{{ deployment_v2_router_runtime_iso_boot_cfg_source_path }}"
+    dest: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/boot.cfg"
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Remove leading slash from kernel path in staged TFTP boot.cfg for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.replace:
+    path: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/boot.cfg"
+    regexp: '^kernel=/+'
+    replace: 'kernel='
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Remove leading slashes from module paths in staged TFTP boot.cfg for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.replace:
+    path: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/boot.cfg"
+    regexp: '(^modules=| --- )/'
+    replace: '\1'
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Remove cdromBoot from staged TFTP boot.cfg for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.replace:
+    path: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/boot.cfg"
+    regexp: ' cdromBoot'
+    replace: ''
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Set staged TFTP boot.cfg prefix for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.replace:
+    path: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/boot.cfg"
+    regexp: '^prefix=.*$'
+    replace: >-
+      prefix={{ deployment_v2_router_runtime_iso_source }}/iso/
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Provide crypto64.efi in TFTP root for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.copy:
+    src: "{{ deployment_v2_router_runtime_iso_crypto_source_path }}"
+    dest: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/crypto64.efi"
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Provide safeboot.efi in TFTP root for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.copy:
+    src: "{{ deployment_v2_router_runtime_iso_safeboot_source_path }}"
+    dest: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/safeboot.efi"
+    owner: root
+    group: root
+    mode: "0644"
+    remote_src: true
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Remove copied TFTP ISO tree for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.file:
+    path: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/iso"
+    state: absent
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Symlink mounted ISO tree into TFTP root for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.file:
+    src: "{{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/mounted"
+    dest: "{{ deployment_v2_router.runtime.tftp_root }}/{{ deployment_v2_router_runtime_iso_source }}/iso"
+    state: link
+  when: deployment_v2_router.services.pxe | default(false)
+
+- name: Remove copied HTTP ISO tree for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.file:
+    path: "{{ deployment_v2_router.runtime.http_root }}/{{ deployment_v2_router_runtime_http_iso_root_name }}/{{ deployment_v2_router_runtime_iso_source }}"
+    state: absent
+  when: deployment_v2_router.services.http | default(false)
+
+- name: Symlink mounted ISO tree into HTTP root for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.file:
+    src: "{{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/mounted"
+    dest: "{{ deployment_v2_router.runtime.http_root }}/{{ deployment_v2_router_runtime_http_iso_root_name }}/{{ deployment_v2_router_runtime_iso_source }}"
+    state: link
+  when: deployment_v2_router.services.http | default(false)
+
+- name: Record staged ISO asset manifest for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.copy:
+    dest: "{{ deployment_v2_router_runtime_state_dir }}/deployment_v2_iso_asset_{{ deployment_v2_router_runtime_iso_source }}.json"
+    content: >-
+      {{
+        {
+          "install_source": deployment_v2_router_runtime_iso_source,
+          "mounted_iso_root": deployment_v2_router_runtime_install_source_root ~ "/" ~ deployment_v2_router_runtime_iso_source ~ "/mounted",
+          "tftp_root": deployment_v2_router.runtime.tftp_root ~ "/" ~ deployment_v2_router_runtime_iso_source,
+          "http_mount_link":
+            deployment_v2_router.runtime.http_root ~ "/" ~ deployment_v2_router_runtime_http_iso_root_name ~ "/" ~
+            deployment_v2_router_runtime_iso_source,
+          "efi_source_dir": deployment_v2_router_runtime_iso_efi_dir_path,
+          "boot_cfg_path": deployment_v2_router.runtime.tftp_root ~ "/" ~ deployment_v2_router_runtime_iso_source ~ "/boot.cfg"
+        } | to_nice_json
+      }}
+    owner: root
+    group: root
+    mode: "0644"

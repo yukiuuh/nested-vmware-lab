@@ -1,0 +1,119 @@
+---
+- name: Prepare deployment_v2 Routers
+  hosts: deployment_v2_routers
+  become: true
+  gather_facts: true
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  roles:
+    - role: deployment_v2_prepare_runtime
+
+- name: Ensure deployment_v2 ESXi bootstrap is progressing
+  hosts: deployment_v2_routers
+  gather_facts: false
+  vars:
+    deployment_v2_esxi_group_items: >-
+      {{
+        (deployment_v2.esxi_groups | default({}))
+        | dict2items
+        | selectattr('value.router', 'equalto', deployment_v2_router_name)
+        | list
+      }}
+  tasks:
+    - name: Validate vSphere credentials are available for ESXi reset
+      ansible.builtin.assert:
+        that:
+          - deployment_v2.credentials is defined
+          - deployment_v2.credentials.vsphere is defined
+          - deployment_v2.credentials.vsphere.server is defined
+          - deployment_v2.credentials.vsphere.user is defined
+          - deployment_v2.credentials.vsphere.password is defined
+          - deployment_v2.credentials.vsphere.datacenter is defined
+        fail_msg: >-
+          deployment_v2.credentials.vsphere must be present in ansible_inventory_seed to
+          reset ESXi VMs automatically
+      when: deployment_v2_esxi_group_items | length > 0
+
+    - name: Check whether ESXi management API is already reachable
+      ansible.builtin.wait_for:
+        host: "{{ item.1.ansible.host }}"
+        port: 443
+        timeout: 5
+        connect_timeout: 2
+        sleep: 1
+        state: started
+      loop: "{{ query('subelements', deployment_v2_esxi_group_items, 'value.hosts', {'skip_missing': true}) }}"
+      loop_control:
+        label: "{{ item.1.fqdn }}"
+      register: deployment_v2_esxi_api_checks
+      changed_when: false
+      ignore_errors: true
+
+    - name: Reset ESXi VM when management API is not yet reachable
+      community.vmware.vmware_guest_powerstate:
+        hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+        username: "{{ deployment_v2.credentials.vsphere.user }}"
+        password: "{{ deployment_v2.credentials.vsphere.password }}"
+        validate_certs: false
+        datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+        name: "{{ item.item.1.name }}"
+        state: restarted
+        force: true
+      no_log: true
+      loop: "{{ deployment_v2_esxi_api_checks.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item.1.fqdn }}"
+      when:
+        - item.failed | default(false)
+      delegate_to: localhost
+
+- name: Verify deployment_v2 ESXi bootstrap completed
+  hosts: deployment_v2_esxi
+  gather_facts: false
+  vars:
+    deployment_v2_verification_router: "{{ deployment_v2_esxi_group_config.router }}"
+  tasks:
+    - name: Wait for ESXi HTTPS API to become reachable
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[inventory_hostname].ansible_host }}"
+        port: 443
+        timeout: 1800
+        connect_timeout: 5
+        sleep: 5
+        state: started
+      delegate_to: "{{ deployment_v2_verification_router }}"
+
+    - name: Wait for VMware Tools on ESXi guest
+      community.vmware.vmware_guest_tools_wait:
+        hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+        username: "{{ deployment_v2.credentials.vsphere.user }}"
+        password: "{{ deployment_v2.credentials.vsphere.password }}"
+        validate_certs: false
+        datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+        name: "{{ deployment_v2_esxi_host.name }}"
+      register: deployment_v2_esxi_guest_tools
+      until: deployment_v2_esxi_guest_tools is succeeded
+      retries: 90
+      delay: 20
+      delegate_to: localhost
+
+    - name: Wait for ESXi provisioning marker via VMware Tools guest operations
+      community.vmware.vmware_vm_shell:
+        hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+        username: "{{ deployment_v2.credentials.vsphere.user }}"
+        password: "{{ deployment_v2.credentials.vsphere.password }}"
+        validate_certs: false
+        datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+        vm_id: "{{ deployment_v2_esxi_host.name }}"
+        vm_username: root
+        vm_password: "{{ deployment_v2.credentials.vm_admin_password }}"
+        vm_shell: /bin/sh
+        vm_shell_args: "-c 'test -f /var/tmp/provisioned'"
+        wait_for_process: true
+      register: deployment_v2_esxi_provisioned_marker
+      changed_when: false
+      retries: 30
+      delay: 20
+      until: (deployment_v2_esxi_provisioned_marker.exit_code | default(1)) == 0
+      failed_when: false
+      delegate_to: localhost
