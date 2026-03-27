@@ -83,6 +83,7 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
   $seed as $seed
   | ($seed.routers // {}) as $routers
   | ($seed.esxi_groups // {}) as $esxi_groups
+  | ($seed.storages // {}) as $storages
   | (
       reduce ($routers | to_entries[]) as $router ({};
         . + {
@@ -92,6 +93,18 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
             deployment_v2_kind: "router",
             deployment_v2_name: $router.key,
             deployment_v2_router: $router.value
+          }
+        }
+      )
+      +
+      reduce ($storages | to_entries[]) as $storage ({};
+        . + {
+          ($storage.key): {
+            ansible_host: $storage.value.ansible.host,
+            ansible_user: $storage.value.ansible.user,
+            deployment_v2_kind: "storage",
+            deployment_v2_name: $storage.key,
+            deployment_v2_storage: $storage.value
           }
         }
       )
@@ -121,8 +134,9 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
       )
     ) as $hostvars
   | (
-      ["deployment_v2_routers", "deployment_v2_esxi"]
+      ["deployment_v2_routers", "deployment_v2_storages", "deployment_v2_esxi"]
       + ($routers | keys | map("deployment_v2_router_" + .))
+      + ($storages | keys | map("deployment_v2_storage_" + .))
       + ($esxi_groups | keys | map("deployment_v2_esxi_group_" + .))
     ) as $all_children
   | {
@@ -134,6 +148,9 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
       },
       deployment_v2_routers: {
         hosts: ($routers | keys | map({key: ., value: $hostvars[.]}) | from_entries)
+      },
+      deployment_v2_storages: {
+        hosts: ($storages | keys | map({key: ., value: $hostvars[.]}) | from_entries)
       },
       deployment_v2_esxi: {
         children: (($esxi_groups | keys | map("deployment_v2_esxi_group_" + .)) | map({key: ., value: {}}) | from_entries)
@@ -148,6 +165,20 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
             vars: {
               deployment_v2_router_name: $router.key,
               deployment_v2_router: $router.value
+            }
+          }
+        }
+      )
+    )
+    +
+    (
+      reduce ($storages | to_entries[]) as $storage ({};
+        . + {
+          ("deployment_v2_storage_" + $storage.key): {
+            hosts: { ($storage.key): $hostvars[$storage.key] },
+            vars: {
+              deployment_v2_storage_name: $storage.key,
+              deployment_v2_storage: $storage.value
             }
           }
         }

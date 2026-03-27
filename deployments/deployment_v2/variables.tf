@@ -49,6 +49,12 @@ variable "esxi_groups" {
   default     = {}
 }
 
+variable "storages" {
+  description = "Named storage service definitions"
+  type        = map(any)
+  default     = {}
+}
+
 variable "vcenters" {
   description = "Named vCenter definitions"
   type        = map(any)

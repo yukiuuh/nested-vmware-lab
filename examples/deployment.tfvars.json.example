@@ -15,7 +15,7 @@
       }
   },
   "install_sources": {
-      "router_ova": {
+      "nvl_unified_ova": {
         "type": "http_ovf",
         "url": "https://repo.example.local/ova/router/ubuntu-router.ova"
       },
@@ -36,13 +36,10 @@
   "routers": {
       "router_a": {
         "source": {
-          "install_source": "router_ova"
+          "install_source": "nvl_unified_ova"
         },
         "placement": {
-          "kind": "physical_vsphere",
-          "host": "esxi.example.local",
-          "datastore": "datastore1",
-          "network": "VM Network"
+          "kind": "provider_vsphere"
         },
         "networks": {
           "wan": {
@@ -77,10 +74,7 @@
       "management_a": {
         "router": "router_a",
         "placement": {
-          "kind": "physical_vsphere",
-          "host": "esxi.example.local",
-          "datastore": "datastore1",
-          "network": "Nested-Trunk"
+          "kind": "provider_vsphere"
         },
         "count": 3,
         "hostname_prefix": "esx-a",
@@ -181,14 +175,46 @@
         ]
       }
   },
+  "storages": {
+      "storage_a": {
+        "router": "router_a",
+        "source": {
+          "install_source": "nvl_unified_ova"
+        },
+        "placement": {
+          "kind": "provider_vsphere"
+        },
+        "ip": "10.0.0.10",
+        "gateway": "10.0.0.1",
+        "nameservers": [
+          "10.0.0.1"
+        ],
+        "domain_name": "lab.local",
+        "subnet_mask": "255.255.255.0",
+        "storage1_ip": "10.0.4.10",
+        "storage2_ip": "10.0.5.10",
+        "storage1_vlan": 1004,
+        "storage2_vlan": 1005,
+        "mtu": 9000,
+        "storage_subnet_mask": "255.255.255.0",
+        "disk_size_gb": 200,
+        "num_cpus": 4,
+        "mem_gb": 4,
+        "luns": [
+          {
+            "name": "lun01",
+            "size_gb": 100
+          }
+        ],
+        "zfs_compression": "off",
+        "zfs_nfs_dedup": "off"
+      }
+  },
   "vcenters": {
       "vcsa_a": {
         "router": "router_a",
         "placement": {
-          "kind": "physical_vsphere",
-          "host": "esxi.example.local",
-          "datastore": "datastore1",
-          "network": "Nested-Trunk"
+          "kind": "provider_vsphere"
         },
         "hostname": "vcsa-a",
         "ip": "10.0.0.50",

@@ -17,6 +17,7 @@ Current scope:
 - accept the new split-variable model
 - create Router VMs from `routers`
 - create ESXi VMs from `esxi_groups` with Terraform-only inventory/lifecycle scope
+- create storage service VMs from `storages`
 - expose structured outputs for future Terraform and Ansible integration
 - avoid modifying the behavior of the legacy deployment entrypoint
 
@@ -26,15 +27,19 @@ Next steps:
 2. implement Router-driven ESXi PXE / kickstart workflow wiring
 3. emit stable Ansible-oriented inventory outputs for Routers and ESXi hosts
 4. implement vCenter creation from `deployment.vcenters`
-5. expand Router and ESXi placement support beyond `physical_vsphere`
+5. expand Router and ESXi placement support beyond `provider_vsphere`
 
 Current implementation notes:
 
-- Router creation currently supports `placement.kind = "physical_vsphere"` only
+- Router creation currently supports `placement.kind = "provider_vsphere"` only
 - Router placement overrides are not implemented yet; Router placement currently resolves from `provider_config`
 - Router install media currently supports `install_sources` of type `http_ovf` or `local_ovf`
 - Router definitions may use `source.install_source`; `template` is accepted as a compatibility alias during the transition
-- ESXi group creation currently supports `placement.kind = "physical_vsphere"` only
+- storage service creation currently supports `placement.kind = "provider_vsphere"` only
+- storage placement overrides are not implemented yet; storage placement currently resolves from `provider_config`
+- storage install media currently supports `install_sources` of type `http_ovf` or `local_ovf`
+- each `storages` entry must reference an existing `router`; network defaults resolve from that router unless explicitly overridden on the storage object
+- ESXi group creation currently supports `placement.kind = "provider_vsphere"` only
 - ESXi placement overrides are not implemented yet; ESXi placement currently resolves from `provider_config`
 - ESXi creation instantiates VMs in Terraform; current bootstrap preparation is handled by `playbooks/deployment_v2_prepare.yaml`
 - ESXi install media currently validates `install_sources` of type `http_iso`, `rclone_iso`, or `datastore_iso`
@@ -42,6 +47,7 @@ Current implementation notes:
 - ESXi bootstrap is now described only by `install`; boot mode is derived internally from `install.method`
 - use `install.kickstart.template`, not `install.pxe.ks_template`; the kickstart template is shared by both PXE and datastore ISO workflows
 - `output.ansible_inventory_seed` is the contract for downstream Ansible work; use `scripts/render_ansible_inventory.sh` to turn it into an Ansible inventory JSON document
+- rendered inventory now includes `deployment_v2_storages` and `deployment_v2_storage_<name>` groups for `storages`
 - ESXi kickstart rendering now assumes VCF-style firstboot handling for all deployment_v2 hosts; `shape.vcf_mode` is kept only as compatibility metadata
 
 Ansible integration helpers:

@@ -15,6 +15,7 @@ locals {
   install_sources     = var.install_sources
   routers             = var.routers
   esxi_groups         = var.esxi_groups
+  storages            = var.storages
   ssh_authorized_keys = var.ssh_authorized_keys
   vcenters            = var.vcenters
   services            = var.services
@@ -25,11 +26,20 @@ locals {
   ])
 
   supported_router_placements = toset([
-    "physical_vsphere",
+    "provider_vsphere",
   ])
 
   supported_esxi_group_placements = toset([
-    "physical_vsphere",
+    "provider_vsphere",
+  ])
+
+  supported_storage_source_types = toset([
+    "http_ovf",
+    "local_ovf",
+  ])
+
+  supported_storage_placements = toset([
+    "provider_vsphere",
   ])
 
   supported_esxi_install_methods = toset([
@@ -52,6 +62,14 @@ locals {
     name => coalesce(
       try(router.source.install_source, null),
       try(router.template, null)
+    )
+  }
+
+  storage_source_refs = {
+    for name, storage in local.storages :
+    name => coalesce(
+      try(storage.source.install_source, null),
+      try(storage.template, null)
     )
   }
 
@@ -120,6 +138,20 @@ locals {
       router_gateway     = try(cidrhost("${local.routers[group.router].networks.lan.network}/24", 1), null)
     }
     if contains(keys(local.routers), group.router)
+  }
+
+  storage_defaults = {
+    for name, storage in local.storages :
+    name => {
+      router_domain_name = try(local.routers[storage.router].networks.lan.domain_name, null)
+      router_gateway     = try(cidrhost("${local.routers[storage.router].networks.lan.network}/24", 1), null)
+      network_name = coalesce(
+        try(storage.placement.network, null),
+        try(local.routers[storage.router].networks.lan.network_name, null),
+        try(local.provider.default_networks.lan, null)
+      )
+    }
+    if contains(keys(local.routers), try(storage.router, ""))
   }
 
   esxi_group_hosts = merge([
@@ -211,6 +243,70 @@ locals {
     && contains(local.supported_esxi_install_methods, try(group.install.method, ""))
     && contains(keys(local.install_sources), try(group.install.source.install_source, ""))
     && contains(local.supported_esxi_install_source_types, try(local.install_sources[group.install.source.install_source].type, ""))
+  }
+
+  storage_runtime = {
+    for name, storage in local.storages :
+    name => {
+      name = "${local.deployment_name_prefix}-${name}"
+
+      placement = {
+        kind          = storage.placement.kind
+        datacenter    = local.provider.datacenter
+        resource_pool = local.provider.resource_pool
+        host          = local.provider.compute_host
+        datastore     = local.provider.datastore
+        network       = local.storage_defaults[name].network_name
+      }
+
+      router = storage.router
+      network = {
+        network_name = local.storage_defaults[name].network_name
+        domain_name = coalesce(
+          try(storage.domain_name, null),
+          try(local.storage_defaults[name].router_domain_name, null)
+        )
+        gateway = coalesce(
+          try(storage.gateway, null),
+          try(local.storage_defaults[name].router_gateway, null)
+        )
+        nameservers = coalesce(
+          try(storage.nameservers, null),
+          try([local.storage_defaults[name].router_gateway], null),
+          []
+        )
+        subnet_mask = try(storage.subnet_mask, "255.255.255.0")
+      }
+      source_ref     = local.storage_source_refs[name]
+      install_source = local.install_sources[local.storage_source_refs[name]]
+      shape = {
+        num_cpus = try(storage.num_cpus, 4)
+        mem_gb   = try(storage.mem_gb, 4)
+      }
+      service = {
+        ip                   = storage.ip
+        storage1_ip          = storage.storage1_ip
+        storage2_ip          = storage.storage2_ip
+        storage1_vlan        = storage.storage1_vlan
+        storage2_vlan        = storage.storage2_vlan
+        storage_mtu          = storage.mtu
+        storage_subnet_mask  = storage.storage_subnet_mask
+        storage_disk_size_gb = storage.disk_size_gb
+        luns                 = try(storage.luns, [])
+        zfs_compression      = try(storage.zfs_compression, "off")
+        zfs_nfs_dedup        = try(storage.zfs_nfs_dedup, "off")
+      }
+      ansible = {
+        user = "labadmin"
+      }
+    }
+    if contains(keys(local.routers), try(storage.router, ""))
+    && contains(keys(local.storage_defaults), name)
+    && local.storage_source_refs[name] != null
+    && contains(keys(local.install_sources), local.storage_source_refs[name])
+    && contains(local.supported_storage_source_types, try(local.install_sources[local.storage_source_refs[name]].type, ""))
+    && contains(local.supported_storage_placements, try(storage.placement.kind, ""))
+    && local.storage_defaults[name].network_name != null
   }
 
   router_runtime = {
@@ -306,6 +402,25 @@ locals {
       runtime            = router.runtime
       install_source     = local.router_source_refs[name]
       ansible            = merge(router.ansible, { host = module.routers[name].wan_ip })
+    }
+  }
+
+  storage_outputs = {
+    for name, storage in local.storage_runtime :
+    name => {
+      name      = module.storages[name].name
+      ip        = module.storages[name].ip
+      router    = storage.router
+      placement = storage.placement
+      network   = storage.network
+      service   = storage.service
+      ansible   = merge(storage.ansible, { host = module.storages[name].ip })
+      hostname  = "storage"
+      fqdn = storage.network.domain_name != null ? format(
+        "storage.%s",
+        storage.network.domain_name
+      ) : null
+      install_source = storage.source_ref
     }
   }
 

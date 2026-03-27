@@ -110,6 +110,44 @@ locals {
       if try(trimspace(server), "") != ""
     ]) != length(try(group.ntp_servers, []))
   ]
+
+  storages_missing_router = [
+    for name, storage in local.storages : name
+    if !contains(keys(local.routers), try(storage.router, ""))
+  ]
+
+  storages_missing_source = [
+    for name, source_ref in local.storage_source_refs : name
+    if source_ref == null
+  ]
+
+  storages_missing_sources = [
+    for name, source_ref in local.storage_source_refs : "${name}:${source_ref}"
+    if source_ref != null && !contains(keys(local.install_sources), source_ref)
+  ]
+
+  storages_invalid_source_type = [
+    for name, source_ref in local.storage_source_refs : "${name}:${local.install_sources[source_ref].type}"
+    if source_ref != null
+    && contains(keys(local.install_sources), source_ref)
+    && !contains(local.supported_storage_source_types, local.install_sources[source_ref].type)
+  ]
+
+  storages_unsupported_placement = [
+    for name, storage in local.storages : "${name}:${try(storage.placement.kind, "unset")}"
+    if !contains(local.supported_storage_placements, try(storage.placement.kind, ""))
+  ]
+
+  storages_placement_overrides = [
+    for name, storage in local.storages : name
+    if contains(local.supported_storage_placements, try(storage.placement.kind, ""))
+    && (
+      try(storage.placement.datacenter, local.provider.datacenter) != local.provider.datacenter
+      || try(storage.placement.resource_pool, local.provider.resource_pool) != local.provider.resource_pool
+      || try(storage.placement.host, local.provider.compute_host) != local.provider.compute_host
+      || try(storage.placement.datastore, local.provider.datastore) != local.provider.datastore
+    )
+  ]
 }
 
 resource "terraform_data" "validate_router_inputs" {
@@ -135,7 +173,7 @@ resource "terraform_data" "validate_router_inputs" {
 
     precondition {
       condition     = length(local.routers_unsupported_placement) == 0
-      error_message = "Router placement.kind currently supports only physical_vsphere. Invalid: ${join(", ", local.routers_unsupported_placement)}"
+      error_message = "Router placement.kind currently supports only provider_vsphere. Invalid: ${join(", ", local.routers_unsupported_placement)}"
     }
 
     precondition {
@@ -173,7 +211,7 @@ resource "terraform_data" "validate_esxi_group_inputs" {
 
     precondition {
       condition     = length(local.esxi_groups_unsupported_placement) == 0
-      error_message = "ESXi placement.kind currently supports only physical_vsphere. Invalid: ${join(", ", local.esxi_groups_unsupported_placement)}"
+      error_message = "ESXi placement.kind currently supports only provider_vsphere. Invalid: ${join(", ", local.esxi_groups_unsupported_placement)}"
     }
 
     precondition {
@@ -204,6 +242,44 @@ resource "terraform_data" "validate_esxi_group_inputs" {
     precondition {
       condition     = length(local.esxi_groups_invalid_ntp_servers) == 0
       error_message = "Each esxi_group ntp_servers entry must be a non-empty string. Invalid: ${join(", ", local.esxi_groups_invalid_ntp_servers)}"
+    }
+  }
+}
+
+resource "terraform_data" "validate_storage_inputs" {
+  input = {
+    storages = keys(local.storages)
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.storages_missing_router) == 0
+      error_message = "Each storage must reference an existing router. Invalid: ${join(", ", local.storages_missing_router)}"
+    }
+
+    precondition {
+      condition     = length(local.storages_missing_source) == 0
+      error_message = "Each storage must define source.install_source or template. Missing: ${join(", ", local.storages_missing_source)}"
+    }
+
+    precondition {
+      condition     = length(local.storages_missing_sources) == 0
+      error_message = "Storage install_source reference was not found in install_sources: ${join(", ", local.storages_missing_sources)}"
+    }
+
+    precondition {
+      condition     = length(local.storages_invalid_source_type) == 0
+      error_message = "Storage install_source type must be one of http_ovf or local_ovf. Invalid: ${join(", ", local.storages_invalid_source_type)}"
+    }
+
+    precondition {
+      condition     = length(local.storages_unsupported_placement) == 0
+      error_message = "Storage placement.kind currently supports only provider_vsphere. Invalid: ${join(", ", local.storages_unsupported_placement)}"
+    }
+
+    precondition {
+      condition     = length(local.storages_placement_overrides) == 0
+      error_message = "Storage placement overrides are not implemented yet. Use provider_config values for datacenter/resource_pool/host/datastore. Invalid: ${join(", ", local.storages_placement_overrides)}"
     }
   }
 }
