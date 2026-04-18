@@ -19,6 +19,12 @@ module "routers" {
 
   ubuntu_ovf_url = each.value.install_source.type == "http_ovf" ? each.value.install_source.url : null
   local_ovf_path = each.value.install_source.type == "local_ovf" ? each.value.install_source.path : null
+  cdroms = [
+    for cdrom in try(each.value.datastore_cdroms, []) : {
+      datastore_id = data.vsphere_datastore.esxi_install_source_datastore[cdrom.source_name].id
+      path         = cdrom.path
+    }
+  ]
 
   nested_network = {
     domain_name        = each.value.networks.lan.domain_name

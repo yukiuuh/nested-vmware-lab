@@ -46,7 +46,7 @@ module "storage" {
   local_ovf_path     = var.local_ovf_path
   userdata           = local.storage_userdata
   network_interfaces = [var.network_name, var.network_name, var.network_name]
-  num_cpus           = var.num_cpus 
+  num_cpus           = var.num_cpus
   mem_gb             = var.mem_gb
   disks = [
     {

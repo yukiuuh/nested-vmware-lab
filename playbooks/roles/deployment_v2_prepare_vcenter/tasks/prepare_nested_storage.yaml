@@ -1,0 +1,258 @@
+---
+- name: Build nested deployment_v2 vCenter storage run ID for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_storage_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}"
+
+- name: Build nested deployment_v2 vCenter storage facts for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_current: "{{ deployment_v2_vcenter_item.value }}"
+    deployment_v2_vcenter_prepare_storage_mode: >-
+      {{ deployment_v2_vcenter_item.value.target.storage.mode | default('existing_datastore') }}
+    deployment_v2_vcenter_prepare_datastore_min_free_mb: >-
+      {{ (deployment_v2_vcenter_prepare_datastore_min_free_gb | int) * 1024 }}
+    deployment_v2_vcenter_prepare_storage_guest_log_path: >-
+      /var/tmp/deployment_v2_prepare_{{ deployment_v2_vcenter_item.key }}_storage_{{ deployment_v2_vcenter_prepare_storage_run_id }}.log
+    deployment_v2_vcenter_prepare_storage_local_log_path: >-
+      /tmp/deployment_v2_prepare_{{ inventory_hostname }}_{{ deployment_v2_vcenter_item.key }}_storage_{{ deployment_v2_vcenter_prepare_storage_run_id }}.log
+    deployment_v2_vcenter_prepare_storage_local_script_path: >-
+      /tmp/deployment_v2_prepare_{{ inventory_hostname }}_{{ deployment_v2_vcenter_item.key }}_storage_{{ deployment_v2_vcenter_prepare_storage_run_id }}.sh
+    deployment_v2_vcenter_prepare_esxi_ssh_common_args: >-
+      -F /dev/null
+      -o StrictHostKeyChecking=no
+      -o UserKnownHostsFile=/dev/null
+      -o ProxyCommand="ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+      -W %h:%p {{ hostvars[inventory_hostname].ansible_user }}@{{ hostvars[inventory_hostname].ansible_host }}"
+
+- name: Validate nested deployment_v2 vCenter storage metadata for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_vcenter_prepare_current.target.kind == "esxi"
+      - deployment_v2_vcenter_prepare_current.target.esxi_host is defined
+      - deployment_v2_vcenter_prepare_current.target.esxi_host.vm_name | default('', true) | length > 0
+      - deployment_v2_vcenter_prepare_current.target.datastore | default('', true) | length > 0
+      - deployment_v2_vcenter_prepare_storage_mode in ['existing_datastore', 'iscsi_datastore', 'vsan_bootstrap']
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'iscsi_datastore'
+        or deployment_v2_vcenter_prepare_current.target.storage.iscsi.storage | default('', true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'iscsi_datastore'
+        or deployment_v2_vcenter_prepare_current.target.storage.iscsi.lun | default('', true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'iscsi_datastore'
+        or deployment_v2_vcenter_prepare_current.target.storage.iscsi.lun_id is defined
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'iscsi_datastore'
+        or deployment_v2_vcenter_prepare_current.target.storage.iscsi.portals | default([], true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'iscsi_datastore'
+        or deployment_v2_vcenter_prepare_current.target.storage.iscsi.vmkernel_adapters | default([], true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'vsan_bootstrap'
+        or deployment_v2_vcenter_prepare_current.target.storage.vsan.datastore_name | default('', true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'vsan_bootstrap'
+        or deployment_v2_vcenter_prepare_current.target.storage.vsan.datacenter | default('', true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'vsan_bootstrap'
+        or deployment_v2_vcenter_prepare_current.target.storage.vsan.cluster | default('', true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'vsan_bootstrap'
+        or deployment_v2_vcenter_prepare_current.target.storage.vsan.cache_disks | default([], true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_storage_mode != 'vsan_bootstrap'
+        or deployment_v2_vcenter_prepare_current.target.storage.vsan.capacity_disks | default([], true) | length > 0
+    fail_msg: >-
+      nested_vsphere vCenter storage metadata is incomplete for {{ deployment_v2_vcenter_item.key }}.
+      mode={{ deployment_v2_vcenter_prepare_storage_mode }}
+
+- name: Build existing datastore verification script for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_storage_script: |
+      set -eu
+      DATASTORE={{ deployment_v2_vcenter_prepare_current.target.datastore | quote }}
+      MIN_FREE_MB={{ deployment_v2_vcenter_prepare_datastore_min_free_mb | int }}
+      if ! esxcli storage filesystem list | awk -v ds="$DATASTORE" '$1 == ds { found=1 } END { exit !found }'; then
+        echo "datastore $DATASTORE is not visible on this ESXi host" >&2
+        exit 1
+      fi
+      if [ "$MIN_FREE_MB" -gt 0 ]; then
+        FREE_MB="$(df -m "/vmfs/volumes/$DATASTORE" | awk 'NR == 2 { print $4 }')"
+        if [ -n "$FREE_MB" ] && [ "$FREE_MB" -lt "$MIN_FREE_MB" ]; then
+          echo "datastore $DATASTORE has ${FREE_MB}MB free; need at least ${MIN_FREE_MB}MB" >&2
+          exit 1
+        fi
+      fi
+  when: deployment_v2_vcenter_prepare_storage_mode == "existing_datastore"
+
+- name: Verify existing datastore for {{ deployment_v2_vcenter_item.key }}
+  community.vmware.vmware_vm_shell:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+    vm_id: "{{ deployment_v2_vcenter_prepare_current.target.esxi_host.vm_name }}"
+    vm_username: root
+    vm_password: "{{ deployment_v2.credentials.vm_admin_password }}"
+    vm_shell: /bin/sh
+    vm_shell_args: "-c {{ deployment_v2_vcenter_prepare_storage_script | quote }}"
+    wait_for_process: true
+  register: deployment_v2_vcenter_prepare_storage_verify
+  changed_when: false
+  failed_when: (deployment_v2_vcenter_prepare_storage_verify.exit_code | default(1)) != 0
+  delegate_to: localhost
+  become: false
+  when: deployment_v2_vcenter_prepare_storage_mode == "existing_datastore"
+
+- name: Render iSCSI datastore preparation script locally for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.template:
+    src: iscsi_storage_prepare.sh.j2
+    dest: "{{ deployment_v2_vcenter_prepare_storage_local_script_path }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  when: deployment_v2_vcenter_prepare_storage_mode == "iscsi_datastore"
+
+- name: Wait for target ESXi SSH from Router for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.wait_for:
+    host: "{{ deployment_v2_vcenter_prepare_current.target.esxi_host.ip }}"
+    port: 22
+    timeout: 300
+    connect_timeout: 5
+    sleep: 5
+    state: started
+  delegate_to: "{{ inventory_hostname }}"
+  become: false
+  when: deployment_v2_vcenter_prepare_storage_mode == "iscsi_datastore"
+
+- name: Check sshpass is available for ESXi SSH storage preparation
+  ansible.builtin.command:
+    argv:
+      - sshpass
+      - -V
+  register: deployment_v2_vcenter_prepare_sshpass_check
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when: deployment_v2_vcenter_prepare_storage_mode == "iscsi_datastore"
+
+- name: Prepare iSCSI datastore over ESXi SSH script via Router for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.script:
+    cmd: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_storage_local_script_path }}"
+    executable: /bin/sh
+  vars:
+    ansible_user: root
+    ansible_password: "{{ hostvars[inventory_hostname].deployment_v2.credentials.vm_admin_password }}"
+    ansible_ssh_common_args: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_esxi_ssh_common_args }}"
+    ansible_remote_tmp: /var/tmp/.ansible-root/tmp
+    ansible_ssh_transfer_method: piped
+  register: deployment_v2_vcenter_prepare_storage_prepare
+  changed_when: true
+  failed_when: false
+  delegate_to: "{{ deployment_v2_vcenter_item.value.target.esxi_host.ip }}"
+  become: false
+  when: deployment_v2_vcenter_prepare_storage_mode == "iscsi_datastore"
+
+- name: Fetch failed iSCSI datastore preparation log over ESXi SSH via Router for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.raw: "cat {{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_storage_guest_log_path | quote }}"
+  vars:
+    ansible_user: root
+    ansible_password: "{{ hostvars[inventory_hostname].deployment_v2.credentials.vm_admin_password }}"
+    ansible_ssh_common_args: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_esxi_ssh_common_args }}"
+    ansible_remote_tmp: /var/tmp/.ansible-root/tmp
+  register: deployment_v2_vcenter_prepare_storage_log_fetch
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ deployment_v2_vcenter_item.value.target.esxi_host.ip }}"
+  become: false
+  when:
+    - deployment_v2_vcenter_prepare_storage_mode == "iscsi_datastore"
+    - (deployment_v2_vcenter_prepare_storage_prepare.rc | default(1)) != 0
+
+- name: Write failed iSCSI datastore preparation log locally for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.copy:
+    dest: "{{ deployment_v2_vcenter_prepare_storage_local_log_path }}"
+    content: |-
+      {{ deployment_v2_vcenter_prepare_storage_log_fetch.stdout | default('') }}
+      {% if (deployment_v2_vcenter_prepare_storage_log_fetch.stderr | default('') | length) > 0 %}
+
+      === ssh log fetch stderr ===
+      {{ deployment_v2_vcenter_prepare_storage_log_fetch.stderr }}
+      {% endif %}
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  when:
+    - deployment_v2_vcenter_prepare_storage_mode == "iscsi_datastore"
+    - (deployment_v2_vcenter_prepare_storage_prepare.rc | default(1)) != 0
+
+- name: Fail with iSCSI datastore preparation log for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.fail:
+    msg: |-
+      iSCSI datastore preparation failed for {{ deployment_v2_vcenter_item.key }}.
+      exit_code={{ deployment_v2_vcenter_prepare_storage_prepare.rc | default('unknown') }}
+      prepare_failed={{ deployment_v2_vcenter_prepare_storage_prepare.failed | default(false) }}
+      prepare_msg={{ deployment_v2_vcenter_prepare_storage_prepare.msg | default('') }}
+      execution=esxi_ssh_script_via_router
+      esxi_host={{ deployment_v2_vcenter_prepare_current.target.esxi_host.ip }}({{ deployment_v2_vcenter_prepare_current.target.esxi_host.fqdn }})
+      router={{ inventory_hostname }}({{ hostvars[inventory_hostname].ansible_host }})
+      local_script={{ deployment_v2_vcenter_prepare_storage_local_script_path }}
+      guest_log={{ deployment_v2_vcenter_prepare_storage_guest_log_path }}
+      local_log={{ deployment_v2_vcenter_prepare_storage_local_log_path }}
+      log_fetch_rc={{ deployment_v2_vcenter_prepare_storage_log_fetch.rc | default('unknown') }}
+
+      === prepare stdout ===
+      {{ deployment_v2_vcenter_prepare_storage_prepare.stdout | default('') }}
+      === prepare stderr ===
+      {{ deployment_v2_vcenter_prepare_storage_prepare.stderr | default('') }}
+      === fetched guest log ===
+      {{ lookup('ansible.builtin.file', deployment_v2_vcenter_prepare_storage_local_log_path, errors='ignore') | default('log file was not fetched', true) }}
+      {% if deployment_v2_vcenter_prepare_storage_prepare.rc is not defined %}
+
+      prepare_module_result={{ deployment_v2_vcenter_prepare_storage_prepare | to_nice_json }}
+      {% endif %}
+  when:
+    - deployment_v2_vcenter_prepare_storage_mode == "iscsi_datastore"
+    - (deployment_v2_vcenter_prepare_storage_prepare.rc | default(1)) != 0
+
+- name: Build vSAN bootstrap preflight script for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_storage_script: |
+      set -eu
+      DATASTORE={{ deployment_v2_vcenter_prepare_current.target.storage.vsan.datastore_name | quote }}
+      CACHE_DISKS={{ deployment_v2_vcenter_prepare_current.target.storage.vsan.cache_disks | join(' ') | quote }}
+      CAPACITY_DISKS={{ deployment_v2_vcenter_prepare_current.target.storage.vsan.capacity_disks | join(' ') | quote }}
+      if esxcli storage filesystem list | awk -v ds="$DATASTORE" '$1 == ds { found=1 } END { exit !found }'; then
+        exit 0
+      fi
+      for DISK in $CACHE_DISKS $CAPACITY_DISKS; do
+        if [ ! -e "/vmfs/devices/disks/$DISK" ]; then
+          echo "vSAN bootstrap disk $DISK is not visible on this ESXi host" >&2
+          exit 1
+        fi
+        if esxcli storage vmfs extent list | awk 'NR > 2 { print $(NF-1) }' | grep -qx "$DISK"; then
+          echo "vSAN bootstrap disk $DISK is already claimed by a VMFS datastore" >&2
+          exit 1
+        fi
+      done
+  when: deployment_v2_vcenter_prepare_storage_mode == "vsan_bootstrap"
+
+- name: Preflight vSAN bootstrap disks for {{ deployment_v2_vcenter_item.key }}
+  community.vmware.vmware_vm_shell:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+    vm_id: "{{ deployment_v2_vcenter_prepare_current.target.esxi_host.vm_name }}"
+    vm_username: root
+    vm_password: "{{ deployment_v2.credentials.vm_admin_password }}"
+    vm_shell: /bin/sh
+    vm_shell_args: "-c {{ deployment_v2_vcenter_prepare_storage_script | quote }}"
+    wait_for_process: true
+  register: deployment_v2_vcenter_prepare_vsan_preflight
+  changed_when: false
+  failed_when: (deployment_v2_vcenter_prepare_vsan_preflight.exit_code | default(1)) != 0
+  delegate_to: localhost
+  become: false
+  when: deployment_v2_vcenter_prepare_storage_mode == "vsan_bootstrap"

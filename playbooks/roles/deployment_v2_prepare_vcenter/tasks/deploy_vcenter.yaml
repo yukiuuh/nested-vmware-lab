@@ -1,0 +1,6 @@
+---
+- name: Launch deployment_v2 vCenter deployment for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.include_tasks: launch_vcenter.yaml
+
+- name: Wait for deployment_v2 vCenter deployment for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.include_tasks: wait_vcenter.yaml

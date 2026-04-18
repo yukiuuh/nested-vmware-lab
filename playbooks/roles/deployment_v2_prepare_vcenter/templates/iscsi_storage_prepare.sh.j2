@@ -1,0 +1,308 @@
+#!/bin/sh
+set -eu
+
+LOG={{ deployment_v2_vcenter_prepare_storage_guest_log_path | quote }}
+: > "$LOG"
+exec >> "$LOG" 2>&1
+
+DATASTORE={{ deployment_v2_vcenter_prepare_current.target.datastore | quote }}
+TARGET_LUN_ID={{ deployment_v2_vcenter_prepare_current.target.storage.iscsi.lun_id | string | quote }}
+PORTALS={{ deployment_v2_vcenter_prepare_current.target.storage.iscsi.portals | join(' ') | quote }}
+ISCSI_PORT_BINDING={{ (deployment_v2_vcenter_prepare_current.target.storage.iscsi.port_binding | default(false)) | ternary('1', '0') | quote }}
+MIN_FREE_MB={{ deployment_v2_vcenter_prepare_datastore_min_free_mb | int }}
+ADAPTER=""
+DEVICE=""
+
+log() {
+  echo "[deployment_v2] $*"
+}
+
+datastore_mount_path() {
+  if [ -d "/vmfs/volumes/$DATASTORE" ]; then
+    echo "/vmfs/volumes/$DATASTORE"
+    return 0
+  fi
+
+  esxcli storage filesystem list | awk -v ds="$DATASTORE" '
+    NR <= 2 { next }
+    {
+      for (i = 1; i <= NF; i++) {
+        if ($i == ds) {
+          print $1
+          found=1
+        }
+      }
+    }
+    END { exit !found }
+  '
+}
+
+datastore_ready() {
+  datastore_mount_path >/dev/null 2>&1
+}
+
+check_free_space() {
+  if [ "$MIN_FREE_MB" -le 0 ]; then
+    return 0
+  fi
+
+  DATASTORE_PATH="$(datastore_mount_path)" || {
+    echo "datastore $DATASTORE is not visible after storage rescan" >&2
+    return 1
+  }
+  FREE_MB="$(df -m "$DATASTORE_PATH" | awk 'NR == 2 { print $4 }')"
+  if [ -n "$FREE_MB" ] && [ "$FREE_MB" -lt "$MIN_FREE_MB" ]; then
+    echo "datastore $DATASTORE has ${FREE_MB}MB free; need at least ${MIN_FREE_MB}MB" >&2
+    return 1
+  fi
+}
+
+vmfs_extent_name_for_disk() {
+  DISK="$1"
+  esxcli storage vmfs extent list | awk -v disk="$DISK" '
+    NR > 2 && $(NF-1) == disk { print $1; found=1 }
+    END { exit !found }
+  '
+}
+
+dump_diagnostics() {
+  echo "=== datastore filesystems ==="
+  esxcli storage filesystem list || true
+  echo "=== vmfs extents ==="
+  esxcli storage vmfs extent list || true
+  echo "=== software iscsi adapters ==="
+  esxcli iscsi adapter list || true
+  if [ -n "$ADAPTER" ]; then
+    echo "=== sendtargets for $ADAPTER ==="
+    esxcli iscsi adapter discovery sendtarget list -A "$ADAPTER" || true
+  fi
+  echo "=== vmkernel interfaces ==="
+  esxcli network ip interface ipv4 get || true
+  echo "=== storage paths ==="
+  esxcli storage core path list || true
+  if [ -n "$DEVICE" ]; then
+    echo "=== selected storage device $DEVICE ==="
+    esxcli storage core device list -d "$DEVICE" || true
+    partedUtil getptbl "/vmfs/devices/disks/$DEVICE" || true
+  fi
+}
+
+fail_with_diagnostics() {
+  echo "$*" >&2
+  exit 1
+}
+
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "storage preparation failed with rc=$rc"; dump_diagnostics; fi; exit "$rc"' EXIT
+
+vswitch_exists() {
+  VSWITCH="$1"
+  esxcli network vswitch standard list | awk -v vs="$VSWITCH" '
+    $1 == vs || ($1 == "Name:" && $2 == vs) { found=1 }
+    END { exit !found }
+  '
+}
+
+portgroup_exists() {
+  PORTGROUP="$1"
+  VSWITCH="$2"
+  esxcli network vswitch standard portgroup list | awk -v pg="$PORTGROUP" -v vs="$VSWITCH" '
+    NR == 1 { next }
+    index($0, pg) == 1 && index($0, vs) > 0 { found=1 }
+    END { exit !found }
+  '
+}
+
+vmkernel_exists() {
+  VMK="$1"
+  esxcli network ip interface list | awk -v vmk="$VMK" '
+    $1 == vmk || ($1 == "Name:" && $2 == vmk) { found=1 }
+    END { exit !found }
+  '
+}
+
+ensure_vmkernel_adapter() {
+  VMK="$1"
+  VSWITCH="$2"
+  PORTGROUP="$3"
+  UPLINK="$4"
+  VLAN="$5"
+  MTU="$6"
+  IPADDR="$7"
+  NETMASK="$8"
+
+  if ! vswitch_exists "$VSWITCH"; then
+    esxcli network vswitch standard add --vswitch-name="$VSWITCH"
+  fi
+  esxcli network vswitch standard set --vswitch-name="$VSWITCH" --mtu="$MTU"
+  esxcli network vswitch standard uplink add \
+    --vswitch-name="$VSWITCH" \
+    --uplink-name="$UPLINK" >/dev/null 2>&1 || true
+
+  if ! portgroup_exists "$PORTGROUP" "$VSWITCH"; then
+    esxcli network vswitch standard portgroup add \
+      --vswitch-name="$VSWITCH" \
+      --portgroup-name="$PORTGROUP"
+  fi
+  esxcli network vswitch standard portgroup set -p "$PORTGROUP" -v "$VLAN"
+
+  if ! vmkernel_exists "$VMK"; then
+    esxcli network ip interface add -i "$VMK" -p "$PORTGROUP"
+  fi
+  esxcli network ip interface set -i "$VMK" -m "$MTU"
+  esxcli network ip interface ipv4 set -i "$VMK" -t=static -I="$IPADDR" -N="$NETMASK"
+}
+
+select_software_iscsi_adapter() {
+  ADAPTER="$(esxcli iscsi adapter list | awk '$2 == "iscsi_vmk" { print $1; exit }')"
+  if [ -z "$ADAPTER" ]; then
+    ADAPTER="$(esxcli iscsi adapter list | awk 'tolower($0) ~ /iscsi/ && $1 ~ /^vmhba/ { print $1; exit }')"
+  fi
+  if [ -z "$ADAPTER" ]; then
+    fail_with_diagnostics "software iSCSI adapter was not found after enabling iSCSI"
+  fi
+}
+
+wait_for_datastore_ready() {
+  for _ in 1 2 3 4 5 6; do
+    esxcli storage core adapter rescan --all >/dev/null 2>&1 || true
+    esxcli storage filesystem rescan >/dev/null 2>&1 || true
+    if datastore_ready; then
+      check_free_space
+      return 0
+    fi
+    sleep 10
+  done
+  return 1
+}
+
+rescan_for_datastore() {
+  if wait_for_datastore_ready; then
+    exit 0
+  fi
+}
+
+select_target_lun_device() {
+  DEVICE=""
+  DEVICE_CANDIDATES=""
+  MATCHING_PATHS=""
+
+  for RUNTIME_PATH in $(esxcli storage core path list | awk -v adapter="$ADAPTER" -v lun="$TARGET_LUN_ID" '
+    function reset_path() {
+      runtime = ""
+      adapter_seen = 0
+      lun_seen = 0
+    }
+    function emit_match() {
+      if (runtime != "" && adapter_seen && lun_seen) {
+        print runtime
+      }
+    }
+    BEGIN { reset_path() }
+    /^[^[:space:]]/ {
+      emit_match()
+      reset_path()
+      next
+    }
+    $1 == "Runtime" && $2 == "Name:" { runtime = $3 }
+    $1 == "Adapter:" && $2 == adapter { adapter_seen = 1 }
+    $1 == "LUN:" && $2 == lun { lun_seen = 1 }
+    END { emit_match() }
+  '); do
+    case " $MATCHING_PATHS " in
+      *" $RUNTIME_PATH "*) ;;
+      *) MATCHING_PATHS="${MATCHING_PATHS}${RUNTIME_PATH} " ;;
+    esac
+  done
+
+  log "runtime paths matching software adapter $ADAPTER and LUN ID $TARGET_LUN_ID: ${MATCHING_PATHS:-none}"
+
+  for RUNTIME_PATH in $MATCHING_PATHS; do
+    DISK="$(esxcfg-mpath -P "$RUNTIME_PATH" -L | cut -d " " -f 3)"
+    if [ -z "$DISK" ]; then
+      echo "unable to resolve device name from runtime path $RUNTIME_PATH" >&2
+      continue
+    fi
+    if [ ! -e "/vmfs/devices/disks/$DISK" ]; then
+      echo "matched iSCSI disk $DISK does not exist under /vmfs/devices/disks" >&2
+      continue
+    fi
+
+    if VMFS_NAME="$(vmfs_extent_name_for_disk "$DISK" 2>/dev/null)"; then
+      fail_with_diagnostics \
+        "iSCSI LUN ID $TARGET_LUN_ID is already claimed by VMFS extent $VMFS_NAME on $DISK, but datastore $DATASTORE is not mounted"
+    fi
+
+    case " $DEVICE_CANDIDATES " in
+      *" $DISK "*) ;;
+      *) DEVICE_CANDIDATES="${DEVICE_CANDIDATES}${DISK} " ;;
+    esac
+  done
+
+  set -- $DEVICE_CANDIDATES
+  if [ "$#" -eq 1 ]; then
+    DEVICE="$1"
+  elif [ "$#" -gt 1 ]; then
+    fail_with_diagnostics "multiple unclaimed iSCSI disks matched LUN ID $TARGET_LUN_ID: $DEVICE_CANDIDATES"
+  else
+    fail_with_diagnostics \
+      "no unclaimed iSCSI disk for software adapter $ADAPTER and LUN ID $TARGET_LUN_ID was found for datastore $DATASTORE"
+  fi
+}
+
+create_vmfs_datastore() {
+  DISK_PATH="/vmfs/devices/disks/$DEVICE"
+  END_SECTOR="$(partedUtil get "$DISK_PATH" | awk '{ print $1 * $2 * $3 }')"
+  if [ -z "$END_SECTOR" ] || [ "$END_SECTOR" -le 2048 ]; then
+    fail_with_diagnostics "unable to derive partition geometry for $DEVICE"
+  fi
+
+  log "creating GPT VMFS partition on $DEVICE from sector 2048 to $END_SECTOR"
+  partedUtil setptbl "$DISK_PATH" gpt "1 2048 $END_SECTOR AA31E02A400F11DB9590000C2911D1B8 0"
+  vmkfstools -C vmfs6 -S "$DATASTORE" "${DISK_PATH}:1"
+  if ! wait_for_datastore_ready; then
+    fail_with_diagnostics "datastore $DATASTORE was created on $DEVICE but did not become visible after storage rescans"
+  fi
+}
+
+log "storage preparation run {{ deployment_v2_vcenter_prepare_storage_run_id }}"
+
+{% for vmkernel_adapter in deployment_v2_vcenter_prepare_current.target.storage.iscsi.vmkernel_adapters | default([]) %}
+log "ensuring VMkernel adapter {{ vmkernel_adapter.name }} on {{ vmkernel_adapter.portgroup }}"
+ensure_vmkernel_adapter \
+  {{ vmkernel_adapter.name | quote }} \
+  {{ vmkernel_adapter.vswitch | quote }} \
+  {{ vmkernel_adapter.portgroup | quote }} \
+  {{ vmkernel_adapter.uplink | quote }} \
+  {{ vmkernel_adapter.vlan | string | quote }} \
+  {{ vmkernel_adapter.mtu | string | quote }} \
+  {{ vmkernel_adapter.ip | quote }} \
+  {{ vmkernel_adapter.subnet_mask | quote }}
+{% endfor %}
+
+if datastore_ready; then
+  check_free_space
+  exit 0
+fi
+
+esxcli iscsi software set --enabled=true >/dev/null 2>&1 || true
+select_software_iscsi_adapter
+log "using software iSCSI adapter $ADAPTER for target LUN ID $TARGET_LUN_ID"
+
+if [ "$ISCSI_PORT_BINDING" = "1" ]; then
+{% for vmkernel_adapter in deployment_v2_vcenter_prepare_current.target.storage.iscsi.vmkernel_adapters | default([]) %}
+  if ! esxcli iscsi networkportal list -A "$ADAPTER" | awk -v vmk={{ vmkernel_adapter.name | quote }} '$1 == vmk { found=1 } END { exit !found }'; then
+    esxcli iscsi networkportal add -A "$ADAPTER" -n {{ vmkernel_adapter.name | quote }}
+  fi
+{% endfor %}
+fi
+
+for PORTAL in $PORTALS; do
+  if ! esxcli iscsi adapter discovery sendtarget list -A "$ADAPTER" | awk '{ print $1 }' | grep -qx "$PORTAL"; then
+    esxcli iscsi adapter discovery sendtarget add -A "$ADAPTER" -a "$PORTAL"
+  fi
+done
+
+rescan_for_datastore
+select_target_lun_device
+log "formatting unclaimed iSCSI disk $DEVICE as VMFS datastore $DATASTORE"
+create_vmfs_datastore

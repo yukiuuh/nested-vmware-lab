@@ -32,6 +32,14 @@ variable "ssh_authorized_keys" {
   type    = list(string)
 }
 
+variable "cdroms" {
+  type = list(object({
+    datastore_id = string
+    path         = string
+  }))
+  default = []
+}
+
 variable "http_proxy_port" {
   default  = 8080
   type     = number

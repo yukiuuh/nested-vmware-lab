@@ -1,0 +1,354 @@
+---
+- name: Build deployment_v2 vCenter deployment paths for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_current: "{{ deployment_v2_vcenter_item.value }}"
+    deployment_v2_vcenter_prepare_source_mount_path: >-
+      {{ deployment_v2_vcenter_prepare_mount_root }}/{{ deployment_v2_vcenter_item.value.install.install_source }}/mounted
+    deployment_v2_vcenter_prepare_work_dir: >-
+      {{ deployment_v2_vcenter_prepare_work_root }}/{{ deployment_v2_vcenter_item.key }}
+    deployment_v2_vcenter_prepare_config_path: >-
+      {{ deployment_v2_vcenter_prepare_work_root }}/{{ deployment_v2_vcenter_item.key }}/installer.json
+    deployment_v2_vcenter_prepare_log_path: >-
+      {{ deployment_v2_vcenter_prepare_work_root }}/{{ deployment_v2_vcenter_item.key }}/installer.log
+    deployment_v2_vcenter_prepare_template_name: >-
+      {{
+        (
+          deployment_v2_vcenter_item.value.target.kind == 'esxi'
+          and (
+            deployment_v2_vcenter_item.value.target.storage.mode
+            | default('existing_datastore', true)
+          ) == 'vsan_bootstrap'
+        )
+        | ternary(
+          'vCSA_with_cluster_on_ESXi.json.j2',
+          (
+            deployment_v2_vcenter_item.value.target.kind == 'esxi'
+          )
+          | ternary('embedded_vCSA_on_ESXi.json.j2', 'embedded_vCSA_on_VC.json.j2')
+        )
+      }}
+
+- name: Validate deployment_v2 vCenter install metadata for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_vcenter_prepare_current.install is defined
+      - deployment_v2_vcenter_prepare_current.install.source is defined
+      - deployment_v2_vcenter_prepare_current.install.source.type in ['http_iso', 'rclone_iso', 'datastore_iso']
+      - deployment_v2_vcenter_prepare_current.target is defined
+      - deployment_v2_vcenter_prepare_current.target.kind in ['esxi', 'vc']
+      - deployment_v2_vcenter_prepare_current.network.subnet_mask in deployment_v2_vcenter_prepare_netmask_prefix_map
+      - deployment_v2_vcenter_prepare_current.target.hostname | default('', true) | length > 0
+      - deployment_v2_vcenter_prepare_current.target.username | default('', true) | length > 0
+      - deployment_v2_vcenter_prepare_current.target.password | default('', true) | length > 0
+      - deployment_v2_vcenter_prepare_current.target.datastore | default('', true) | length > 0
+      - deployment_v2_vcenter_prepare_current.target.deployment_network | default('', true) | length > 0
+      - deployment_v2_vcenter_prepare_current.ntp_servers | default([], true) | length > 0
+      - deployment_v2_vcenter_prepare_current.target.kind != 'vc' or deployment_v2_vcenter_prepare_current.target.datacenter | default('', true) | length > 0
+      - deployment_v2_vcenter_prepare_current.target.kind != 'vc' or deployment_v2_vcenter_prepare_current.target.target | default([], true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_current.target.storage.mode | default('existing_datastore', true) != 'vsan_bootstrap'
+        or deployment_v2_vcenter_prepare_current.target.storage.vsan.datacenter | default('', true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_current.target.storage.mode | default('existing_datastore', true) != 'vsan_bootstrap'
+        or deployment_v2_vcenter_prepare_current.target.storage.vsan.cluster | default('', true) | length > 0
+      - >-
+        deployment_v2_vcenter_prepare_current.target.storage.mode | default('existing_datastore', true) != 'vsan_bootstrap'
+        or deployment_v2_vcenter_prepare_current.install.vcsa_version.detected | default(false)
+      - >-
+        deployment_v2_vcenter_prepare_current.target.storage.mode | default('existing_datastore', true) != 'vsan_bootstrap'
+        or deployment_v2_vcenter_prepare_current.install.vcsa_version.major | int > 7
+        or (
+          deployment_v2_vcenter_prepare_current.install.vcsa_version.major | int == 7
+          and (
+            deployment_v2_vcenter_prepare_current.install.vcsa_version.minor | int > 0
+            or (
+              deployment_v2_vcenter_prepare_current.install.vcsa_version.minor | int == 0
+              and deployment_v2_vcenter_prepare_current.install.vcsa_version.patch | int >= 2
+            )
+          )
+        )
+    fail_msg: >-
+      deployment_v2 vCenter metadata is incomplete for {{ deployment_v2_vcenter_item.key }}.
+      Current implementation supports provider_vsphere and nested_vsphere vCenter deployment from
+      http_iso, rclone_iso, or datastore_iso sources only. vsan_bootstrap requires
+      a VCSA installer URL/path with detectable version 7.0 U2 or later.
+
+- name: Ensure deployment_v2 vCenter work directory exists for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.file:
+    path: "{{ deployment_v2_vcenter_prepare_work_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Wait for mounted vCenter installer to be available for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.wait_for:
+    path: "{{ deployment_v2_vcenter_prepare_source_mount_path }}/{{ deployment_v2_vcenter_prepare_installer_subpath }}"
+    timeout: 300
+
+- name: Check required controller commands for deployment_v2 vCenter target lookup for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - bash
+      - -lc
+      - "command -v govc"
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when: deployment_v2_vcenter_prepare_current.target.kind == "vc"
+
+- name: Build deployment_v2 vCenter target lookup selector for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_target_lookup_type: >-
+      {{
+        "p"
+        if deployment_v2_vcenter_prepare_current.target.resource_pool | default("", true) | length > 0
+        else "c"
+        if deployment_v2_vcenter_prepare_current.target.cluster | default("", true) | length > 0
+        else "h"
+        if deployment_v2_vcenter_prepare_current.target.host | default("", true) | length > 0
+        else "none"
+      }}
+    deployment_v2_vcenter_prepare_target_lookup_name: >-
+      {{
+        deployment_v2_vcenter_prepare_current.target.resource_pool
+        if deployment_v2_vcenter_prepare_current.target.resource_pool | default("", true) | length > 0
+        else deployment_v2_vcenter_prepare_current.target.cluster
+        if deployment_v2_vcenter_prepare_current.target.cluster | default("", true) | length > 0
+        else deployment_v2_vcenter_prepare_current.target.host
+        if deployment_v2_vcenter_prepare_current.target.host | default("", true) | length > 0
+        else "none"
+      }}
+    deployment_v2_vcenter_prepare_resolved_target_path: "{{ deployment_v2_vcenter_prepare_current.target.target | default([]) }}"
+  when: deployment_v2_vcenter_prepare_current.target.kind == "vc"
+
+- name: Resolve deployment_v2 vCenter inventory target path for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.command:
+    argv:
+      - govc
+      - find
+      - "/{{ deployment_v2_vcenter_prepare_current.target.datacenter }}/host"
+      - -type
+      - "{{ deployment_v2_vcenter_prepare_target_lookup_type }}"
+      - -name
+      - "{{ deployment_v2_vcenter_prepare_target_lookup_name }}"
+  environment:
+    GOVC_URL: "https://{{ deployment_v2_vcenter_prepare_current.target.hostname }}"
+    GOVC_USERNAME: "{{ deployment_v2_vcenter_prepare_current.target.username }}"
+    GOVC_PASSWORD: "{{ deployment_v2_vcenter_prepare_current.target.password }}"
+    GOVC_INSECURE: "1"
+  register: deployment_v2_vcenter_prepare_target_lookup
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when:
+    - deployment_v2_vcenter_prepare_current.target.kind == "vc"
+    - deployment_v2_vcenter_prepare_target_lookup_type != "none"
+
+- name: Validate deployment_v2 vCenter inventory target lookup for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_vcenter_prepare_target_lookup_type != "none"
+      - deployment_v2_vcenter_prepare_target_lookup.stdout_lines | length == 1
+    fail_msg: >-
+      Unable to resolve a unique vCenter inventory target path for {{ deployment_v2_vcenter_item.key }}.
+      selector_type={{ deployment_v2_vcenter_prepare_target_lookup_type }}
+      selector_name={{ deployment_v2_vcenter_prepare_target_lookup_name }}
+      matches={{ deployment_v2_vcenter_prepare_target_lookup.stdout_lines | default([]) | to_json }}
+  when: deployment_v2_vcenter_prepare_current.target.kind == "vc"
+
+- name: Derive deployment_v2 vCenter inventory target path for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_resolved_target_path: >-
+      {{ deployment_v2_vcenter_prepare_target_lookup.stdout_lines[0].split('/')[3:] }}
+  when: deployment_v2_vcenter_prepare_current.target.kind == "vc"
+
+- name: Check whether deployment_v2 current vCenter VM already exists for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.command:
+    argv:
+      - govc
+      - find
+      - "/{{ deployment_v2_vcenter_prepare_current.target.datacenter }}/vm"
+      - -type
+      - m
+      - -name
+      - "{{ deployment_v2_vcenter_prepare_current.name }}"
+  environment:
+    GOVC_URL: "https://{{ deployment_v2_vcenter_prepare_current.target.hostname }}"
+    GOVC_USERNAME: "{{ deployment_v2_vcenter_prepare_current.target.username }}"
+    GOVC_PASSWORD: "{{ deployment_v2_vcenter_prepare_current.target.password }}"
+    GOVC_INSECURE: "1"
+  register: deployment_v2_vcenter_prepare_current_vm_lookup
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when: deployment_v2_vcenter_prepare_current.target.kind == "vc"
+
+- name: Check whether stale deployment_v2 vCenter VMs exist for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.command:
+    argv:
+      - govc
+      - find
+      - "/{{ deployment_v2_vcenter_prepare_current.target.datacenter }}/vm"
+      - -type
+      - m
+      - -name
+      - "*-{{ deployment_v2_vcenter_item.key }}"
+  environment:
+    GOVC_URL: "https://{{ deployment_v2_vcenter_prepare_current.target.hostname }}"
+    GOVC_USERNAME: "{{ deployment_v2_vcenter_prepare_current.target.username }}"
+    GOVC_PASSWORD: "{{ deployment_v2_vcenter_prepare_current.target.password }}"
+    GOVC_INSECURE: "1"
+  register: deployment_v2_vcenter_prepare_logical_vm_lookup
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when: deployment_v2_vcenter_prepare_current.target.kind == "vc"
+
+- name: Validate deployment_v2 current vCenter VM lookup for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_vcenter_prepare_current_vm_lookup.stdout_lines | length <= 1
+    fail_msg: >-
+      Multiple VMs named {{ deployment_v2_vcenter_prepare_current.name }} were found while preparing
+      {{ deployment_v2_vcenter_item.key }}:
+      {{ deployment_v2_vcenter_prepare_current_vm_lookup.stdout_lines | to_json }}
+  when: deployment_v2_vcenter_prepare_current.target.kind == "vc"
+
+- name: Derive deployment_v2 current vCenter VM presence for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_current_vm_exists: >-
+      {{ (deployment_v2_vcenter_prepare_current_vm_lookup.stdout_lines | default([]) | length) == 1 }}
+    deployment_v2_vcenter_prepare_current_vm_path: >-
+      {{ deployment_v2_vcenter_prepare_current_vm_lookup.stdout_lines | default([]) | first | default('') }}
+    deployment_v2_vcenter_prepare_logical_vm_matches: >-
+      {{ deployment_v2_vcenter_prepare_logical_vm_lookup.stdout_lines | default([]) }}
+  when: deployment_v2_vcenter_prepare_current.target.kind == "vc"
+
+- name: Check whether vCenter endpoint is already reachable for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.wait_for:
+    host: "{{ deployment_v2_vcenter_prepare_current.ip }}"
+    port: 443
+    timeout: 5
+    connect_timeout: 2
+    sleep: 1
+    state: started
+  register: deployment_v2_vcenter_prepare_reachable
+  changed_when: false
+  failed_when: false
+
+- name: Derive deployment_v2 vCenter endpoint reachability for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_endpoint_reachable: >-
+      {{ deployment_v2_vcenter_prepare_reachable.state | default('') == 'started' }}
+
+- name: Derive deployment_v2 vCenter deployment state for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_already_present: >-
+      {{
+        deployment_v2_vcenter_prepare_endpoint_reachable
+        and (
+          deployment_v2_vcenter_prepare_current.target.kind != 'vc'
+          or deployment_v2_vcenter_prepare_current_vm_exists | default(false)
+        )
+      }}
+    deployment_v2_vcenter_prepare_conflicting_endpoint: >-
+      {{
+        deployment_v2_vcenter_prepare_current.target.kind == 'vc'
+        and deployment_v2_vcenter_prepare_endpoint_reachable
+        and not (deployment_v2_vcenter_prepare_current_vm_exists | default(false))
+      }}
+    deployment_v2_vcenter_prepare_conflicting_vm_state: >-
+      {{
+        deployment_v2_vcenter_prepare_current.target.kind == 'vc'
+        and (deployment_v2_vcenter_prepare_current_vm_exists | default(false))
+        and not deployment_v2_vcenter_prepare_endpoint_reachable
+      }}
+
+- name: Derive deployment_v2 vCenter deployment decision for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_should_deploy: "{{ not deployment_v2_vcenter_prepare_already_present }}"
+
+- name: Fail when deployment_v2 vCenter endpoint belongs to another deployment for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.fail:
+    msg: >-
+      vCenter endpoint {{ deployment_v2_vcenter_prepare_current.ip }}:443 is already reachable, but
+      the expected VM {{ deployment_v2_vcenter_prepare_current.name }} was not found in
+      {{ deployment_v2_vcenter_prepare_current.target.hostname }} inventory.
+      This usually means a stale vCenter from another deployment is still present.
+      logical_matches={{ deployment_v2_vcenter_prepare_logical_vm_matches | default([]) | to_json }}
+  when: deployment_v2_vcenter_prepare_conflicting_endpoint
+
+- name: Fail when deployment_v2 current vCenter VM exists but endpoint is not reachable for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.fail:
+    msg: >-
+      Expected vCenter VM {{ deployment_v2_vcenter_prepare_current.name }} already exists at
+      {{ deployment_v2_vcenter_prepare_current_vm_path }}, but {{ deployment_v2_vcenter_prepare_current.ip }}:443
+      is not reachable. Inspect the existing appliance before retrying.
+  when: deployment_v2_vcenter_prepare_conflicting_vm_state
+
+- name: Wait for vCenter deployment target API for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.wait_for:
+    host: "{{ deployment_v2_vcenter_prepare_current.target.hostname }}"
+    port: 443
+    timeout: 1800
+    connect_timeout: 5
+    sleep: 10
+    state: started
+  when:
+    - deployment_v2_vcenter_prepare_should_deploy
+
+- name: Render deployment_v2 vCenter installer config for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.template:
+    src: "{{ deployment_v2_vcenter_prepare_template_name }}"
+    dest: "{{ deployment_v2_vcenter_prepare_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  vars:
+    deployment_v2_vcenter: "{{ deployment_v2_vcenter_prepare_current }}"
+    deployment_v2_vcenter_prepare_prefix_length: >-
+      {{
+        deployment_v2_vcenter_prepare_netmask_prefix_map[
+          deployment_v2_vcenter_prepare_current.network.subnet_mask
+        ]
+      }}
+    deployment_v2_vcenter_prepare_template_target_path: "{{ deployment_v2_vcenter_prepare_resolved_target_path }}"
+  when: deployment_v2_vcenter_prepare_should_deploy
+
+- name: Start deployment_v2 vCenter installer for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.shell: |
+    set -o errexit
+    {{ (deployment_v2_vcenter_prepare_source_mount_path ~ '/' ~ deployment_v2_vcenter_prepare_installer_subpath) | quote }} \
+      install \
+      --accept-eula \
+      --acknowledge-ceip \
+      --no-ssl-certificate-verification \
+      {{ deployment_v2_vcenter_prepare_config_path | quote }} \
+      > {{ deployment_v2_vcenter_prepare_log_path | quote }} 2>&1
+  args:
+    executable: /bin/bash
+    chdir: "{{ deployment_v2_vcenter_prepare_work_dir }}"
+  async: "{{ deployment_v2_vcenter_prepare_async_timeout | int }}"
+  poll: 0
+  register: deployment_v2_vcenter_prepare_async_launch
+  changed_when: true
+  when: deployment_v2_vcenter_prepare_should_deploy
+
+- name: Record deployment_v2 vCenter launch state for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_jobs: >-
+      {{
+        (deployment_v2_vcenter_prepare_jobs | default({}))
+        | combine({
+            deployment_v2_vcenter_item.key: {
+              "current": deployment_v2_vcenter_prepare_current,
+              "should_deploy": deployment_v2_vcenter_prepare_should_deploy,
+              "work_dir": deployment_v2_vcenter_prepare_work_dir,
+              "config_path": deployment_v2_vcenter_prepare_config_path,
+              "log_path": deployment_v2_vcenter_prepare_log_path,
+              "async_job": deployment_v2_vcenter_prepare_async_launch.ansible_job_id | default(none)
+            }
+          }, recursive=True)
+      }}

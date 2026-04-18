@@ -29,6 +29,11 @@ output "storages" {
   value = local.storage_outputs
 }
 
+output "vcenters" {
+  sensitive = true
+  value     = local.vcenter_outputs
+}
+
 output "ansible_inventory_seed" {
   sensitive = true
   value = {
@@ -44,7 +49,7 @@ output "ansible_inventory_seed" {
     routers     = local.router_outputs
     esxi_groups = local.esxi_group_outputs
     storages    = local.storage_outputs
-    vcenters    = local.vcenters
+    vcenters    = local.vcenter_outputs
     services    = local.services
   }
 }

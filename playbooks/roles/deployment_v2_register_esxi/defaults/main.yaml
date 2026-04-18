@@ -1,0 +1,12 @@
+---
+deployment_v2_register_esxi_enabled: true
+deployment_v2_register_esxi_state_dir: /etc/nested-vmware-lab/vcenter-registration
+deployment_v2_register_esxi_default_datacenter: Datacenter
+deployment_v2_register_esxi_default_cluster: Cluster
+deployment_v2_register_esxi_validate_certs: false
+deployment_v2_register_esxi_wait_timeout: 3600
+deployment_v2_register_esxi_connect_timeout: 5
+deployment_v2_register_esxi_api_retries: 30
+deployment_v2_register_esxi_api_delay: 20
+deployment_v2_register_esxi_python_vendor_dir: /opt/nested-vmware-lab/python-vendor/vmware
+deployment_v2_register_esxi_python_vendor_archive: "/tmp/deployment_v2_register_esxi_pyvmomi_{{ inventory_hostname }}.tar.gz"

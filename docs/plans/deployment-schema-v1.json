@@ -1,0 +1,983 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nested-vmware-lab.local/schemas/deployment-schema-v1.json",
+  "title": "Nested VMware Lab Terraform Input Schema v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider_config",
+    "install_sources",
+    "routers",
+    "esxi_groups",
+    "vcenters"
+  ],
+  "properties": {
+    "name_prefix": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "vm_admin_password": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "ssh_authorized_keys": {
+      "$ref": "#/$defs/string_list"
+    },
+    "provider_config": {
+      "$ref": "#/$defs/provider"
+    },
+    "install_sources": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/named_map"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/install_source"
+          }
+        }
+      ]
+    },
+    "routers": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/named_map"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/router"
+          }
+        }
+      ]
+    },
+    "esxi_groups": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/named_map"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/esxi_group"
+          }
+        }
+      ]
+    },
+    "vcenters": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/named_map"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/vcenter"
+          }
+        }
+      ]
+    },
+    "services": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/named_map"
+        },
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/service"
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "string_list": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "non_empty_string_list": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/non_empty_string"
+      }
+    },
+    "ipv4": {
+      "type": "string",
+      "pattern": "^(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])(?:\\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])){3}$"
+    },
+    "ipv4_cidr": {
+      "type": "string",
+      "pattern": "^(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])(?:\\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])){3}/(?:[0-9]|[12][0-9]|3[0-2])$"
+    },
+    "object_name": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$"
+    },
+    "named_map": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/object_name"
+      }
+    },
+    "router_ref": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "vcenter_ref": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "esxi_group_ref": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "storage_ref": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "storage_lun_ref": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "vmkernel_purpose_ref": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "install_source_ref": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "datacenter",
+        "resource_pool",
+        "compute_host",
+        "datastore"
+      ],
+      "properties": {
+        "server": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "user": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "password": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "datacenter": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "resource_pool": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "compute_host": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "datastore": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "default_networks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "install_source_http_iso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "url"
+      ],
+      "properties": {
+        "type": {
+          "const": "http_iso"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "install_source_rclone_iso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "url"
+      ],
+      "properties": {
+        "type": {
+          "const": "rclone_iso"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "install_source_datastore_iso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "datastore",
+        "path"
+      ],
+      "properties": {
+        "type": {
+          "const": "datastore_iso"
+        },
+        "datastore": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "path": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "install_source_http_ovf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "url"
+      ],
+      "properties": {
+        "type": {
+          "const": "http_ovf"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "install_source_http_directory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "base_url"
+      ],
+      "properties": {
+        "type": {
+          "const": "http_directory"
+        },
+        "base_url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "install_source_template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "template_name"
+      ],
+      "properties": {
+        "type": {
+          "const": "vsphere_template"
+        },
+        "template_name": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "install_source_local_ovf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "path"
+      ],
+      "properties": {
+        "type": {
+          "const": "local_ovf"
+        },
+        "path": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "install_source": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/install_source_http_iso"
+        },
+        {
+          "$ref": "#/$defs/install_source_rclone_iso"
+        },
+        {
+          "$ref": "#/$defs/install_source_datastore_iso"
+        },
+        {
+          "$ref": "#/$defs/install_source_http_ovf"
+        },
+        {
+          "$ref": "#/$defs/install_source_http_directory"
+        },
+        {
+          "$ref": "#/$defs/install_source_template"
+        },
+        {
+          "$ref": "#/$defs/install_source_local_ovf"
+        }
+      ]
+    },
+    "router_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "install_source"
+      ],
+      "properties": {
+        "install_source": {
+          "$ref": "#/$defs/install_source_ref"
+        }
+      }
+    },
+    "placement_provider_vsphere": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "provider_vsphere"
+        },
+        "datacenter": {
+          "type": "string"
+        },
+        "cluster": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "resource_pool": {
+          "type": "string"
+        },
+        "datastore": {
+          "type": "string"
+        },
+        "network": {
+          "type": "string"
+        }
+      }
+    },
+    "placement_nested_vsphere": {
+      "type": "object",
+      "description": "Generic future placement under a deployed vCenter. vcenter objects use vcenter_placement_nested_vsphere instead.",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "vcenter"
+      ],
+      "properties": {
+        "kind": {
+          "const": "nested_vsphere"
+        },
+        "vcenter": {
+          "$ref": "#/$defs/vcenter_ref"
+        },
+        "datacenter": {
+          "type": "string"
+        },
+        "cluster": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "resource_pool": {
+          "type": "string"
+        },
+        "datastore": {
+          "type": "string"
+        },
+        "network": {
+          "type": "string"
+        }
+      }
+    },
+    "placement": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/placement_provider_vsphere"
+        },
+        {
+          "$ref": "#/$defs/placement_nested_vsphere"
+        }
+      ]
+    },
+    "vcenter_placement_storage_existing_datastore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "const": "existing_datastore"
+        }
+      }
+    },
+    "vcenter_placement_storage_iscsi_datastore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "storage",
+        "lun",
+        "vmkernel_purposes"
+      ],
+      "properties": {
+        "mode": {
+          "const": "iscsi_datastore"
+        },
+        "storage": {
+          "$ref": "#/$defs/storage_ref"
+        },
+        "lun": {
+          "$ref": "#/$defs/storage_lun_ref"
+        },
+        "portals": {
+          "$ref": "#/$defs/non_empty_string_list"
+        },
+        "vmkernel_purposes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/vmkernel_purpose_ref"
+          }
+        },
+        "port_binding": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "vcenter_placement_storage_vsan_bootstrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "vsan"
+      ],
+      "properties": {
+        "mode": {
+          "const": "vsan_bootstrap"
+        },
+        "vsan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "datastore_name",
+            "datacenter",
+            "cluster",
+            "cache_disks",
+            "capacity_disks"
+          ],
+          "properties": {
+            "datastore_name": {
+              "$ref": "#/$defs/non_empty_string"
+            },
+            "datacenter": {
+              "$ref": "#/$defs/non_empty_string"
+            },
+            "cluster": {
+              "$ref": "#/$defs/non_empty_string"
+            },
+            "cache_disks": {
+              "$ref": "#/$defs/non_empty_string_list"
+            },
+            "capacity_disks": {
+              "$ref": "#/$defs/non_empty_string_list"
+            },
+            "compression_only": {
+              "type": "boolean",
+              "default": false
+            },
+            "deduplication_and_compression": {
+              "type": "boolean",
+              "default": false
+            },
+            "enable_vlcm": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        }
+      }
+    },
+    "vcenter_placement_storage": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/vcenter_placement_storage_existing_datastore"
+        },
+        {
+          "$ref": "#/$defs/vcenter_placement_storage_iscsi_datastore"
+        },
+        {
+          "$ref": "#/$defs/vcenter_placement_storage_vsan_bootstrap"
+        }
+      ]
+    },
+    "vcenter_placement_nested_vsphere": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "esxi_group",
+        "host",
+        "datastore",
+        "network"
+      ],
+      "properties": {
+        "kind": {
+          "const": "nested_vsphere"
+        },
+        "esxi_group": {
+          "$ref": "#/$defs/esxi_group_ref"
+        },
+        "host": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "datastore": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "network": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "storage": {
+          "$ref": "#/$defs/vcenter_placement_storage"
+        }
+      }
+    },
+    "vcenter_placement": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/placement_provider_vsphere"
+        },
+        {
+          "$ref": "#/$defs/vcenter_placement_nested_vsphere"
+        }
+      ]
+    },
+    "router_wan_network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network_name",
+        "subnet_mask",
+        "gateway",
+        "nameservers"
+      ],
+      "properties": {
+        "network_name": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "ip": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subnet_mask": {
+          "$ref": "#/$defs/ipv4"
+        },
+        "gateway": {
+          "$ref": "#/$defs/ipv4"
+        },
+        "nameservers": {
+          "$ref": "#/$defs/string_list"
+        }
+      }
+    },
+    "router_lan_network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network_name",
+        "domain_name",
+        "network",
+        "vlan_starts_with",
+        "vlan_network_count",
+        "mtu"
+      ],
+      "properties": {
+        "network_name": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "domain_name": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "network": {
+          "$ref": "#/$defs/ipv4"
+        },
+        "vlan_starts_with": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vlan_network_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mtu": {
+          "type": "integer",
+          "minimum": 576
+        }
+      }
+    },
+    "router": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "placement",
+        "networks"
+      ],
+      "properties": {
+        "template": {
+          "$ref": "#/$defs/install_source_ref"
+        },
+        "source": {
+          "$ref": "#/$defs/router_source"
+        },
+        "placement": {
+          "$ref": "#/$defs/placement"
+        },
+        "networks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "wan",
+            "lan"
+          ],
+          "properties": {
+            "wan": {
+              "$ref": "#/$defs/router_wan_network"
+            },
+            "lan": {
+              "$ref": "#/$defs/router_lan_network"
+            }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enable_pxe": {
+              "type": "boolean",
+              "deprecated": true
+            },
+            "enable_http": {
+              "type": "boolean",
+              "deprecated": true
+            },
+            "enable_rclone": {
+              "type": "boolean",
+              "deprecated": true
+            },
+            "http_root": {
+              "$ref": "#/$defs/non_empty_string"
+            },
+            "tftp_root": {
+              "$ref": "#/$defs/non_empty_string"
+            }
+          }
+        },
+        "template": {
+          "$ref": "#/$defs/install_source_ref"
+        }
+      }
+    },
+    "disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "size_gb",
+        "unit_number"
+      ],
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "size_gb": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unit_number": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "esxi_shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "num_cpus",
+        "mem_gb",
+        "nic_count"
+      ],
+      "properties": {
+        "num_cpus": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mem_gb": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nic_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tpm_enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "nvme_enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "memory_reservation_enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "hardware_random_generator_enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "vcf_mode": {
+          "type": "boolean",
+          "default": true
+        },
+        "disks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/disk"
+          }
+        }
+      }
+    },
+    "esxi_install": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "source",
+        "kickstart"
+      ],
+      "properties": {
+        "method": {
+          "enum": [
+            "ansible_router_pxe",
+            "ansible_vsphere_iso_boot"
+          ]
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "install_source"
+          ],
+          "properties": {
+            "install_source": {
+              "$ref": "#/$defs/install_source_ref"
+            }
+          }
+        },
+        "kickstart": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "template"
+          ],
+          "properties": {
+            "template": {
+              "$ref": "#/$defs/non_empty_string"
+            }
+          }
+        }
+      }
+    },
+    "vmkernel_adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "purpose",
+        "vswitch",
+        "portgroup",
+        "uplink",
+        "vlan",
+        "subnet"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^vmk[0-9]+$"
+        },
+        "purpose": {
+          "$ref": "#/$defs/vmkernel_purpose_ref"
+        },
+        "vswitch": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "portgroup": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "uplink": {
+          "type": "string",
+          "pattern": "^vmnic[0-9]+$"
+        },
+        "vlan": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4094
+        },
+        "mtu": {
+          "type": "integer",
+          "minimum": 576,
+          "maximum": 9000
+        },
+        "subnet": {
+          "$ref": "#/$defs/ipv4_cidr"
+        },
+        "ip": {
+          "$ref": "#/$defs/ipv4"
+        },
+        "ip_offset_from_management": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "esxi_group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "placement",
+        "router",
+        "count",
+        "hostname_prefix",
+        "starting_ip",
+        "ntp_servers",
+        "shape",
+        "install"
+      ],
+      "properties": {
+        "placement": {
+          "$ref": "#/$defs/placement"
+        },
+        "router": {
+          "$ref": "#/$defs/router_ref"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "hostname_prefix": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "starting_ip": {
+          "$ref": "#/$defs/ipv4"
+        },
+        "domain_name": {
+          "type": "string"
+        },
+        "gateway": {
+          "$ref": "#/$defs/ipv4"
+        },
+        "nameservers": {
+          "$ref": "#/$defs/string_list"
+        },
+        "ntp_servers": {
+          "$ref": "#/$defs/non_empty_string_list"
+        },
+        "subnet_mask": {
+          "$ref": "#/$defs/ipv4"
+        },
+        "shape": {
+          "$ref": "#/$defs/esxi_shape"
+        },
+        "install": {
+          "$ref": "#/$defs/esxi_install"
+        },
+        "vmkernel_adapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vmkernel_adapter"
+          }
+        },
+        "managed_by": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vcenter_ref"
+          }
+        }
+      }
+    },
+    "vcenter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "placement",
+        "router",
+        "hostname",
+        "ip",
+        "deployment_size",
+        "source",
+        "manages"
+      ],
+      "properties": {
+        "placement": {
+          "$ref": "#/$defs/vcenter_placement"
+        },
+        "router": {
+          "$ref": "#/$defs/router_ref"
+        },
+        "hostname": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "ip": {
+          "$ref": "#/$defs/ipv4"
+        },
+        "deployment_size": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "install_source"
+          ],
+          "properties": {
+            "install_source": {
+              "$ref": "#/$defs/install_source_ref"
+            }
+          }
+        },
+        "manages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        },
+        "sso_domain_name": {
+          "type": "string",
+          "default": "vsphere.local"
+        }
+      }
+    },
+    "service": {
+      "type": "object"
+    }
+  }
+}

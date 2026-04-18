@@ -1,0 +1,125 @@
+---
+- name: Build deployment_v2 ESXi registration facts for {{ deployment_v2_register_esxi_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_register_esxi_current_name: "{{ deployment_v2_register_esxi_vcenter_item.key }}"
+    deployment_v2_register_esxi_current: "{{ deployment_v2_register_esxi_vcenter_item.value }}"
+    deployment_v2_register_esxi_vcenter_host: "{{ deployment_v2_register_esxi_vcenter_item.value.api.host }}"
+    deployment_v2_register_esxi_vcenter_user: "{{ deployment_v2_register_esxi_vcenter_item.value.api.user }}"
+    deployment_v2_register_esxi_datacenter: >-
+      {{
+        deployment_v2_register_esxi_vcenter_item.value.registration.datacenter
+        | default(deployment_v2_register_esxi_vcenter_item.value.target.storage.vsan.datacenter, true)
+        | default(deployment_v2_register_esxi_default_datacenter, true)
+      }}
+    deployment_v2_register_esxi_cluster: >-
+      {{
+        deployment_v2_register_esxi_vcenter_item.value.registration.cluster
+        | default(deployment_v2_register_esxi_vcenter_item.value.target.storage.vsan.cluster, true)
+        | default(deployment_v2_register_esxi_default_cluster, true)
+      }}
+    deployment_v2_register_esxi_hosts: "{{ deployment_v2_register_esxi_vcenter_item.value.managed_hosts | default([]) }}"
+
+- name: Validate deployment_v2 ESXi registration metadata for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_register_esxi_vcenter_host | default('', true) | length > 0
+      - deployment_v2_register_esxi_vcenter_user | default('', true) | length > 0
+      - deployment_v2_register_esxi_datacenter | default('', true) | length > 0
+      - deployment_v2_register_esxi_cluster | default('', true) | length > 0
+      - deployment_v2_register_esxi_hosts | length > 0
+    fail_msg: >-
+      deployment_v2 ESXi registration metadata is incomplete for
+      {{ deployment_v2_register_esxi_current_name }}.
+
+- name: Wait for deployment_v2 vCenter API before ESXi registration for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.wait_for:
+    host: "{{ deployment_v2_register_esxi_vcenter_host }}"
+    port: 443
+    timeout: "{{ deployment_v2_register_esxi_wait_timeout | int }}"
+    connect_timeout: "{{ deployment_v2_register_esxi_connect_timeout | int }}"
+    sleep: 10
+    state: started
+
+- name: Ensure deployment_v2 vCenter datacenter exists for {{ deployment_v2_register_esxi_current_name }}
+  community.vmware.vmware_datacenter:
+    hostname: "{{ deployment_v2_register_esxi_vcenter_host }}"
+    username: "{{ deployment_v2_register_esxi_vcenter_user }}"
+    password: "{{ deployment_v2.credentials.vm_admin_password }}"
+    validate_certs: "{{ deployment_v2_register_esxi_validate_certs }}"
+    datacenter_name: "{{ deployment_v2_register_esxi_datacenter }}"
+    state: present
+  register: deployment_v2_register_esxi_datacenter_result
+  until: deployment_v2_register_esxi_datacenter_result is succeeded
+  retries: "{{ deployment_v2_register_esxi_api_retries | int }}"
+  delay: "{{ deployment_v2_register_esxi_api_delay | int }}"
+  become: false
+  environment:
+    PYTHONPATH: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+
+- name: Ensure deployment_v2 vCenter cluster exists for {{ deployment_v2_register_esxi_current_name }}
+  vmware.vmware.cluster:
+    hostname: "{{ deployment_v2_register_esxi_vcenter_host }}"
+    username: "{{ deployment_v2_register_esxi_vcenter_user }}"
+    password: "{{ deployment_v2.credentials.vm_admin_password }}"
+    validate_certs: "{{ deployment_v2_register_esxi_validate_certs }}"
+    datacenter: "{{ deployment_v2_register_esxi_datacenter }}"
+    cluster: "{{ deployment_v2_register_esxi_cluster }}"
+    state: present
+  register: deployment_v2_register_esxi_cluster_result
+  until: deployment_v2_register_esxi_cluster_result is succeeded
+  retries: "{{ deployment_v2_register_esxi_api_retries | int }}"
+  delay: "{{ deployment_v2_register_esxi_api_delay | int }}"
+  become: false
+  environment:
+    PYTHONPATH: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+
+- name: Register deployment_v2 ESXi hosts into {{ deployment_v2_register_esxi_current_name }}
+  vmware.vmware.esxi_host:
+    hostname: "{{ deployment_v2_register_esxi_vcenter_host }}"
+    username: "{{ deployment_v2_register_esxi_vcenter_user }}"
+    password: "{{ deployment_v2.credentials.vm_admin_password }}"
+    validate_certs: "{{ deployment_v2_register_esxi_validate_certs }}"
+    datacenter: "{{ deployment_v2_register_esxi_datacenter }}"
+    cluster: "{{ deployment_v2_register_esxi_cluster }}"
+    esxi_host_name: "{{ item.ip | default(item.fqdn, true) }}"
+    esxi_username: root
+    esxi_password: "{{ deployment_v2.credentials.vm_admin_password }}"
+    state: present
+  loop: "{{ deployment_v2_register_esxi_hosts }}"
+  loop_control:
+    label: "{{ item.ip | default(item.fqdn, true) }}"
+  register: deployment_v2_register_esxi_host_results
+  until: deployment_v2_register_esxi_host_results is succeeded
+  retries: "{{ deployment_v2_register_esxi_api_retries | int }}"
+  delay: "{{ deployment_v2_register_esxi_api_delay | int }}"
+  become: false
+  environment:
+    PYTHONPATH: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+
+- name: Record deployment_v2 ESXi registration state for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.copy:
+    dest: "{{ deployment_v2_register_esxi_state_dir }}/{{ deployment_v2_register_esxi_current_name }}.json"
+    owner: root
+    group: root
+    mode: "0600"
+    content: >-
+      {{
+        {
+          "vcenter": deployment_v2_register_esxi_current_name,
+          "api_host": deployment_v2_register_esxi_vcenter_host,
+          "datacenter": deployment_v2_register_esxi_datacenter,
+          "cluster": deployment_v2_register_esxi_cluster,
+          "managed_groups": deployment_v2_register_esxi_current.manages | default([]),
+          "registered_hosts": (
+            deployment_v2_register_esxi_hosts
+            | map(attribute='ip')
+            | list
+          ),
+          "registered_host_fqdns": (
+            deployment_v2_register_esxi_hosts
+            | map(attribute='fqdn')
+            | list
+          )
+        }
+        | to_nice_json
+      }}

@@ -1,0 +1,24 @@
+---
+deployment_v2_vcenter_prepare_state_dir: /etc/nested-vmware-lab/vcenters
+deployment_v2_vcenter_prepare_work_root: /var/tmp/deployment_v2_vcenter
+deployment_v2_vcenter_prepare_mount_root: "{{ deployment_v2_router_runtime_install_source_root | default('/srv/install-sources') }}"
+deployment_v2_vcenter_prepare_installer_subpath: vcsa-cli-installer/lin64/vcsa-deploy
+deployment_v2_vcenter_prepare_phase: all
+deployment_v2_vcenter_prepare_required_commands:
+  - bash
+  - timeout
+deployment_v2_vcenter_prepare_wait_timeout: 7200
+deployment_v2_vcenter_prepare_connect_timeout: 5
+deployment_v2_vcenter_prepare_async_timeout: 10800
+deployment_v2_vcenter_prepare_async_poll_interval: 30
+deployment_v2_vcenter_prepare_async_poll_retries: 360
+deployment_v2_vcenter_prepare_datastore_min_free_gb: 80
+deployment_v2_vcenter_prepare_ceip_enabled: false
+deployment_v2_vcenter_prepare_netmask_prefix_map:
+  "255.0.0.0": 8
+  "255.255.0.0": 16
+  "255.255.255.0": 24
+  "255.255.255.128": 25
+  "255.255.255.192": 26
+  "255.255.255.224": 27
+  "255.255.255.240": 28

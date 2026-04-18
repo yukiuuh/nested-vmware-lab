@@ -57,7 +57,7 @@ variable "storages" {
 
 variable "vcenters" {
   description = "Named vCenter definitions"
-  type        = map(any)
+  type        = any
   default     = {}
 }
 

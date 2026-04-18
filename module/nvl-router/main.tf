@@ -91,6 +91,7 @@ module "router" {
   local_ovf_path     = var.local_ovf_path
   userdata           = local.router_userdata
   network_interfaces = [var.wan_network_name, var.network_name]
+  cdroms             = var.cdroms
   num_cpus           = 2
   mem_gb             = 1
   disks = [

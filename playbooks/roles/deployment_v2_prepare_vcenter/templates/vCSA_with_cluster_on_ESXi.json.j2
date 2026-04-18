@@ -1,0 +1,51 @@
+{
+  "__version": "2.13.0",
+  "new_vcsa": {
+    "esxi": {
+      "hostname": "{{ deployment_v2_vcenter.target.hostname }}",
+      "username": "{{ deployment_v2_vcenter.target.username }}",
+      "password": "{{ deployment_v2_vcenter.target.password }}",
+      "deployment_network": "{{ deployment_v2_vcenter.target.deployment_network }}",
+      "datastore": "{{ deployment_v2_vcenter.target.datastore }}",
+      "VCSA_cluster": {
+        "datacenter": "{{ deployment_v2_vcenter.target.storage.vsan.datacenter }}",
+        "cluster": "{{ deployment_v2_vcenter.target.storage.vsan.cluster }}",
+        "compression_only": {{ deployment_v2_vcenter.target.storage.vsan.compression_only | to_json }},
+        "deduplication_and_compression": {{ deployment_v2_vcenter.target.storage.vsan.deduplication_and_compression | to_json }},
+        "disks_for_vsan": {
+          "cache_disk": {{ deployment_v2_vcenter.target.storage.vsan.cache_disks | to_json }},
+          "capacity_disk": {{ deployment_v2_vcenter.target.storage.vsan.capacity_disks | to_json }}
+        },
+        "enable_vlcm": {{ deployment_v2_vcenter.target.storage.vsan.enable_vlcm | to_json }}
+      }
+    },
+    "appliance": {
+      "thin_disk_mode": true,
+      "deployment_option": "{{ deployment_v2_vcenter.deployment_size }}",
+      "name": "{{ deployment_v2_vcenter.name }}"
+    },
+    "network": {
+      "ip_family": "ipv4",
+      "mode": "static",
+      "system_name": "{{ deployment_v2_vcenter.fqdn }}",
+      "ip": "{{ deployment_v2_vcenter.ip }}",
+      "prefix": "{{ deployment_v2_vcenter_prepare_prefix_length }}",
+      "gateway": "{{ deployment_v2_vcenter.network.gateway }}",
+      "dns_servers": {{ deployment_v2_vcenter.network.nameservers | to_json }}
+    },
+    "os": {
+      "password": "{{ deployment_v2.credentials.vm_admin_password }}",
+      "ntp_servers": "{{ deployment_v2_vcenter.ntp_servers | join(',') }}",
+      "ssh_enable": true
+    },
+    "sso": {
+      "password": "{{ deployment_v2.credentials.vm_admin_password }}",
+      "domain_name": "{{ deployment_v2_vcenter.sso_domain_name }}"
+    }
+  },
+  "ceip": {
+    "settings": {
+      "ceip_enabled": {{ deployment_v2_vcenter_prepare_ceip_enabled | to_json }}
+    }
+  }
+}

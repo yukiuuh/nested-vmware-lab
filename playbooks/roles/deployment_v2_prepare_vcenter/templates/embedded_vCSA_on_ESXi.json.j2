@@ -1,0 +1,40 @@
+{
+  "__version": "2.13.0",
+  "new_vcsa": {
+    "esxi": {
+      "hostname": "{{ deployment_v2_vcenter.target.hostname }}",
+      "username": "{{ deployment_v2_vcenter.target.username }}",
+      "password": "{{ deployment_v2_vcenter.target.password }}",
+      "deployment_network": "{{ deployment_v2_vcenter.target.deployment_network }}",
+      "datastore": "{{ deployment_v2_vcenter.target.datastore }}"
+    },
+    "appliance": {
+      "thin_disk_mode": true,
+      "deployment_option": "{{ deployment_v2_vcenter.deployment_size }}",
+      "name": "{{ deployment_v2_vcenter.name }}"
+    },
+    "network": {
+      "ip_family": "ipv4",
+      "mode": "static",
+      "system_name": "{{ deployment_v2_vcenter.fqdn }}",
+      "ip": "{{ deployment_v2_vcenter.ip }}",
+      "prefix": "{{ deployment_v2_vcenter_prepare_prefix_length }}",
+      "gateway": "{{ deployment_v2_vcenter.network.gateway }}",
+      "dns_servers": {{ deployment_v2_vcenter.network.nameservers | to_json }}
+    },
+    "os": {
+      "password": "{{ deployment_v2.credentials.vm_admin_password }}",
+      "ntp_servers": "{{ deployment_v2_vcenter.ntp_servers | join(',') }}",
+      "ssh_enable": true
+    },
+    "sso": {
+      "password": "{{ deployment_v2.credentials.vm_admin_password }}",
+      "domain_name": "{{ deployment_v2_vcenter.sso_domain_name }}"
+    }
+  },
+  "ceip": {
+    "settings": {
+      "ceip_enabled": {{ deployment_v2_vcenter_prepare_ceip_enabled | to_json }}
+    }
+  }
+}

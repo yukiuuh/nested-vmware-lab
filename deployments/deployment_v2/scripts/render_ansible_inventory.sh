@@ -84,6 +84,7 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
   | ($seed.routers // {}) as $routers
   | ($seed.esxi_groups // {}) as $esxi_groups
   | ($seed.storages // {}) as $storages
+  | ($seed.vcenters // {}) as $vcenters
   | (
       reduce ($routers | to_entries[]) as $router ({};
         . + {
@@ -105,6 +106,18 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
             deployment_v2_kind: "storage",
             deployment_v2_name: $storage.key,
             deployment_v2_storage: $storage.value
+          }
+        }
+      )
+      +
+      reduce ($vcenters | to_entries[]) as $vcenter ({};
+        . + {
+          ($vcenter.value.fqdn): {
+            ansible_host: $vcenter.value.ansible.host,
+            ansible_user: $vcenter.value.ansible.user,
+            deployment_v2_kind: "vcenter",
+            deployment_v2_name: $vcenter.key,
+            deployment_v2_vcenter: $vcenter.value
           }
         }
       )
@@ -134,10 +147,11 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
       )
     ) as $hostvars
   | (
-      ["deployment_v2_routers", "deployment_v2_storages", "deployment_v2_esxi"]
+      ["deployment_v2_routers", "deployment_v2_storages", "deployment_v2_esxi", "deployment_v2_vcenters"]
       + ($routers | keys | map("deployment_v2_router_" + .))
       + ($storages | keys | map("deployment_v2_storage_" + .))
       + ($esxi_groups | keys | map("deployment_v2_esxi_group_" + .))
+      + ($vcenters | keys | map("deployment_v2_vcenter_" + .))
     ) as $all_children
   | {
       all: {
@@ -151,6 +165,9 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
       },
       deployment_v2_storages: {
         hosts: ($storages | keys | map({key: ., value: $hostvars[.]}) | from_entries)
+      },
+      deployment_v2_vcenters: {
+        hosts: ($vcenters | to_entries | map({key: .value.fqdn, value: $hostvars[.value.fqdn]}) | from_entries)
       },
       deployment_v2_esxi: {
         children: (($esxi_groups | keys | map("deployment_v2_esxi_group_" + .)) | map({key: ., value: {}}) | from_entries)
@@ -179,6 +196,20 @@ jq -n "${JQ_FORMAT_FLAGS[@]}" \
             vars: {
               deployment_v2_storage_name: $storage.key,
               deployment_v2_storage: $storage.value
+            }
+          }
+        }
+      )
+    )
+    +
+    (
+      reduce ($vcenters | to_entries[]) as $vcenter ({};
+        . + {
+          ("deployment_v2_vcenter_" + $vcenter.key): {
+            hosts: { ($vcenter.value.fqdn): $hostvars[$vcenter.value.fqdn] },
+            vars: {
+              deployment_v2_vcenter_name: $vcenter.key,
+              deployment_v2_vcenter: $vcenter.value
             }
           }
         }

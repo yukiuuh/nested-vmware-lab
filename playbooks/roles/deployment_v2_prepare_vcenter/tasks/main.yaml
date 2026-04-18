@@ -1,0 +1,172 @@
+---
+- name: Build deployment_v2 vCenter items for this Router
+  ansible.builtin.set_fact:
+    deployment_v2_router_vcenter_items: >-
+      {{
+        (deployment_v2.vcenters | default({}))
+        | dict2items
+        | selectattr('value.router', 'equalto', deployment_v2_router_name)
+        | sort(attribute='key')
+        | list
+      }}
+    deployment_v2_vcenter_prepare_completed_names: "{{ deployment_v2_vcenter_prepare_completed_names | default([]) }}"
+    deployment_v2_vcenter_prepare_jobs: "{{ deployment_v2_vcenter_prepare_jobs | default({}) }}"
+
+- name: Build deployment_v2 Router vCenter orchestration groups
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_do_provider_launch: >-
+      {{ deployment_v2_vcenter_prepare_phase in ['all', 'provider_launch'] }}
+    deployment_v2_vcenter_prepare_do_nested_launch: >-
+      {{ deployment_v2_vcenter_prepare_phase in ['all', 'nested_launch'] }}
+    deployment_v2_vcenter_prepare_do_wait: >-
+      {{ deployment_v2_vcenter_prepare_phase in ['all', 'wait'] }}
+    deployment_v2_router_esxi_group_names: >-
+      {{
+        (deployment_v2.esxi_groups | default({}))
+        | dict2items
+        | selectattr('value.router', 'equalto', deployment_v2_router_name)
+        | map(attribute='key')
+        | list
+      }}
+    deployment_v2_provider_vcenter_items: >-
+      {{
+        deployment_v2_router_vcenter_items
+        | selectattr('value.placement.kind', 'equalto', 'provider_vsphere')
+        | list
+      }}
+    deployment_v2_nested_vcenter_items: >-
+      {{
+        deployment_v2_router_vcenter_items
+        | selectattr('value.placement.kind', 'equalto', 'nested_vsphere')
+        | list
+      }}
+
+- name: Validate deployment_v2 vCenter prepare phase
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_vcenter_prepare_phase in ['all', 'provider_launch', 'nested_launch', 'wait']
+    fail_msg: >-
+      deployment_v2_vcenter_prepare_phase must be one of all, provider_launch,
+      nested_launch, or wait. got={{ deployment_v2_vcenter_prepare_phase }}
+  when: deployment_v2_router_vcenter_items | length > 0
+
+- name: Check required commands for deployment_v2 vCenter preparation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - bash
+      - -lc
+      - "command -v {{ item }}"
+  changed_when: false
+  loop: "{{ deployment_v2_vcenter_prepare_required_commands }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - deployment_v2_router_vcenter_items | length > 0
+    - (deployment_v2_vcenter_prepare_do_provider_launch | bool) or (deployment_v2_vcenter_prepare_do_nested_launch | bool)
+
+- name: Validate provider vSphere credentials are available for provider-target vCenter deployment
+  ansible.builtin.assert:
+    that:
+      - deployment_v2.credentials is defined
+      - deployment_v2.credentials.vsphere is defined
+      - deployment_v2.credentials.vsphere.server is defined
+      - deployment_v2.credentials.vsphere.user is defined
+      - deployment_v2.credentials.vsphere.password is defined
+      - deployment_v2.credentials.vsphere.datacenter is defined
+    fail_msg: >-
+      deployment_v2.credentials.vsphere must be present in ansible_inventory_seed to deploy
+      provider_vsphere vCenter appliances from deployment_v2_prepare
+  when:
+    - deployment_v2_provider_vcenter_items | length > 0
+    - deployment_v2_vcenter_prepare_do_provider_launch | bool
+
+- name: Validate nested deployment_v2 vCenter ESXi targets are in this Router scope
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_nested_vcenter_external_esxi_group_refs | length == 0
+      - deployment_v2_nested_vcenter_non_esxi_targets | length == 0
+    fail_msg: >-
+      nested_vsphere vCenters must target deployment_v2 ESXi groups in the same
+      Router scope and must render target.kind=esxi.
+      external_esxi_groups={{ deployment_v2_nested_vcenter_external_esxi_group_refs | join(', ') }}
+      non_esxi_targets={{ deployment_v2_nested_vcenter_non_esxi_targets | join(', ') }}
+  vars:
+    deployment_v2_nested_vcenter_external_esxi_group_refs: >-
+      {{
+        deployment_v2_nested_vcenter_items
+        | rejectattr('value.placement.esxi_group', 'in', deployment_v2_router_esxi_group_names)
+        | map(attribute='key')
+        | list
+      }}
+    deployment_v2_nested_vcenter_non_esxi_targets: >-
+      {{
+        deployment_v2_nested_vcenter_items
+        | rejectattr('value.target.kind', 'equalto', 'esxi')
+        | map(attribute='key')
+        | list
+      }}
+  when:
+    - deployment_v2_nested_vcenter_items | length > 0
+    - deployment_v2_vcenter_prepare_do_nested_launch | bool
+
+- name: Ensure deployment_v2 vCenter state directory exists
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ deployment_v2_vcenter_prepare_state_dir }}"
+    - "{{ deployment_v2_vcenter_prepare_work_root }}"
+  when:
+    - deployment_v2_router_vcenter_items | length > 0
+    - (deployment_v2_vcenter_prepare_do_provider_launch | bool) or (deployment_v2_vcenter_prepare_do_nested_launch | bool)
+
+- name: Launch provider-target deployment_v2 vCenters from this Router
+  ansible.builtin.include_tasks: launch_vcenter.yaml
+  loop: "{{ deployment_v2_provider_vcenter_items }}"
+  loop_control:
+    loop_var: deployment_v2_vcenter_item
+    label: "{{ deployment_v2_vcenter_item.key }}"
+  when:
+    - deployment_v2_provider_vcenter_items | length > 0
+    - deployment_v2_vcenter_prepare_do_provider_launch | bool
+
+- name: Prepare nested-ESXi-target deployment_v2 vCenter storage from this Router
+  ansible.builtin.include_tasks: prepare_nested_storage.yaml
+  loop: "{{ deployment_v2_nested_vcenter_items }}"
+  loop_control:
+    loop_var: deployment_v2_vcenter_item
+    label: "{{ deployment_v2_vcenter_item.key }}"
+  when:
+    - deployment_v2_nested_vcenter_items | length > 0
+    - deployment_v2_vcenter_prepare_do_nested_launch | bool
+
+- name: Launch nested-ESXi-target deployment_v2 vCenters from this Router
+  ansible.builtin.include_tasks: launch_vcenter.yaml
+  loop: "{{ deployment_v2_nested_vcenter_items }}"
+  loop_control:
+    loop_var: deployment_v2_vcenter_item
+    label: "{{ deployment_v2_vcenter_item.key }}"
+  when:
+    - deployment_v2_nested_vcenter_items | length > 0
+    - deployment_v2_vcenter_prepare_do_nested_launch | bool
+
+- name: Wait for launched deployment_v2 vCenters from this Router
+  ansible.builtin.include_tasks: wait_vcenter.yaml
+  loop: >-
+    {{
+      deployment_v2_router_vcenter_items
+      | selectattr('key', 'in', deployment_v2_vcenter_prepare_jobs.keys() | list)
+      | rejectattr('key', 'in', deployment_v2_vcenter_prepare_completed_names)
+      | list
+    }}
+  loop_control:
+    loop_var: deployment_v2_vcenter_item
+    label: "{{ deployment_v2_vcenter_item.key }}"
+  when:
+    - deployment_v2_router_vcenter_items | length > 0
+    - deployment_v2_vcenter_prepare_do_wait | bool
+    - (deployment_v2_vcenter_prepare_jobs | length) > (deployment_v2_vcenter_prepare_completed_names | length)

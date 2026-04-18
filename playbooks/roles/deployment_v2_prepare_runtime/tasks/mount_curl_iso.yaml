@@ -13,7 +13,7 @@
   ansible.builtin.command:
     argv:
       - /usr/bin/timeout
-      - "60"
+      - "{{ deployment_v2_router_runtime_iso_mount_timeout_seconds | string }}"
       - /usr/bin/mount
       - -t
       - iso9660

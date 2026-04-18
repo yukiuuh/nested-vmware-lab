@@ -1,0 +1,29 @@
+---
+- name: Assert datastore-backed ISO device metadata is available for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_router_runtime_datastore_source_device_map is defined
+      - deployment_v2_router_runtime_datastore_source_device_map[deployment_v2_router_runtime_iso_source] is defined
+      - deployment_v2_router_runtime_datastore_source_device_map[deployment_v2_router_runtime_iso_source].device_path | length > 0
+    fail_msg: >-
+      deployment_v2 Router metadata did not provide a device path for datastore-backed
+      install source {{ deployment_v2_router_runtime_iso_source }}
+
+- name: Wait for datastore-backed ISO device for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.wait_for:
+    path: "{{ deployment_v2_router_runtime_datastore_source_device_map[deployment_v2_router_runtime_iso_source].device_path }}"
+    timeout: 300
+
+- name: Mount ISO from datastore-backed device for {{ deployment_v2_router_runtime_iso_source }}
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/timeout
+      - "{{ deployment_v2_router_runtime_iso_mount_timeout_seconds | string }}"
+      - /usr/bin/mount
+      - -t
+      - iso9660
+      - -o
+      - ro
+      - "{{ deployment_v2_router_runtime_datastore_source_device_map[deployment_v2_router_runtime_iso_source].device_path }}"
+      - "{{ deployment_v2_router_runtime_install_source_root }}/{{ deployment_v2_router_runtime_iso_source }}/mounted"
+  changed_when: true

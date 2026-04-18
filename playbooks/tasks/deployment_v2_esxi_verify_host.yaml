@@ -1,0 +1,45 @@
+---
+- name: Wait for ESXi HTTPS API to become reachable
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[inventory_hostname].ansible_host }}"
+    port: 443
+    timeout: 1800
+    connect_timeout: 5
+    sleep: 5
+    state: started
+  delegate_to: "{{ deployment_v2_verification_router }}"
+
+- name: Wait for VMware Tools on ESXi guest
+  community.vmware.vmware_guest_tools_wait:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+    name: "{{ deployment_v2_esxi_host.name }}"
+  register: deployment_v2_esxi_guest_tools
+  until: deployment_v2_esxi_guest_tools is succeeded
+  retries: 90
+  delay: 20
+  delegate_to: localhost
+
+- name: Wait for ESXi provisioning marker via VMware Tools guest operations
+  community.vmware.vmware_vm_shell:
+    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
+    username: "{{ deployment_v2.credentials.vsphere.user }}"
+    password: "{{ deployment_v2.credentials.vsphere.password }}"
+    validate_certs: false
+    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
+    vm_id: "{{ deployment_v2_esxi_host.name }}"
+    vm_username: root
+    vm_password: "{{ deployment_v2.credentials.vm_admin_password }}"
+    vm_shell: /bin/sh
+    vm_shell_args: "-c 'test -f /var/tmp/provisioned'"
+    wait_for_process: true
+  register: deployment_v2_esxi_provisioned_marker
+  changed_when: false
+  retries: 30
+  delay: 20
+  until: (deployment_v2_esxi_provisioned_marker.exit_code | default(1)) == 0
+  failed_when: false
+  delegate_to: localhost

@@ -18,11 +18,25 @@
         | selectattr('value.router', 'equalto', deployment_v2_router_name)
         | list
       }}
+    deployment_v2_router_runtime_vcenter_items: >-
+      {{
+        (deployment_v2.vcenters | default({}))
+        | dict2items
+        | selectattr('value.router', 'equalto', deployment_v2_router_name)
+        | list
+      }}
     deployment_v2_router_runtime_install_source_refs: >-
       {{
         (
           (
             (deployment_v2.esxi_groups | default({}))
+            | dict2items
+            | selectattr('value.router', 'equalto', deployment_v2_router_name)
+            | map(attribute='value.install.install_source')
+            | list
+          )
+          + (
+            (deployment_v2.vcenters | default({}))
             | dict2items
             | selectattr('value.router', 'equalto', deployment_v2_router_name)
             | map(attribute='value.install.install_source')
@@ -35,8 +49,12 @@
 
 - name: Build deployment_v2 router install source details
   ansible.builtin.set_fact:
-    deployment_v2_router_runtime_install_sources: "{{ deployment_v2_router_runtime_group_items | map(attribute='value.install') | list }}"
-    deployment_v2_router_runtime_curl_iso_sources: >-
+    deployment_v2_router_runtime_install_sources: >-
+      {{
+        (deployment_v2_router_runtime_group_items | map(attribute='value.install') | list)
+        + (deployment_v2_router_runtime_vcenter_items | map(attribute='value.install') | list)
+      }}
+    deployment_v2_router_runtime_esxi_curl_iso_sources: >-
       {{
         deployment_v2_router_runtime_group_items
         | selectattr('value.install.source.type', 'equalto', 'http_iso')
@@ -44,7 +62,7 @@
         | list
         | unique
       }}
-    deployment_v2_router_runtime_rclone_iso_sources: >-
+    deployment_v2_router_runtime_esxi_rclone_iso_sources: >-
       {{
         deployment_v2_router_runtime_group_items
         | selectattr('value.install.source.type', 'equalto', 'rclone_iso')
@@ -52,14 +70,58 @@
         | list
         | unique
       }}
+    deployment_v2_router_runtime_vcenter_curl_iso_sources: >-
+      {{
+        deployment_v2_router_runtime_vcenter_items
+        | selectattr('value.install.source.type', 'equalto', 'http_iso')
+        | map(attribute='value.install.install_source')
+        | list
+        | unique
+      }}
+    deployment_v2_router_runtime_vcenter_rclone_iso_sources: >-
+      {{
+        deployment_v2_router_runtime_vcenter_items
+        | selectattr('value.install.source.type', 'equalto', 'rclone_iso')
+        | map(attribute='value.install.install_source')
+        | list
+        | unique
+      }}
+    deployment_v2_router_runtime_vcenter_datastore_iso_sources: >-
+      {{
+        deployment_v2_router_runtime_vcenter_items
+        | selectattr('value.install.source.type', 'equalto', 'datastore_iso')
+        | map(attribute='value.install.install_source')
+        | list
+        | unique
+      }}
 
-- name: Build deployment_v2 combined ISO source list
+- name: Build deployment_v2 combined install source lists
   ansible.builtin.set_fact:
+    deployment_v2_router_runtime_esxi_iso_sources: >-
+      {{
+        (
+          deployment_v2_router_runtime_esxi_curl_iso_sources
+          + deployment_v2_router_runtime_esxi_rclone_iso_sources
+        )
+        | unique
+      }}
+    deployment_v2_router_runtime_vcenter_iso_sources: >-
+      {{
+        (
+          deployment_v2_router_runtime_vcenter_curl_iso_sources
+          + deployment_v2_router_runtime_vcenter_rclone_iso_sources
+          + deployment_v2_router_runtime_vcenter_datastore_iso_sources
+        )
+        | unique
+      }}
     deployment_v2_router_runtime_iso_sources: >-
       {{
         (
-          deployment_v2_router_runtime_curl_iso_sources
-          + deployment_v2_router_runtime_rclone_iso_sources
+          deployment_v2_router_runtime_esxi_curl_iso_sources
+          + deployment_v2_router_runtime_esxi_rclone_iso_sources
+          + deployment_v2_router_runtime_vcenter_curl_iso_sources
+          + deployment_v2_router_runtime_vcenter_rclone_iso_sources
+          + deployment_v2_router_runtime_vcenter_datastore_iso_sources
         )
         | unique
       }}
@@ -73,8 +135,11 @@
       }}
   loop: >-
     {{
-      deployment_v2_router_runtime_group_items
-      | selectattr('value.install.source.type', 'in', ['http_iso', 'rclone_iso'])
+      (
+        deployment_v2_router_runtime_group_items
+        + deployment_v2_router_runtime_vcenter_items
+      )
+      | selectattr('value.install.source.type', 'in', ['http_iso', 'rclone_iso', 'datastore_iso'])
       | list
     }}
 
@@ -96,21 +161,36 @@
             }
           })
       }}
-  loop: "{{ deployment_v2_router_runtime_rclone_iso_sources }}"
+  loop: "{{ (deployment_v2_router_runtime_esxi_rclone_iso_sources + deployment_v2_router_runtime_vcenter_rclone_iso_sources) | unique }}"
 
 - name: Build deployment_v2 rclone mount targets
   ansible.builtin.set_fact:
-    deployment_v2_router_runtime_rclone_sources: "{{ deployment_v2_router_runtime_rclone_iso_sources }}"
+    deployment_v2_router_runtime_rclone_sources: >-
+      {{
+        (
+          deployment_v2_router_runtime_esxi_rclone_iso_sources
+          + deployment_v2_router_runtime_vcenter_rclone_iso_sources
+        )
+        | unique
+      }}
+
+- name: Build deployment_v2 rclone remote names
+  ansible.builtin.set_fact:
     deployment_v2_router_runtime_rclone_remote_name_map: >-
       {{
         dict(
-          deployment_v2_router_runtime_rclone_iso_sources
+          deployment_v2_router_runtime_rclone_sources
           | zip(
-              deployment_v2_router_runtime_rclone_iso_sources
-              | map('regex_replace', '^(.*)$', 'deployment_v2_\\1')
+              deployment_v2_router_runtime_rclone_sources
+              | map('regex_replace', '^', 'deployment_v2_')
             )
         )
       }}
+
+- name: Build deployment_v2 datastore-backed source device map
+  ansible.builtin.set_fact:
+    deployment_v2_router_runtime_datastore_source_device_map: >-
+      {{ deployment_v2_router.install_source_devices | default({}) }}
 
 - name: Assert ESXi root password is provided for PXE preparation
   ansible.builtin.assert:
@@ -166,7 +246,8 @@
         deployment_v2_router_runtime_skip_pxe_prepare
         | ternary(
             'Skipping ISO/PXE preparation because all managed ESXi HTTPS endpoints are already reachable',
-            'Running ISO/PXE preparation because at least one managed ESXi HTTPS endpoint is not yet reachable; this is expected on the first run before ESXi installation completes'
+            'Running ISO/PXE preparation because at least one managed ESXi HTTPS endpoint is not yet '
+            ~ 'reachable; this is expected on the first run before ESXi installation completes'
           )
       }}
   when: deployment_v2_router_runtime_group_items | length > 0
@@ -176,13 +257,11 @@
     deployment_v2_router_runtime_required_commands: >-
       {{
         (
-          (not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
-           and deployment_v2_router_runtime_iso_sources | length > 0)
+          (deployment_v2_router_runtime_iso_sources | length > 0)
           | ternary(deployment_v2_router_runtime_required_commands_iso, [])
         )
         + (
-          (not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
-           and deployment_v2_router_runtime_rclone_iso_sources | length > 0)
+          (deployment_v2_router_runtime_rclone_sources | length > 0)
           | ternary(deployment_v2_router_runtime_required_commands_rclone, [])
         )
         | unique
@@ -240,7 +319,6 @@
     group: root
     mode: "0755"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router_runtime_iso_sources | length > 0
 
 - name: Stop stale legacy ISO mount units before reconfiguring sources
@@ -252,7 +330,6 @@
   changed_when: false
   loop: "{{ deployment_v2_router_runtime_iso_sources }}"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router_runtime_iso_sources | length > 0
 
 - name: Ensure install source directories exist
@@ -264,7 +341,6 @@
     mode: "0755"
   loop: "{{ deployment_v2_router_runtime_iso_sources | product([deployment_v2_router_runtime_remote_dirname, 'mounted']) | list }}"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router_runtime_iso_sources | length > 0
 
 - name: Assert rclone is enabled for rclone_iso sources
@@ -274,8 +350,7 @@
     fail_msg: >-
       deployment_v2 routers serving rclone_iso install sources must enable router.execution.enable_rclone
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
-    - deployment_v2_router_runtime_rclone_iso_sources | length > 0
+    - deployment_v2_router_runtime_rclone_sources | length > 0
 
 - name: Ensure rclone cache directory exists
   ansible.builtin.file:
@@ -285,9 +360,8 @@
     group: root
     mode: "0755"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.rclone | default(false)
-    - deployment_v2_router_runtime_rclone_iso_sources | length > 0
+    - deployment_v2_router_runtime_rclone_sources | length > 0
 
 - name: Ensure per-source TFTP asset roots exist
   ansible.builtin.file:
@@ -296,11 +370,11 @@
     owner: root
     group: root
     mode: "0755"
-  loop: "{{ deployment_v2_router_runtime_iso_sources }}"
+  loop: "{{ deployment_v2_router_runtime_esxi_iso_sources }}"
   when:
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.pxe | default(false)
-    - deployment_v2_router_runtime_iso_sources | length > 0
+    - deployment_v2_router_runtime_esxi_iso_sources | length > 0
 
 - name: Ensure per-source HTTP asset roots exist
   ansible.builtin.file:
@@ -309,11 +383,11 @@
     owner: root
     group: root
     mode: "0755"
-  loop: "{{ deployment_v2_router_runtime_iso_sources }}"
+  loop: "{{ deployment_v2_router_runtime_esxi_iso_sources }}"
   when:
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.http | default(false)
-    - deployment_v2_router_runtime_iso_sources | length > 0
+    - deployment_v2_router_runtime_esxi_iso_sources | length > 0
 
 - name: Render deployment_v2 PXE dnsmasq config
   ansible.builtin.template:
@@ -342,7 +416,7 @@
     enabled: false
   failed_when: false
   loop: "{{ deployment_v2_router_runtime_iso_sources }}"
-  when: not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+  when: deployment_v2_router_runtime_iso_sources | length > 0
 
 - name: Stop legacy deployment_v2 ISO mount units
   ansible.builtin.systemd_service:
@@ -351,14 +425,14 @@
     enabled: false
   failed_when: false
   loop: "{{ deployment_v2_router_runtime_iso_sources }}"
-  when: not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+  when: deployment_v2_router_runtime_iso_sources | length > 0
 
 - name: Remove legacy deployment_v2 custom mount unit files
   ansible.builtin.file:
     path: "/etc/systemd/system/deployment-v2-{{ item.0 }}-{{ item.1 }}.service"
     state: absent
   loop: "{{ ['rclone', 'iso'] | product(deployment_v2_router_runtime_iso_sources) | list }}"
-  when: not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+  when: deployment_v2_router_runtime_iso_sources | length > 0
 
 - name: Unmount stale deployment_v2 install source mount points
   ansible.builtin.shell: >-
@@ -371,7 +445,7 @@
     fi
   changed_when: false
   loop: "{{ deployment_v2_router_runtime_iso_sources }}"
-  when: not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+  when: deployment_v2_router_runtime_iso_sources | length > 0
 
 - name: Recreate ISO mount directories
   ansible.builtin.file:
@@ -381,7 +455,7 @@
     group: root
     mode: "0755"
   loop: "{{ deployment_v2_router_runtime_iso_sources }}"
-  when: not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+  when: deployment_v2_router_runtime_iso_sources | length > 0
 
 - name: Render deployment_v2 rclone config
   ansible.builtin.template:
@@ -391,8 +465,7 @@
     group: root
     mode: "0600"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
-    - deployment_v2_router_runtime_rclone_iso_sources | length > 0
+    - deployment_v2_router_runtime_rclone_sources | length > 0
 
 - name: Render deployment_v2 rclone mount units
   ansible.builtin.template:
@@ -401,27 +474,24 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ deployment_v2_router_runtime_rclone_iso_sources }}"
+  loop: "{{ deployment_v2_router_runtime_rclone_sources }}"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
-    - deployment_v2_router_runtime_rclone_iso_sources | length > 0
+    - deployment_v2_router_runtime_rclone_sources | length > 0
 
 - name: Reload systemd for deployment_v2 rclone mount units
   ansible.builtin.systemd_service:
     daemon_reload: true
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
-    - deployment_v2_router_runtime_rclone_iso_sources | length > 0
+    - deployment_v2_router_runtime_rclone_sources | length > 0
 
 - name: Start deployment_v2 rclone mount units
   ansible.builtin.systemd_service:
     name: "deployment-v2-rclone-{{ item }}"
     state: started
     enabled: true
-  loop: "{{ deployment_v2_router_runtime_rclone_iso_sources }}"
+  loop: "{{ deployment_v2_router_runtime_rclone_sources }}"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
-    - deployment_v2_router_runtime_rclone_iso_sources | length > 0
+    - deployment_v2_router_runtime_rclone_sources | length > 0
 
 - name: Wait for rclone-backed ISO files to appear
   ansible.builtin.wait_for:
@@ -429,24 +499,30 @@
       {{ deployment_v2_router_runtime_install_source_root }}/{{ item }}/{{
       deployment_v2_router_runtime_remote_dirname }}/{{ deployment_v2_router_runtime_rclone_source_map[item].filename }}
     timeout: 300
-  loop: "{{ deployment_v2_router_runtime_rclone_iso_sources }}"
+  loop: "{{ deployment_v2_router_runtime_rclone_sources }}"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
-    - deployment_v2_router_runtime_rclone_iso_sources | length > 0
+    - deployment_v2_router_runtime_rclone_sources | length > 0
 
-- name: Mount ESXi installer ISOs from curl-downloaded files
+- name: Mount installer ISOs from curl-downloaded files
   ansible.builtin.include_tasks: mount_curl_iso.yaml
-  loop: "{{ deployment_v2_router_runtime_curl_iso_sources }}"
+  loop: "{{ (deployment_v2_router_runtime_esxi_curl_iso_sources + deployment_v2_router_runtime_vcenter_curl_iso_sources) | unique }}"
   loop_control:
     loop_var: deployment_v2_router_runtime_iso_source
-  when: not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+  when: deployment_v2_router_runtime_iso_sources | length > 0
 
-- name: Mount ESXi installer ISOs from rclone-backed files
+- name: Mount installer ISOs from rclone-backed files
   ansible.builtin.include_tasks: mount_rclone_iso.yaml
-  loop: "{{ deployment_v2_router_runtime_rclone_iso_sources }}"
+  loop: "{{ deployment_v2_router_runtime_rclone_sources }}"
   loop_control:
     loop_var: deployment_v2_router_runtime_iso_source
-  when: not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+  when: deployment_v2_router_runtime_rclone_sources | length > 0
+
+- name: Mount vCenter installer ISOs from datastore-backed devices
+  ansible.builtin.include_tasks: mount_datastore_iso.yaml
+  loop: "{{ deployment_v2_router_runtime_vcenter_datastore_iso_sources }}"
+  loop_control:
+    loop_var: deployment_v2_router_runtime_iso_source
+  when: deployment_v2_router_runtime_vcenter_datastore_iso_sources | length > 0
 
 - name: Ensure deployment_v2 ISO runtime state directory exists
   ansible.builtin.file:
@@ -456,15 +532,16 @@
     group: root
     mode: "0755"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router_runtime_iso_sources | length > 0
 
 - name: Stage ESXi ISO assets per install source
   ansible.builtin.include_tasks: stage_iso_assets.yaml
-  loop: "{{ deployment_v2_router_runtime_iso_sources }}"
+  loop: "{{ deployment_v2_router_runtime_esxi_iso_sources }}"
   loop_control:
     loop_var: deployment_v2_router_runtime_iso_source
-  when: not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+  when:
+    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
+    - deployment_v2_router_runtime_esxi_iso_sources | length > 0
 
 - name: Render host-specific kickstart artifacts
   ansible.builtin.include_tasks: stage_host_kickstart.yaml
@@ -477,7 +554,13 @@
 
 - name: Render host-specific PXE artifacts
   ansible.builtin.include_tasks: stage_host_pxe.yaml
-  loop: "{{ deployment_v2_router_runtime_group_items | selectattr('value.install.method', 'equalto', 'ansible_router_pxe') | list | subelements('value.hosts') }}"
+  loop: >-
+    {{
+      deployment_v2_router_runtime_group_items
+      | selectattr('value.install.method', 'equalto', 'ansible_router_pxe')
+      | list
+      | subelements('value.hosts')
+    }}
   loop_control:
     loop_var: deployment_v2_router_runtime_group_host_item
   when:
@@ -519,7 +602,6 @@
     group: root
     mode: "0644"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.rclone | default(false)
 
 - name: Record unmanaged ISO sources
@@ -531,5 +613,4 @@
     group: root
     mode: "0644"
   when:
-    - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router_runtime_iso_sources | length > 0

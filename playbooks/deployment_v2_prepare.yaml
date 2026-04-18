@@ -8,6 +8,16 @@
   roles:
     - role: deployment_v2_prepare_runtime
 
+- name: Launch provider-target deployment_v2 vCenters from Router-mounted installers
+  hosts: deployment_v2_routers
+  become: true
+  gather_facts: false
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  roles:
+    - role: deployment_v2_prepare_vcenter
+      deployment_v2_vcenter_prepare_phase: provider_launch
+
 - name: Ensure deployment_v2 ESXi bootstrap is progressing
   hosts: deployment_v2_routers
   gather_facts: false
@@ -59,7 +69,6 @@
         name: "{{ item.item.1.name }}"
         state: restarted
         force: true
-      no_log: true
       loop: "{{ deployment_v2_esxi_api_checks.results | default([]) }}"
       loop_control:
         label: "{{ item.item.1.fqdn }}"
@@ -80,53 +89,69 @@
         - item.failed | default(false)
         - item.item.0.value.install.method == "ansible_vsphere_iso_boot"
 
-- name: Verify deployment_v2 ESXi bootstrap completed
+- name: Verify nested-vCenter target deployment_v2 ESXi bootstrap completed
   hosts: deployment_v2_esxi
   gather_facts: false
   vars:
     deployment_v2_verification_router: "{{ deployment_v2_esxi_group_config.router }}"
+    deployment_v2_nested_vcenter_target_esxi_groups: >-
+      {{
+        (deployment_v2.vcenters | default({}))
+        | dict2items
+        | selectattr('value.placement.kind', 'equalto', 'nested_vsphere')
+        | map(attribute='value.placement.esxi_group')
+        | unique
+        | list
+      }}
   tasks:
-    - name: Wait for ESXi HTTPS API to become reachable
-      ansible.builtin.wait_for:
-        host: "{{ hostvars[inventory_hostname].ansible_host }}"
-        port: 443
-        timeout: 1800
-        connect_timeout: 5
-        sleep: 5
-        state: started
-      delegate_to: "{{ deployment_v2_verification_router }}"
+    - name: Verify ESXi host required by nested vCenter placement
+      ansible.builtin.include_tasks: tasks/deployment_v2_esxi_verify_host.yaml
+      when: deployment_v2_esxi_group_name in deployment_v2_nested_vcenter_target_esxi_groups
 
-    - name: Wait for VMware Tools on ESXi guest
-      community.vmware.vmware_guest_tools_wait:
-        hostname: "{{ deployment_v2.credentials.vsphere.server }}"
-        username: "{{ deployment_v2.credentials.vsphere.user }}"
-        password: "{{ deployment_v2.credentials.vsphere.password }}"
-        validate_certs: false
-        datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
-        name: "{{ deployment_v2_esxi_host.name }}"
-      register: deployment_v2_esxi_guest_tools
-      until: deployment_v2_esxi_guest_tools is succeeded
-      retries: 90
-      delay: 20
-      delegate_to: localhost
+- name: Launch nested-ESXi-target deployment_v2 vCenters from Router-mounted installers
+  hosts: deployment_v2_routers
+  become: true
+  gather_facts: false
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  roles:
+    - role: deployment_v2_prepare_vcenter
+      deployment_v2_vcenter_prepare_phase: nested_launch
 
-    - name: Wait for ESXi provisioning marker via VMware Tools guest operations
-      community.vmware.vmware_vm_shell:
-        hostname: "{{ deployment_v2.credentials.vsphere.server }}"
-        username: "{{ deployment_v2.credentials.vsphere.user }}"
-        password: "{{ deployment_v2.credentials.vsphere.password }}"
-        validate_certs: false
-        datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
-        vm_id: "{{ deployment_v2_esxi_host.name }}"
-        vm_username: root
-        vm_password: "{{ deployment_v2.credentials.vm_admin_password }}"
-        vm_shell: /bin/sh
-        vm_shell_args: "-c 'test -f /var/tmp/provisioned'"
-        wait_for_process: true
-      register: deployment_v2_esxi_provisioned_marker
-      changed_when: false
-      retries: 30
-      delay: 20
-      until: (deployment_v2_esxi_provisioned_marker.exit_code | default(1)) == 0
-      failed_when: false
-      delegate_to: localhost
+- name: Verify remaining deployment_v2 ESXi bootstrap completed
+  hosts: deployment_v2_esxi
+  gather_facts: false
+  vars:
+    deployment_v2_verification_router: "{{ deployment_v2_esxi_group_config.router }}"
+    deployment_v2_nested_vcenter_target_esxi_groups: >-
+      {{
+        (deployment_v2.vcenters | default({}))
+        | dict2items
+        | selectattr('value.placement.kind', 'equalto', 'nested_vsphere')
+        | map(attribute='value.placement.esxi_group')
+        | unique
+        | list
+      }}
+  tasks:
+    - name: Verify ESXi host not already required by nested vCenter placement
+      ansible.builtin.include_tasks: tasks/deployment_v2_esxi_verify_host.yaml
+      when: deployment_v2_esxi_group_name not in deployment_v2_nested_vcenter_target_esxi_groups
+
+- name: Wait for deployment_v2 vCenter deployments
+  hosts: deployment_v2_routers
+  become: true
+  gather_facts: false
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  roles:
+    - role: deployment_v2_prepare_vcenter
+      deployment_v2_vcenter_prepare_phase: wait
+
+- name: Register deployment_v2 ESXi hosts into deployed vCenters
+  hosts: deployment_v2_routers
+  become: true
+  gather_facts: false
+  vars:
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  roles:
+    - role: deployment_v2_register_esxi

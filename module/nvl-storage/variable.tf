@@ -32,12 +32,13 @@ variable "storage_subnet_mask" {
   default = "255.255.255.0"
 }
 
-variable "storage_disk_size_gb" {type = number}
+variable "storage_disk_size_gb" { type = number }
 
 variable "luns" {
   type = list(object({
     size_gb = number
     name    = string
+    lun_id  = optional(number)
   }))
   default = []
 }

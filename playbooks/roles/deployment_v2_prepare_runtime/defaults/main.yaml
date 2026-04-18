@@ -14,6 +14,7 @@ deployment_v2_router_runtime_state_dir: /etc/nested-vmware-lab
 deployment_v2_router_runtime_install_source_root: /srv/install-sources
 deployment_v2_router_runtime_remote_dirname: remote
 deployment_v2_router_runtime_iso_local_filename: source.iso
+deployment_v2_router_runtime_iso_mount_timeout_seconds: 1800
 deployment_v2_router_runtime_rclone_cache_dir: /var/cache/rclone
 deployment_v2_router_runtime_rclone_config_path: /etc/nested-vmware-lab/rclone.conf
 deployment_v2_router_runtime_rclone_vfs_cache_mode: minimal

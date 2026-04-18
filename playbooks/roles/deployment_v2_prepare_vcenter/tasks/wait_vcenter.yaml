@@ -1,0 +1,55 @@
+---
+- name: Load deployment_v2 vCenter launch state for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_job: "{{ deployment_v2_vcenter_prepare_jobs[deployment_v2_vcenter_item.key] }}"
+    deployment_v2_vcenter_prepare_current: "{{ deployment_v2_vcenter_prepare_jobs[deployment_v2_vcenter_item.key].current }}"
+
+- name: Wait for deployment_v2 vCenter installer job for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.async_status:
+    jid: "{{ deployment_v2_vcenter_prepare_job.async_job }}"
+  register: deployment_v2_vcenter_prepare_async_status
+  until: deployment_v2_vcenter_prepare_async_status.finished | default(false)
+  retries: "{{ deployment_v2_vcenter_prepare_async_poll_retries | int }}"
+  delay: "{{ deployment_v2_vcenter_prepare_async_poll_interval | int }}"
+  failed_when: false
+  when: deployment_v2_vcenter_prepare_job.should_deploy
+
+- name: Fail when deployment_v2 vCenter installer job did not complete cleanly for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.fail:
+    msg: >-
+      deployment_v2 vCenter installer failed for {{ deployment_v2_vcenter_item.key }}.
+      Inspect {{ deployment_v2_vcenter_prepare_job.log_path }} on Router {{ deployment_v2_router_name }}.
+  when:
+    - deployment_v2_vcenter_prepare_job.should_deploy
+    - >-
+      (not (deployment_v2_vcenter_prepare_async_status.finished | default(false)))
+      or (deployment_v2_vcenter_prepare_async_status.rc | default(1)) != 0
+
+- name: Wait for vCenter HTTPS endpoint after deploy for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.wait_for:
+    host: "{{ deployment_v2_vcenter_prepare_current.ip }}"
+    port: 443
+    timeout: "{{ deployment_v2_vcenter_prepare_wait_timeout }}"
+    connect_timeout: "{{ deployment_v2_vcenter_prepare_connect_timeout }}"
+    sleep: 10
+    state: started
+  when: deployment_v2_vcenter_prepare_job.should_deploy
+
+- name: Record deployment_v2 vCenter deployment metadata for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.copy:
+    dest: "{{ deployment_v2_vcenter_prepare_state_dir }}/{{ deployment_v2_vcenter_item.key }}.json"
+    content: "{{ deployment_v2_vcenter_prepare_current | to_nice_json }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Mark deployment_v2 vCenter complete for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_completed_names: >-
+      {{
+        (
+          deployment_v2_vcenter_prepare_completed_names
+          + [deployment_v2_vcenter_item.key]
+        )
+        | unique
+      }}

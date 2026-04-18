@@ -1,0 +1,115 @@
+---
+- name: Build deployment_v2 vCenter registration items for this Router
+  ansible.builtin.set_fact:
+    deployment_v2_register_esxi_vcenter_items: >-
+      {{
+        (deployment_v2.vcenters | default({}))
+        | dict2items
+        | selectattr('value.router', 'equalto', deployment_v2_router_name)
+        | selectattr('value.manages', 'defined')
+        | sort(attribute='key')
+        | list
+      }}
+
+- name: Validate deployment_v2 ESXi registration credentials
+  ansible.builtin.assert:
+    that:
+      - deployment_v2.credentials is defined
+      - deployment_v2.credentials.vm_admin_password is defined
+      - deployment_v2.credentials.vm_admin_password is not none
+      - deployment_v2.credentials.vm_admin_password | length > 0
+    fail_msg: >-
+      deployment_v2.credentials.vm_admin_password must be present in ansible_inventory_seed
+      to register ESXi hosts into deployed vCenters.
+  when:
+    - deployment_v2_register_esxi_enabled | bool
+    - deployment_v2_register_esxi_vcenter_items | length > 0
+
+- name: Locate controller pyVmomi package directory for deployment_v2 ESXi registration
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - >-
+        import pathlib, pyVmomi;
+        print(pathlib.Path(pyVmomi.__file__).resolve().parent.parent)
+  register: deployment_v2_register_esxi_controller_site_packages
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when:
+    - deployment_v2_register_esxi_enabled | bool
+    - deployment_v2_register_esxi_vcenter_items | length > 0
+
+- name: Ensure deployment_v2 VMware module vendor directory exists
+  ansible.builtin.file:
+    path: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when:
+    - deployment_v2_register_esxi_enabled | bool
+    - deployment_v2_register_esxi_vcenter_items | length > 0
+
+- name: Build deployment_v2 VMware module Python package archive on controller
+  ansible.builtin.command:
+    argv:
+      - tar
+      - -C
+      - "{{ deployment_v2_register_esxi_controller_site_packages.stdout }}"
+      - -czf
+      - "{{ deployment_v2_register_esxi_python_vendor_archive }}"
+      - pyVmomi
+      - pyVim
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when:
+    - deployment_v2_register_esxi_enabled | bool
+    - deployment_v2_register_esxi_vcenter_items | length > 0
+
+- name: Extract deployment_v2 VMware module Python packages on Router
+  ansible.builtin.unarchive:
+    src: "{{ deployment_v2_register_esxi_python_vendor_archive }}"
+    dest: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+    owner: root
+    group: root
+    creates: "{{ deployment_v2_register_esxi_python_vendor_dir }}/pyVmomi/__init__.py"
+  when:
+    - deployment_v2_register_esxi_enabled | bool
+    - deployment_v2_register_esxi_vcenter_items | length > 0
+
+- name: Validate deployment_v2 Router VMware Python packages
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "import pyVmomi, pyVim"
+  environment:
+    PYTHONPATH: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+  changed_when: false
+  when:
+    - deployment_v2_register_esxi_enabled | bool
+    - deployment_v2_register_esxi_vcenter_items | length > 0
+
+- name: Ensure deployment_v2 ESXi registration state directory exists
+  ansible.builtin.file:
+    path: "{{ deployment_v2_register_esxi_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - deployment_v2_register_esxi_enabled | bool
+    - deployment_v2_register_esxi_vcenter_items | length > 0
+
+- name: Register deployment_v2 ESXi hosts into vCenters from this Router
+  ansible.builtin.include_tasks: register_vcenter.yaml
+  loop: "{{ deployment_v2_register_esxi_vcenter_items }}"
+  loop_control:
+    loop_var: deployment_v2_register_esxi_vcenter_item
+    label: "{{ deployment_v2_register_esxi_vcenter_item.key }}"
+  when:
+    - deployment_v2_register_esxi_enabled | bool
+    - deployment_v2_register_esxi_vcenter_items | length > 0

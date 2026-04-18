@@ -12,7 +12,15 @@ locals {
     default_networks = try(var.provider_config.default_networks, {})
   }
 
-  install_sources     = var.install_sources
+  install_sources = {
+    for name, source in var.install_sources :
+    name => merge(
+      source,
+      try(source.type, "") == "datastore_iso" ? {
+        path = coalesce(try(source.path, null), try(source.url, null))
+      } : {}
+    )
+  }
   routers             = var.routers
   esxi_groups         = var.esxi_groups
   storages            = var.storages
@@ -41,6 +49,81 @@ locals {
   supported_storage_placements = toset([
     "provider_vsphere",
   ])
+
+  supported_vcenter_source_types = toset([
+    "http_iso",
+    "rclone_iso",
+    "datastore_iso",
+  ])
+
+  supported_vcenter_placements = toset([
+    "provider_vsphere",
+    "nested_vsphere",
+  ])
+
+  supported_vcenter_nested_storage_modes = toset([
+    "existing_datastore",
+    "iscsi_datastore",
+    "vsan_bootstrap",
+  ])
+
+  install_source_version_search_text = {
+    for name, source in local.install_sources :
+    name => lower(join(" ", compact([
+      try(source.url, null) != null ? basename(tostring(source.url)) : "",
+      try(source.path, null) != null ? basename(tostring(source.path)) : "",
+    ])))
+  }
+
+  install_source_semver_matches = {
+    for name, text in local.install_source_version_search_text :
+    name => regexall("([0-9]+)\\.([0-9]+)\\.([0-9]+)", text)
+  }
+
+  install_source_update_matches = {
+    for name, text in local.install_source_version_search_text :
+    name => regexall("([0-9]+)\\.([0-9]+)[._ -]*u([0-9]+)", text)
+  }
+
+  install_source_vcenter_versions = {
+    for name, source in local.install_sources :
+    name => length(local.install_source_semver_matches[name]) > 0 ? {
+      detected = true
+      major    = tonumber(local.install_source_semver_matches[name][0][0])
+      minor    = tonumber(local.install_source_semver_matches[name][0][1])
+      patch    = tonumber(local.install_source_semver_matches[name][0][2])
+      label    = join(".", local.install_source_semver_matches[name][0])
+      } : length(local.install_source_update_matches[name]) > 0 ? {
+      detected = true
+      major    = tonumber(local.install_source_update_matches[name][0][0])
+      minor    = tonumber(local.install_source_update_matches[name][0][1])
+      patch    = tonumber(local.install_source_update_matches[name][0][2])
+      label    = format("%s.%s U%s", local.install_source_update_matches[name][0][0], local.install_source_update_matches[name][0][1], local.install_source_update_matches[name][0][2])
+      } : {
+      detected = false
+      major    = null
+      minor    = null
+      patch    = null
+      label    = null
+    }
+  }
+
+  install_source_supports_vsan_bootstrap = {
+    for name, version in local.install_source_vcenter_versions :
+    name => version.detected ? (
+      version.major > 7
+      || (
+        version.major == 7
+        && (
+          version.minor > 0
+          || (
+            version.minor == 0
+            && version.patch >= 2
+          )
+        )
+      )
+    ) : false
+  }
 
   supported_esxi_install_methods = toset([
     "ansible_router_pxe",
@@ -73,12 +156,70 @@ locals {
     )
   }
 
+  vcenter_source_refs = {
+    for name, vcenter in local.vcenters :
+    name => try(vcenter.source.install_source, null)
+  }
+
+  router_vcenter_datastore_iso_sources = {
+    for name, _ in local.routers :
+    name => sort(distinct([
+      for vcenter_name, vcenter in local.vcenters :
+      local.vcenter_source_refs[vcenter_name]
+      if try(vcenter.router, "") == name
+      && local.vcenter_source_refs[vcenter_name] != null
+      && contains(keys(local.install_sources), local.vcenter_source_refs[vcenter_name])
+      && try(local.install_sources[local.vcenter_source_refs[vcenter_name]].type, "") == "datastore_iso"
+    ]))
+  }
+
+  router_datastore_iso_source_devices = {
+    for name, sources in local.router_vcenter_datastore_iso_sources :
+    name => {
+      for idx, source_name in sources :
+      source_name => {
+        device_path = format("/dev/sr%d", idx)
+        datastore   = try(local.install_sources[source_name].datastore, null)
+        path        = try(local.install_sources[source_name].path, null)
+      }
+    }
+  }
+
   router_service_flags = {
     for name, router in local.routers :
     name => {
-      pxe    = try(router.execution.enable_pxe, true)
-      http   = try(router.execution.enable_http, true)
-      rclone = try(router.execution.enable_rclone, false)
+      pxe = (
+        try(router.execution.enable_pxe, false)
+        || length([
+          for _, group in local.esxi_groups : group
+          if try(group.router, "") == name
+          && try(group.install.method, "") == "ansible_router_pxe"
+        ]) > 0
+      )
+      http = (
+        try(router.execution.enable_http, false)
+        || length([
+          for _, group in local.esxi_groups : group
+          if try(group.router, "") == name
+        ]) > 0
+      )
+      rclone = (
+        try(router.execution.enable_rclone, false)
+        || length([
+          for _, group in local.esxi_groups : group
+          if try(group.router, "") == name
+          && try(group.install.source.install_source, null) != null
+          && contains(keys(local.install_sources), try(group.install.source.install_source, ""))
+          && try(local.install_sources[group.install.source.install_source].type, "") == "rclone_iso"
+        ]) > 0
+        || length([
+          for _, vcenter in local.vcenters : vcenter
+          if try(vcenter.router, "") == name
+          && try(vcenter.source.install_source, null) != null
+          && contains(keys(local.install_sources), try(vcenter.source.install_source, ""))
+          && try(local.install_sources[vcenter.source.install_source].type, "") == "rclone_iso"
+        ]) > 0
+      )
     }
   }
 
@@ -154,6 +295,123 @@ locals {
     if contains(keys(local.routers), try(storage.router, ""))
   }
 
+  vcenter_defaults = {
+    for name, vcenter in local.vcenters :
+    name => {
+      router_domain_name = try(local.routers[vcenter.router].networks.lan.domain_name, null)
+      router_gateway     = try(cidrhost("${local.routers[vcenter.router].networks.lan.network}/24", 1), null)
+      network_name = coalesce(
+        try(vcenter.placement.network, null),
+        try(local.routers[vcenter.router].networks.lan.network_name, null),
+        try(local.provider.default_networks.lan, null)
+      )
+    }
+    if contains(keys(local.routers), try(vcenter.router, ""))
+  }
+
+  provider_vcenter_target_kind = (
+    (
+      local.provider.server != null
+      && local.provider.compute_host != null
+      && local.provider.server == local.provider.compute_host
+    )
+    || lower(coalesce(local.provider.user, "nvl-not-root")) == "root"
+  ) ? "esxi" : "vc"
+
+  vcenter_target_paths = {
+    for name, vcenter in local.vcenters :
+    name => compact(concat(
+      try(vcenter.placement.cluster, null) != null ? [vcenter.placement.cluster] : [],
+      try(vcenter.placement.resource_pool, null) != null ? ["Resources", vcenter.placement.resource_pool] : [],
+      (
+        try(vcenter.placement.cluster, null) == null
+        && try(vcenter.placement.resource_pool, null) == null
+      ) ? [coalesce(try(vcenter.placement.host, null), local.provider.compute_host)] : []
+    ))
+  }
+
+  vcenter_nested_target_host_matches = {
+    for name, vcenter in local.vcenters :
+    name => [
+      for host_key, host in local.esxi_group_hosts : merge(host, {
+        key               = host_key
+        vm_name           = format("%s-%s-%s", local.deployment_name_prefix, host.group_name, host.hostname)
+        vmkernel_adapters = try(local.esxi_group_host_vmkernel_adapters[host_key], [])
+      })
+      if try(vcenter.placement.kind, "") == "nested_vsphere"
+      && host.group_name == try(vcenter.placement.esxi_group, "")
+      && contains(
+        compact([
+          try(host.hostname, null),
+          try(host.fqdn, null),
+          try(host.ip, null),
+        ]),
+        try(vcenter.placement.host, "")
+      )
+    ]
+  }
+
+  vcenter_nested_target_hosts = {
+    for name, matches in local.vcenter_nested_target_host_matches :
+    name => one(matches)
+    if length(matches) == 1
+  }
+
+  storage_luns = merge(concat([{}], [
+    for storage_name, storage in local.storages : {
+      for idx, lun in coalesce(try(storage.luns, null), []) : "${storage_name}/${lun.name}" => merge(lun, {
+        storage = storage_name
+        lun_id  = idx
+      })
+    }
+  ])...)
+
+  vcenter_nested_storage_modes = {
+    for name, vcenter in local.vcenters :
+    name => try(vcenter.placement.storage.mode, "existing_datastore")
+    if try(vcenter.placement.kind, "") == "nested_vsphere"
+  }
+
+  vcenter_nested_storage_configs = {
+    for name, vcenter in local.vcenters :
+    name => {
+      mode = local.vcenter_nested_storage_modes[name]
+      iscsi = local.vcenter_nested_storage_modes[name] == "iscsi_datastore" ? {
+        storage           = try(vcenter.placement.storage.storage, null)
+        lun               = try(vcenter.placement.storage.lun, null)
+        lun_id            = try(local.storage_luns["${vcenter.placement.storage.storage}/${vcenter.placement.storage.lun}"].lun_id, null)
+        vmkernel_purposes = try(vcenter.placement.storage.vmkernel_purposes, [])
+        port_binding      = try(vcenter.placement.storage.port_binding, false)
+        vmkernel_adapters = [
+          for adapter in coalesce(try(local.vcenter_nested_target_hosts[name].vmkernel_adapters, null), []) : adapter
+          if contains(try(vcenter.placement.storage.vmkernel_purposes, []), adapter.purpose)
+        ]
+        portals = distinct([
+          for portal in compact(coalesce(
+            try(vcenter.placement.storage.portals, null),
+            try([
+              local.storage_runtime[vcenter.placement.storage.storage].service.storage1_ip,
+              local.storage_runtime[vcenter.placement.storage.storage].service.storage2_ip,
+            ], null),
+            []
+          )) : can(regex(":[0-9]+$", portal)) ? portal : "${portal}:3260"
+        ])
+        size_gb = try(local.storage_luns["${vcenter.placement.storage.storage}/${vcenter.placement.storage.lun}"].size_gb, null)
+      } : null
+      vsan = local.vcenter_nested_storage_modes[name] == "vsan_bootstrap" ? {
+        datastore_name                = coalesce(try(vcenter.placement.storage.vsan.datastore_name, null), try(vcenter.placement.datastore, null))
+        datacenter                    = try(vcenter.placement.storage.vsan.datacenter, null)
+        cluster                       = try(vcenter.placement.storage.vsan.cluster, null)
+        cache_disks                   = try(vcenter.placement.storage.vsan.cache_disks, [])
+        capacity_disks                = try(vcenter.placement.storage.vsan.capacity_disks, [])
+        compression_only              = try(vcenter.placement.storage.vsan.compression_only, false)
+        deduplication_and_compression = try(vcenter.placement.storage.vsan.deduplication_and_compression, false)
+        enable_vlcm                   = try(vcenter.placement.storage.vsan.enable_vlcm, false)
+      } : null
+    }
+    if try(vcenter.placement.kind, "") == "nested_vsphere"
+  }
+
   esxi_group_hosts = merge([
     for name, group in local.esxi_groups : {
       for idx in range(group.count) : "${name}/${idx}" => {
@@ -176,6 +434,42 @@ locals {
       }
     }
   ]...)
+
+  esxi_group_vmkernel_adapter_definitions = {
+    for name, group in local.esxi_groups :
+    name => [
+      for adapter in coalesce(try(group.vmkernel_adapters, null), []) : {
+        name                      = try(tostring(adapter.name), null)
+        purpose                   = try(tostring(adapter.purpose), null)
+        vswitch                   = try(tostring(adapter.vswitch), null)
+        portgroup                 = try(tostring(adapter.portgroup), null)
+        uplink                    = try(tostring(adapter.uplink), null)
+        vlan                      = try(tonumber(adapter.vlan), null)
+        mtu                       = try(tonumber(adapter.mtu), try(tonumber(local.routers[group.router].networks.lan.mtu), null))
+        subnet                    = try(tostring(adapter.subnet), null)
+        subnet_mask               = try(cidrnetmask(adapter.subnet), null)
+        ip                        = try(tostring(adapter.ip), null)
+        ip_offset_from_management = coalesce(try(adapter.ip_offset_from_management, null), true)
+      }
+    ]
+  }
+
+  esxi_group_host_vmkernel_adapters = {
+    for host_key, host in local.esxi_group_hosts :
+    host_key => [
+      for adapter in try(local.esxi_group_vmkernel_adapter_definitions[host.group_name], []) : merge(adapter, {
+        ip = (
+          adapter.ip != null
+          ? adapter.ip
+          : (
+            adapter.ip_offset_from_management
+            ? try(cidrhost(adapter.subnet, tonumber(element(split(".", host.ip), 3))), null)
+            : null
+          )
+        )
+      })
+    ]
+  }
 
   esxi_group_runtime = {
     for name, group in local.esxi_groups :
@@ -202,6 +496,10 @@ locals {
           hostname = local.esxi_group_hosts["${name}/${idx}"].hostname
           fqdn     = local.esxi_group_hosts["${name}/${idx}"].fqdn
           ip       = local.esxi_group_hosts["${name}/${idx}"].ip
+          vmkernel_adapters = try(
+            local.esxi_group_host_vmkernel_adapters["${name}/${idx}"],
+            []
+          )
         }
       ]
 
@@ -292,9 +590,13 @@ locals {
         storage_mtu          = storage.mtu
         storage_subnet_mask  = storage.storage_subnet_mask
         storage_disk_size_gb = storage.disk_size_gb
-        luns                 = try(storage.luns, [])
-        zfs_compression      = try(storage.zfs_compression, "off")
-        zfs_nfs_dedup        = try(storage.zfs_nfs_dedup, "off")
+        luns = [
+          for idx, lun in coalesce(try(storage.luns, null), []) : merge(lun, {
+            lun_id = idx
+          })
+        ]
+        zfs_compression = try(storage.zfs_compression, "off")
+        zfs_nfs_dedup   = try(storage.zfs_nfs_dedup, "off")
       }
       ansible = {
         user = "labadmin"
@@ -307,6 +609,120 @@ locals {
     && contains(local.supported_storage_source_types, try(local.install_sources[local.storage_source_refs[name]].type, ""))
     && contains(local.supported_storage_placements, try(storage.placement.kind, ""))
     && local.storage_defaults[name].network_name != null
+  }
+
+  vcenter_runtime = {
+    for name, vcenter in local.vcenters :
+    name => {
+      name     = "${local.deployment_name_prefix}-${name}"
+      router   = vcenter.router
+      hostname = vcenter.hostname
+      fqdn     = format("%s.%s", vcenter.hostname, coalesce(try(local.vcenter_defaults[name].router_domain_name, null), "localdomain"))
+      ip       = vcenter.ip
+      placement = {
+        kind          = vcenter.placement.kind
+        datacenter    = vcenter.placement.kind == "nested_vsphere" ? null : coalesce(try(vcenter.placement.datacenter, null), local.provider.datacenter)
+        resource_pool = vcenter.placement.kind == "nested_vsphere" ? null : coalesce(try(vcenter.placement.resource_pool, null), local.provider.resource_pool)
+        host          = vcenter.placement.kind == "nested_vsphere" ? try(vcenter.placement.host, null) : coalesce(try(vcenter.placement.host, null), local.provider.compute_host)
+        datastore     = vcenter.placement.kind == "nested_vsphere" ? try(vcenter.placement.datastore, null) : coalesce(try(vcenter.placement.datastore, null), local.provider.datastore)
+        network       = vcenter.placement.kind == "nested_vsphere" ? try(vcenter.placement.network, null) : local.vcenter_defaults[name].network_name
+        esxi_group    = vcenter.placement.kind == "nested_vsphere" ? try(vcenter.placement.esxi_group, null) : null
+        storage       = vcenter.placement.kind == "nested_vsphere" ? local.vcenter_nested_storage_configs[name] : null
+      }
+      network = {
+        network_name = local.vcenter_defaults[name].network_name
+        domain_name  = try(local.vcenter_defaults[name].router_domain_name, null)
+        gateway      = try(local.vcenter_defaults[name].router_gateway, null)
+        nameservers  = coalesce(try(vcenter.nameservers, null), try([local.vcenter_defaults[name].router_gateway], null), [])
+        subnet_mask  = try(vcenter.subnet_mask, "255.255.255.0")
+      }
+      deployment_size = vcenter.deployment_size
+      sso_domain_name = try(vcenter.sso_domain_name, "vsphere.local")
+      manages         = try(vcenter.manages, [])
+      ntp_servers = distinct(compact(concat(
+        flatten([
+          for managed_group in try(vcenter.manages, []) : try(local.esxi_groups[managed_group].ntp_servers, [])
+        ]),
+        try([local.vcenter_defaults[name].router_gateway], [])
+      )))
+      install = {
+        install_source = local.vcenter_source_refs[name]
+        source         = local.install_sources[local.vcenter_source_refs[name]]
+        vcsa_version   = local.install_source_vcenter_versions[local.vcenter_source_refs[name]]
+      }
+      target = {
+        kind = (
+          vcenter.placement.kind == "nested_vsphere"
+          ? "esxi"
+          : local.provider_vcenter_target_kind
+        )
+        cluster = try(vcenter.placement.cluster, null)
+        resource_pool = (
+          vcenter.placement.kind == "nested_vsphere"
+          ? null
+          : coalesce(try(vcenter.placement.resource_pool, null), local.provider.resource_pool)
+        )
+        host = (
+          vcenter.placement.kind == "nested_vsphere"
+          ? try(vcenter.placement.host, null)
+          : coalesce(try(vcenter.placement.host, null), local.provider.compute_host)
+        )
+        hostname = (
+          vcenter.placement.kind == "nested_vsphere"
+          ? try(local.vcenter_nested_target_hosts[name].ip, try(vcenter.placement.host, null))
+          : (
+            local.provider_vcenter_target_kind == "esxi"
+            ? coalesce(try(vcenter.placement.host, null), local.provider.compute_host)
+            : local.provider.server
+          )
+        )
+        username = (
+          vcenter.placement.kind == "nested_vsphere"
+          ? "root"
+          : local.provider.user
+        )
+        password = (
+          vcenter.placement.kind == "nested_vsphere"
+          ? var.vm_admin_password
+          : local.provider.password
+        )
+        datacenter = (
+          vcenter.placement.kind == "nested_vsphere"
+          ? null
+          : coalesce(try(vcenter.placement.datacenter, null), local.provider.datacenter)
+        )
+        datastore          = vcenter.placement.kind == "nested_vsphere" ? try(vcenter.placement.datastore, null) : coalesce(try(vcenter.placement.datastore, null), local.provider.datastore)
+        deployment_network = vcenter.placement.kind == "nested_vsphere" ? try(vcenter.placement.network, null) : local.vcenter_defaults[name].network_name
+        esxi_group         = vcenter.placement.kind == "nested_vsphere" ? try(vcenter.placement.esxi_group, null) : null
+        storage            = vcenter.placement.kind == "nested_vsphere" ? local.vcenter_nested_storage_configs[name] : null
+        esxi_host = (
+          vcenter.placement.kind == "nested_vsphere"
+          ? try(local.vcenter_nested_target_hosts[name], null)
+          : null
+        )
+        target = (
+          local.provider_vcenter_target_kind == "vc"
+          && vcenter.placement.kind != "nested_vsphere"
+          ? local.vcenter_target_paths[name]
+          : null
+        )
+      }
+      ansible = {
+        host = vcenter.ip
+        user = "root"
+      }
+      api = {
+        host = vcenter.ip
+        user = "administrator@${try(vcenter.sso_domain_name, "vsphere.local")}"
+      }
+    }
+    if contains(keys(local.routers), try(vcenter.router, ""))
+    && contains(keys(local.vcenter_defaults), name)
+    && local.vcenter_source_refs[name] != null
+    && contains(keys(local.install_sources), local.vcenter_source_refs[name])
+    && contains(local.supported_vcenter_source_types, try(local.install_sources[local.vcenter_source_refs[name]].type, ""))
+    && contains(local.supported_vcenter_placements, try(vcenter.placement.kind, ""))
+    && local.vcenter_defaults[name].network_name != null
   }
 
   router_runtime = {
@@ -325,9 +741,17 @@ locals {
 
       networks       = router.networks
       install_source = local.install_sources[local.router_source_refs[name]]
-      services       = local.router_service_flags[name]
-      runtime        = local.router_runtime_paths[name]
-      ansible        = local.router_ansible[name]
+      datastore_cdroms = [
+        for source_name in local.router_vcenter_datastore_iso_sources[name] : {
+          source_name = source_name
+          datastore   = local.install_sources[source_name].datastore
+          path        = local.install_sources[source_name].path
+          device_path = local.router_datastore_iso_source_devices[name][source_name].device_path
+        }
+      ]
+      services = local.router_service_flags[name]
+      runtime  = local.router_runtime_paths[name]
+      ansible  = local.router_ansible[name]
     }
     if local.router_source_refs[name] != null
     && contains(keys(local.install_sources), local.router_source_refs[name])
@@ -350,6 +774,7 @@ locals {
       router_runtime       = local.router_runtime_paths[local.esxi_group_runtime[host.group_name].router]
       router_ansible       = local.router_ansible[local.esxi_group_runtime[host.group_name].router]
       network              = local.esxi_group_runtime[host.group_name].network
+      vmkernel_adapters    = try(local.esxi_group_host_vmkernel_adapters[host_key], [])
       install_method       = local.esxi_group_runtime[host.group_name].install.method
       install_source_ref   = local.esxi_group_runtime[host.group_name].install.install_source
       install_source       = local.esxi_group_runtime[host.group_name].install.source
@@ -392,16 +817,17 @@ locals {
   router_outputs = {
     for name, router in local.router_runtime :
     name => {
-      name               = module.routers[name].name
-      wan_ip             = module.routers[name].wan_ip
-      management_network = module.routers[name].management_network
-      management_ip      = local.router_management_ips[name]
-      placement          = router.placement
-      networks           = router.networks
-      services           = router.services
-      runtime            = router.runtime
-      install_source     = local.router_source_refs[name]
-      ansible            = merge(router.ansible, { host = module.routers[name].wan_ip })
+      name                   = module.routers[name].name
+      wan_ip                 = module.routers[name].wan_ip
+      management_network     = module.routers[name].management_network
+      management_ip          = local.router_management_ips[name]
+      placement              = router.placement
+      networks               = router.networks
+      services               = router.services
+      runtime                = router.runtime
+      install_source         = local.router_source_refs[name]
+      install_source_devices = local.router_datastore_iso_source_devices[name]
+      ansible                = merge(router.ansible, { host = module.routers[name].wan_ip })
     }
   }
 
@@ -439,6 +865,7 @@ locals {
           hostname            = host.hostname
           fqdn                = host.fqdn
           ip                  = host.ip
+          vmkernel_adapters   = try(host.vmkernel_adapters, [])
           mac_addresses       = module.esxi_hosts[host.key].mac_addresses
           primary_mac_address = module.esxi_hosts[host.key].primary_mac_address
           group               = name
@@ -462,6 +889,40 @@ locals {
           }
         }, {})
       ]
+    }
+  }
+
+  vcenter_outputs = {
+    for name, vcenter in local.vcenter_runtime :
+    name => {
+      name            = vcenter.name
+      router          = vcenter.router
+      hostname        = vcenter.hostname
+      fqdn            = vcenter.fqdn
+      ip              = vcenter.ip
+      placement       = vcenter.placement
+      network         = vcenter.network
+      deployment_size = vcenter.deployment_size
+      sso_domain_name = vcenter.sso_domain_name
+      manages         = vcenter.manages
+      managed_hosts = flatten([
+        for managed_group in vcenter.manages : try(local.esxi_group_outputs[managed_group].hosts, [])
+      ])
+      registration = {
+        datacenter = coalesce(
+          try(vcenter.target.storage.vsan.datacenter, null),
+          "Datacenter"
+        )
+        cluster = coalesce(
+          try(vcenter.target.storage.vsan.cluster, null),
+          "Cluster"
+        )
+      }
+      ntp_servers = vcenter.ntp_servers
+      install     = vcenter.install
+      target      = vcenter.target
+      ansible     = vcenter.ansible
+      api         = vcenter.api
     }
   }
 }

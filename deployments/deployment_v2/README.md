@@ -18,6 +18,7 @@ Current scope:
 - create Router VMs from `routers`
 - create ESXi VMs from `esxi_groups` with Terraform-only inventory/lifecycle scope
 - create storage service VMs from `storages`
+- describe vCenter deployments from `vcenters` for Router-driven prepare
 - expose structured outputs for future Terraform and Ansible integration
 - avoid modifying the behavior of the legacy deployment entrypoint
 
@@ -26,7 +27,7 @@ Next steps:
 1. add schema-aware validations for `deployment`
 2. implement Router-driven ESXi PXE / kickstart workflow wiring
 3. emit stable Ansible-oriented inventory outputs for Routers and ESXi hosts
-4. implement vCenter creation from `deployment.vcenters`
+4. expand vCenter placement and source support beyond the current provider-backed ISO flow
 5. expand Router and ESXi placement support beyond `provider_vsphere`
 
 Current implementation notes:
@@ -46,8 +47,21 @@ Current implementation notes:
 - each `esxi_groups` entry must define `ntp_servers`; deployment_v2 prepare renders that list into the ESXi kickstart with `esxcli system ntp set`
 - ESXi bootstrap is now described only by `install`; boot mode is derived internally from `install.method`
 - use `install.kickstart.template`, not `install.pxe.ks_template`; the kickstart template is shared by both PXE and datastore ISO workflows
+- optional `esxi_groups[*].vmkernel_adapters` declares post-install VMkernel networking for storage or other non-management traffic; each adapter defines `name`, `purpose`, `vswitch`, `portgroup`, `uplink`, `vlan`, `subnet`, and optional `mtu`
 - `output.ansible_inventory_seed` is the contract for downstream Ansible work; use `scripts/render_ansible_inventory.sh` to turn it into an Ansible inventory JSON document
 - rendered inventory now includes `deployment_v2_storages` and `deployment_v2_storage_<name>` groups for `storages`
+- vCenter objects are currently metadata-only in Terraform; `playbooks/deployment_v2_prepare.yaml` deploys them from Router-mounted installer media
+- vCenter prepare currently supports `placement.kind = "provider_vsphere"` and `placement.kind = "nested_vsphere"`
+- vCenter install media currently validates `install_sources` of type `http_iso`, `rclone_iso`, or `datastore_iso`
+- rendered inventory now includes `deployment_v2_vcenters` and `deployment_v2_vcenter_<name>` groups for `vcenters`
+- provider-target and nested-ESXi-target vCenter deployment both run from the Router through the mounted VCSA CLI installer; Terraform does not invoke local `ovftool`
+- `provider_vsphere` vCenter target selection is resolved at prepare time against live vCenter inventory, so the installer uses the canonical inventory path instead of a guessed host string
+- vCenter prepare launches `provider_vsphere` vCenters asynchronously before ESXi verification, so provider-target VCSA deployment can overlap with nested ESXi bootstrap
+- `nested_vsphere` vCenter placement targets a deployment_v2-managed ESXi host by `placement.esxi_group` and `placement.host`; it waits for ESXi readiness, not for a provider-target vCenter to complete
+- `nested_vsphere` vCenter placement supports `placement.storage.mode = "existing_datastore"`, `"iscsi_datastore"`, or `"vsan_bootstrap"`; iSCSI datastore preparation runs before nested VCSA launch
+- `placement.storage.mode = "iscsi_datastore"` must list `placement.storage.vmkernel_purposes`; those purposes select VMkernel adapters from the target ESXi group before software iSCSI discovery and VMFS creation
+- prepare now treats "endpoint reachable" and "current deployment VM exists" as separate checks; if `10.0.0.100:443` responds but the expected `name_prefix-randomhex-<vcenter>` VM is missing, prepare fails as a stale-deployment conflict instead of silently skipping install
+- `terraform destroy` now includes a best-effort cleanup hook for deployment_v2-managed VCSA VMs by exact VM name, so old deployment_v2 appliances do not remain orphaned in inventory when the Terraform state is torn down cleanly
 - ESXi kickstart rendering now assumes VCF-style firstboot handling for all deployment_v2 hosts; `shape.vcf_mode` is kept only as compatibility metadata
 
 Ansible integration helpers:
@@ -57,15 +71,32 @@ Ansible integration helpers:
 - `playbooks/deployment_v2_prepare.yaml` consumes that inventory and prepares the current deployment_v2 bootstrap runtime on Router VMs for HTTP, PXE, and optional `rclone`
 - `install.method = "ansible_router_pxe"` derives a PXE boot path from Router-hosted TFTP + HTTP assets
 - `install.method = "ansible_vsphere_iso_boot"` derives a datastore-ISO boot path from a virtual CD/DVD plus VMware API key injection
+- vCenter prepare runs the mounted VCSA CLI installer on the Router, using `ansible_inventory_seed.vcenters` as the deployment contract
+- `placement.kind = "nested_vsphere"` targets a nested ESXi host by `placement.esxi_group` and `placement.host`; `placement.datastore` and `placement.network` are passed to the VCSA installer as ESXi target settings
+- `placement.storage.mode = "iscsi_datastore"` creates the selected VMkernel adapters, prepares software iSCSI, performs discovery, rescans storage, and creates or verifies the GPT-backed VMFS datastore on the target ESXi before VCSA deployment; matching LUNs with existing partitions are not overwritten
+- `placement.storage.lun` references a deployment_v2 storage LUN by name; Terraform derives the ESXi-side LUN ID from that LUN's order in `storages[*].luns`, and Ansible selects the matching discovered iSCSI path dynamically on the ESXi host
+- deployment_v2 storage LUN preflight requires ESXi to report a 512-byte logical block size; physical block size is logged for diagnostics but is not treated as a hard failure for deployment_v2-managed external iSCSI LUNs
+- `iscsi_datastore` storage preparation runs over Router-proxied ESXi SSH rather than VMware Tools guest operations because `partedUtil`/VMFS raw device operations can fail under the VMware Tools execution context even when the same command works in an SSH root session; guest operations remain suitable for non-raw readiness checks, and a future API-module path should use `community.vmware.vmware_vswitch`, `vmware_portgroup`, `vmware_vmkernel`, `vmware_host_iscsi`, and `vmware_host_datastore` rather than `govc`
+- Do not use VMware Tools guest operations (`vmware_vm_shell`) for ESXi raw storage mutations such as `partedUtil`, `vmkfstools -C`, or whole-device reads/writes under `/vmfs/devices/disks`; Guest Operations can run as `root`, but the process is created by VMware Tools rather than an SSH/ESXi Shell login session, and VMkernel raw device access can return `Operation not permitted` even when the same command succeeds over SSH
+- Guest Operations are acceptable for non-raw ESXi readiness checks such as marker files, simple `esxcli storage filesystem list` verification, or other commands that do not open whole storage devices directly
+- When investigating a suspected Guest Operations storage-context issue, compare the same command through SSH and through `vmware_vm_shell`: `id`, `ls -l /vmfs/devices/disks/<naa>`, `dd if=/vmfs/devices/disks/<naa> of=/dev/null bs=512 count=1`, and `partedUtil getptbl /vmfs/devices/disks/<naa>`; if only Guest Operations fails with `Operation not permitted`, keep the operation on Router-proxied SSH or move it to VMware API modules
+- iSCSI `port_binding` is optional and defaults to `false`; keep it disabled for the current two-subnet storage pattern (`10.0.4.0/24` and `10.0.5.0/24`) because ESXi iSCSI port binding is only appropriate for compatible VMkernel/target network layouts
+- `placement.storage.mode = "vsan_bootstrap"` selects a `vCSA_with_cluster_on_ESXi`-compatible installer JSON with `VCSA_cluster` metadata after a target-disk preflight; provide `placement.storage.vsan.datacenter`, `cluster`, `cache_disks`, and `capacity_disks`; the referenced VCSA installer `url` or `path` must contain a detectable 7.0 U2 or later version such as `7.0.2` or `8.0.3`
+- after VCSA deployment completes, `deployment_v2_register_esxi` registers hosts from each vCenter's `manages` ESXi groups into that vCenter; each ESXi group may be managed by only one vCenter and must be attached to the same Router as that vCenter
+- registration creates or adopts the target datacenter and cluster before adding hosts; defaults are `Datacenter` and `Cluster`, while `vsan_bootstrap` uses its installer-created datacenter and cluster from existing placement metadata
+- ESXi host registration uses the managed host IP address as the vCenter add-host identifier, so it does not depend on Router DNS entries matching arbitrary `hostname_prefix` values
+- ESXi registration runs the VMware Ansible modules on the Router, not through the controller-side HTTP proxy; the role vendors controller `pyVmomi`/`pyVim` into `/opt/nested-vmware-lab/python-vendor/vmware` so Router package repositories are not required
 - ESXi boot uses TFTP-hosted `mboot.efi` and `boot.cfg`; HTTP is used only to publish kickstart files and the mounted ISO tree referenced by `prefix=`
 - `http_iso` means a Router-managed HTTP ISO reference; deployment_v2 prepare downloads the ISO with `curl`/`get_url` into `/srv/install-sources/<source>/source.iso` and loop-mounts it into `/srv/install-sources/<source>/mounted`
-- `rclone_iso` means a Router-managed HTTP ISO reference that is exposed via `rclone mount` under `/srv/install-sources/<source>/remote` and then loop-mounted into `/srv/install-sources/<source>/mounted`
-- `datastore_iso` means a vSphere datastore-backed ISO path that Terraform connects directly to each ESXi VM as a virtual CD/DVD; deployment_v2 prepare still renders host-specific kickstart files on the Router, then uses Ansible VMware modules to enter EFI setup and inject `ks=` arguments for each host
+- `rclone_iso` means a Router-managed HTTP ISO reference that is exposed via `rclone mount` under `/srv/install-sources/<source>/remote` and then loop-mounted directly from that remote path into `/srv/install-sources/<source>/mounted`
+- `datastore_iso` means a vSphere datastore-backed ISO path; for ESXi, Terraform connects it directly to each host VM as a virtual CD/DVD, and for Router-driven VCSA deploys Terraform attaches it to the Router VM so prepare can mount the presented `/dev/srN` device into `/srv/install-sources/<source>/mounted`
 - mounted ESXi ISOs are staged per install source into `tftp_root/<source>/...` and `http_root/iso/<source>/...`, so multiple installer ISOs can coexist without path collisions
 - MAC-based PXE assignment expects `primary_mac_address` to be present in `terraform output -json ansible_inventory_seed`; refresh or apply Terraform before rendering inventory after output shape changes
 - `vm_admin_password` is now carried inside `ansible_inventory_seed.credentials.vm_admin_password`, so deployment_v2 prepare no longer needs an extra-vars root password for the normal `http_iso` flow
-- Routers serving `rclone_iso` sources must keep `router.execution.enable_rclone = true`
-- Routers serving `datastore_iso` ESXi installs must keep `router.execution.enable_http = true`, because kickstart files are still published from the Router over HTTP
+- deployment_v2 prepare/register tasks intentionally avoid `no_log`; these credentials belong to disposable lab vCenter/ESXi appliances, and visible module errors are required for troubleshooting failed deployments
+- Ansible tasks should use maintained Ansible modules for vSphere operations when available; do not introduce `govc` calls from Ansible unless no suitable module exists for the operation
+- Router runtime services are now auto-derived from attached ESXi groups and vCenter install sources
+- `router.execution.enable_pxe`, `router.execution.enable_http`, and `router.execution.enable_rclone` are optional compatibility overrides; they are no longer required in tfvars
 
 Prepare vars template:
 
@@ -90,8 +121,73 @@ Current scope of `deployment_v2_prepare`:
 - Router-hosted ESXi PXE / kickstart bootstrap
 - vSphere datastore ISO bootstrap for ESXi via virtual CD/DVD and EFI boot option injection
 - ESXi post-install verification through vSphere guest operations
+- Router-hosted VCSA deployment from mounted `http_iso`, `rclone_iso`, or `datastore_iso` install sources
+
+VMkernel adapter schema:
+
+```json
+{
+  "esxi_groups": {
+    "management_a": {
+      "vmkernel_adapters": [
+        {
+          "name": "vmk1",
+          "purpose": "iscsi_a",
+          "vswitch": "vSwitch1",
+          "portgroup": "Storage1",
+          "uplink": "vmnic2",
+          "vlan": 1004,
+          "mtu": 8000,
+          "subnet": "10.0.4.0/24"
+        },
+        {
+          "name": "vmk2",
+          "purpose": "iscsi_b",
+          "vswitch": "vSwitch2",
+          "portgroup": "Storage2",
+          "uplink": "vmnic3",
+          "vlan": 1005,
+          "mtu": 8000,
+          "subnet": "10.0.5.0/24"
+        }
+      ]
+    }
+  },
+  "vcenters": {
+    "vcsa_a": {
+      "placement": {
+        "kind": "nested_vsphere",
+        "storage": {
+          "mode": "iscsi_datastore",
+          "storage": "storage_a",
+          "lun": "lun01",
+          "vmkernel_purposes": ["iscsi_a", "iscsi_b"],
+          "port_binding": false
+        }
+      }
+    }
+  }
+}
+```
+
+When `ip` is omitted on a VMkernel adapter, Terraform derives the per-host VMK IP by reusing the management host octet inside the adapter `subnet`; for example management `10.0.0.101` and subnet `10.0.4.0/24` becomes `10.0.4.101`. Explicit `ip` is intended only for single-host ESXi groups.
+
+Implementation status as of 2026-04-06:
+
+- ESXi install is working through both Router-driven PXE and vSphere datastore-ISO boot paths
+- VCSA install is working from Router-mounted `datastore_iso` media for both 8.0 and 7.0 media sets
+- `placement.kind = "nested_vsphere"` is implemented for `vcenters`; nested VCSAs target deployment_v2-managed ESXi hosts by `placement.esxi_group` and `placement.host`
+- 7.0 VCSA did not require a separate kickstart or installer branch; the working issue found during validation was stale VCSA detection and cleanup, not 7.0-specific installer behavior
+- vCenter orchestration is dependency-aware per Router: provider-target vCenters launch asynchronously before ESXi verification, nested-ESXi-target vCenters launch after nested ESXi readiness, and nested vCenters do not depend on provider-target vCenter completion
+- nested-ESXi-target vCenter storage readiness is modeled before VCSA launch; `iscsi_datastore` prepares a deployment_v2 storage LUN as VMFS, while `vsan_bootstrap` passes `VCSA_cluster` metadata to the VCSA CLI installer
+- `vsan_bootstrap` is restricted to VCSA installer media at 7.0 U2 or later by parsing the referenced install source `url` or `path`
+- multiple vCenters are modeled and validated; the example now exercises one provider-target vCenter plus one nested-ESXi-target vCenter in the same Router scope
+- baseline managed ESXi registration is implemented after VCSA deployment; post-registration vCenter initialization and cluster bring-up are not implemented yet
 
 Planned expansion of `deployment_v2_prepare`:
 
-- vCenter Server deployment preparation and verification
+- real deployment validation for the dependency-aware multi-vCenter scheduler under provider-target and nested-ESXi-target mixes
+- real deployment validation for `iscsi_datastore` and `vsan_bootstrap` nested-ESXi-target storage readiness
+- real deployment validation for managed ESXi registration driven by `vcenters[*].manages`
+- post-registration vCenter initialization, including cluster HA/DRS policy, vSAN expansion, and distributed switch/vmkernel networking
 - nested vSphere guest provisioning workflows beyond ESXi PXE

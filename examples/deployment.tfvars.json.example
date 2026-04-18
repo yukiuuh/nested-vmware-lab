@@ -58,13 +58,10 @@
             "network": "10.0.0.0",
             "vlan_starts_with": 1001,
             "vlan_network_count": 20,
-            "mtu": 1700
+            "mtu": 9000
           }
         },
         "execution": {
-          "enable_pxe": true,
-          "enable_http": true,
-          "enable_rclone": false,
           "http_root": "/var/www/html",
           "tftp_root": "/srv/tftp"
         }
@@ -126,11 +123,7 @@
       "management_b": {
         "router": "router_a",
         "placement": {
-          "kind": "nested_vsphere",
-          "vcenter": "vcsa_a",
-          "cluster": "cluster-a",
-          "datastore": "iscsi01",
-          "network": "VM Network"
+          "kind": "provider_vsphere"
         },
         "count": 2,
         "hostname_prefix": "esx-b",
@@ -147,7 +140,7 @@
         "shape": {
           "num_cpus": 8,
           "mem_gb": 32,
-          "nic_count": 2,
+          "nic_count": 4,
           "tpm_enabled": false,
           "nvme_enabled": false,
           "memory_reservation_enabled": false,
@@ -161,6 +154,28 @@
             }
           ]
         },
+        "vmkernel_adapters": [
+          {
+            "name": "vmk1",
+            "purpose": "iscsi_a",
+            "vswitch": "vSwitch1",
+            "portgroup": "Storage1",
+            "uplink": "vmnic2",
+            "vlan": 1004,
+            "mtu": 9000,
+            "subnet": "10.0.4.0/24"
+          },
+          {
+            "name": "vmk2",
+            "purpose": "iscsi_b",
+            "vswitch": "vSwitch2",
+            "portgroup": "Storage2",
+            "uplink": "vmnic3",
+            "vlan": 1005,
+            "mtu": 9000,
+            "subnet": "10.0.5.0/24"
+          }
+        ],
         "install": {
           "method": "ansible_router_pxe",
           "source": {
@@ -231,10 +246,20 @@
         "router": "router_a",
         "placement": {
           "kind": "nested_vsphere",
-          "vcenter": "vcsa_a",
-          "cluster": "cluster-a",
+          "esxi_group": "management_b",
+          "host": "esx-b01.lab.local",
           "datastore": "iscsi01",
-          "network": "VM Network"
+          "network": "VM Network",
+          "storage": {
+            "mode": "iscsi_datastore",
+            "storage": "storage_a",
+            "lun": "lun01",
+            "vmkernel_purposes": [
+              "iscsi_a",
+              "iscsi_b"
+            ],
+            "port_binding": false
+          }
         },
         "hostname": "vcsa-b",
         "ip": "10.0.0.60",
