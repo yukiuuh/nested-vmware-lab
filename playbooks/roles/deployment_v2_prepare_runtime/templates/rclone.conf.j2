@@ -1,4 +1,4 @@
-{% for item in deployment_v2_router_runtime_rclone_sources %}
+{% for item in deployment_v2_router_runtime_rclone_remote_name_map.keys() | list | sort %}
 [{{ deployment_v2_router_runtime_rclone_remote_name_map[item] }}]
 type = http
 url = {{ deployment_v2_router_runtime_rclone_source_map[item].base_url }}

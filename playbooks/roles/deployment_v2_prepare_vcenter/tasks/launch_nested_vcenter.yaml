@@ -1,0 +1,6 @@
+---
+- name: Prepare nested-ESXi-target deployment_v2 vCenter storage for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.include_tasks: prepare_nested_storage.yaml
+
+- name: Launch nested-ESXi-target deployment_v2 vCenter {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.include_tasks: launch_vcenter.yaml

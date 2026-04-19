@@ -25,3 +25,4 @@ deployment_v2_router_runtime_dnsmasq_conf_path: /etc/dnsmasq.d/90-deployment_v2_
 deployment_v2_router_runtime_iso_efi_source_dir: efi/boot
 deployment_v2_router_runtime_http_iso_root_name: iso
 deployment_v2_router_runtime_http_kickstart_root_name: kickstart
+deployment_v2_router_runtime_prepare_phase: all

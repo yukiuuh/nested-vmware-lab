@@ -10,6 +10,7 @@
     state: powered-off
     force: true
   delegate_to: localhost
+  become: false
 
 - name: Force EFI boot setup on datastore_iso ESXi VM
   community.vmware.vmware_guest_boot_manager:
@@ -21,6 +22,7 @@
     boot_firmware: efi
     enter_bios_setup: true
   delegate_to: localhost
+  become: false
 
 - name: Power on datastore_iso ESXi VM
   vmware.vmware.vm_powerstate:
@@ -32,10 +34,14 @@
     name: "{{ deployment_v2_datastore_iso_vm_name }}"
     state: powered-on
   delegate_to: localhost
+  become: false
 
 - name: Wait briefly for EFI boot manager on datastore_iso ESXi VM
-  ansible.builtin.pause:
-    seconds: 5
+  ansible.builtin.command:
+    argv:
+      - sleep
+      - "5"
+  changed_when: false
 
 - name: Open EFI boot options for datastore_iso ESXi VM
   community.vmware.vmware_guest_sendkey:
@@ -55,6 +61,7 @@
     string_send: "O"
     sleep_time: 1
   delegate_to: localhost
+  become: false
 
 - name: Inject kickstart kernel options for datastore_iso ESXi VM
   community.vmware.vmware_guest_sendkey:
@@ -67,6 +74,7 @@
     string_send: "{{ deployment_v2_datastore_iso_boot_kernel_options }}"
     sleep_time: 0
   delegate_to: localhost
+  become: false
 
 - name: Submit kickstart kernel options for datastore_iso ESXi VM
   community.vmware.vmware_guest_sendkey:
@@ -80,3 +88,4 @@
       - ENTER
     sleep_time: 0
   delegate_to: localhost
+  become: false

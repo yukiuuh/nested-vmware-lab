@@ -27,6 +27,14 @@
       - deployment_v2_register_esxi_datacenter | default('', true) | length > 0
       - deployment_v2_register_esxi_cluster | default('', true) | length > 0
       - deployment_v2_register_esxi_hosts | length > 0
+      - >-
+        (
+          deployment_v2_register_esxi_hosts
+          | selectattr('fqdn', 'defined')
+          | selectattr('fqdn')
+          | list
+          | length
+        ) == (deployment_v2_register_esxi_hosts | length)
     fail_msg: >-
       deployment_v2 ESXi registration metadata is incomplete for
       {{ deployment_v2_register_esxi_current_name }}.
@@ -81,13 +89,13 @@
     validate_certs: "{{ deployment_v2_register_esxi_validate_certs }}"
     datacenter: "{{ deployment_v2_register_esxi_datacenter }}"
     cluster: "{{ deployment_v2_register_esxi_cluster }}"
-    esxi_host_name: "{{ item.ip | default(item.fqdn, true) }}"
+    esxi_host_name: "{{ item.fqdn }}"
     esxi_username: root
     esxi_password: "{{ deployment_v2.credentials.vm_admin_password }}"
     state: present
   loop: "{{ deployment_v2_register_esxi_hosts }}"
   loop_control:
-    label: "{{ item.ip | default(item.fqdn, true) }}"
+    label: "{{ item.fqdn }}"
   register: deployment_v2_register_esxi_host_results
   until: deployment_v2_register_esxi_host_results is succeeded
   retries: "{{ deployment_v2_register_esxi_api_retries | int }}"

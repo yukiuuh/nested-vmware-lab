@@ -134,18 +134,8 @@
     - deployment_v2_provider_vcenter_items | length > 0
     - deployment_v2_vcenter_prepare_do_provider_launch | bool
 
-- name: Prepare nested-ESXi-target deployment_v2 vCenter storage from this Router
-  ansible.builtin.include_tasks: prepare_nested_storage.yaml
-  loop: "{{ deployment_v2_nested_vcenter_items }}"
-  loop_control:
-    loop_var: deployment_v2_vcenter_item
-    label: "{{ deployment_v2_vcenter_item.key }}"
-  when:
-    - deployment_v2_nested_vcenter_items | length > 0
-    - deployment_v2_vcenter_prepare_do_nested_launch | bool
-
-- name: Launch nested-ESXi-target deployment_v2 vCenters from this Router
-  ansible.builtin.include_tasks: launch_vcenter.yaml
+- name: Prepare storage and launch nested-ESXi-target deployment_v2 vCenters from this Router
+  ansible.builtin.include_tasks: launch_nested_vcenter.yaml
   loop: "{{ deployment_v2_nested_vcenter_items }}"
   loop_control:
     loop_var: deployment_v2_vcenter_item

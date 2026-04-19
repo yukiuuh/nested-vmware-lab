@@ -1,4 +1,0 @@
-# Optional extra vars for deployments/deployment_v2/scripts/run_prepare.sh
-#
-# Example:
-# deployment_v2_verification_no_log: false

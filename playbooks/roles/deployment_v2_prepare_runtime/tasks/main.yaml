@@ -47,6 +47,14 @@
         | unique
       }}
 
+- name: Validate deployment_v2 router runtime prepare phase
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_router_runtime_prepare_phase in ['all', 'vcenter_media', 'esxi_bootstrap']
+    fail_msg: >-
+      deployment_v2_router_runtime_prepare_phase must be one of all,
+      vcenter_media, or esxi_bootstrap. got={{ deployment_v2_router_runtime_prepare_phase }}
+
 - name: Build deployment_v2 router install source details
   ansible.builtin.set_fact:
     deployment_v2_router_runtime_install_sources: >-
@@ -192,6 +200,100 @@
     deployment_v2_router_runtime_datastore_source_device_map: >-
       {{ deployment_v2_router.install_source_devices | default({}) }}
 
+- name: Preserve full deployment_v2 router runtime source lists
+  ansible.builtin.set_fact:
+    deployment_v2_router_runtime_all_esxi_curl_iso_sources: "{{ deployment_v2_router_runtime_esxi_curl_iso_sources }}"
+    deployment_v2_router_runtime_all_esxi_rclone_iso_sources: "{{ deployment_v2_router_runtime_esxi_rclone_iso_sources }}"
+    deployment_v2_router_runtime_all_vcenter_curl_iso_sources: "{{ deployment_v2_router_runtime_vcenter_curl_iso_sources }}"
+    deployment_v2_router_runtime_all_vcenter_rclone_iso_sources: "{{ deployment_v2_router_runtime_vcenter_rclone_iso_sources }}"
+    deployment_v2_router_runtime_all_vcenter_datastore_iso_sources: "{{ deployment_v2_router_runtime_vcenter_datastore_iso_sources }}"
+
+- name: Build deployment_v2 router runtime phase flags
+  ansible.builtin.set_fact:
+    deployment_v2_router_runtime_phase_esxi_enabled: >-
+      {{ deployment_v2_router_runtime_prepare_phase in ['all', 'esxi_bootstrap'] }}
+    deployment_v2_router_runtime_phase_vcenter_enabled: >-
+      {{ deployment_v2_router_runtime_prepare_phase in ['all', 'vcenter_media'] }}
+
+- name: Scope deployment_v2 router runtime source lists for prepare phase
+  ansible.builtin.set_fact:
+    deployment_v2_router_runtime_esxi_curl_iso_sources: >-
+      {{ deployment_v2_router_runtime_all_esxi_curl_iso_sources if (deployment_v2_router_runtime_phase_esxi_enabled | bool) else [] }}
+    deployment_v2_router_runtime_esxi_rclone_iso_sources: >-
+      {{ deployment_v2_router_runtime_all_esxi_rclone_iso_sources if (deployment_v2_router_runtime_phase_esxi_enabled | bool) else [] }}
+    deployment_v2_router_runtime_vcenter_curl_iso_sources: >-
+      {{ deployment_v2_router_runtime_all_vcenter_curl_iso_sources if (deployment_v2_router_runtime_phase_vcenter_enabled | bool) else [] }}
+    deployment_v2_router_runtime_vcenter_rclone_iso_sources: >-
+      {{ deployment_v2_router_runtime_all_vcenter_rclone_iso_sources if (deployment_v2_router_runtime_phase_vcenter_enabled | bool) else [] }}
+    deployment_v2_router_runtime_vcenter_datastore_iso_sources: >-
+      {{ deployment_v2_router_runtime_all_vcenter_datastore_iso_sources if (deployment_v2_router_runtime_phase_vcenter_enabled | bool) else [] }}
+    deployment_v2_router_runtime_esxi_iso_sources: >-
+      {{
+        (
+          (
+            deployment_v2_router_runtime_all_esxi_curl_iso_sources
+            + deployment_v2_router_runtime_all_esxi_rclone_iso_sources
+          )
+          if (deployment_v2_router_runtime_phase_esxi_enabled | bool)
+          else []
+        )
+        | unique
+      }}
+    deployment_v2_router_runtime_vcenter_iso_sources: >-
+      {{
+        (
+          (
+            deployment_v2_router_runtime_all_vcenter_curl_iso_sources
+            + deployment_v2_router_runtime_all_vcenter_rclone_iso_sources
+            + deployment_v2_router_runtime_all_vcenter_datastore_iso_sources
+          )
+          if (deployment_v2_router_runtime_phase_vcenter_enabled | bool)
+          else []
+        )
+        | unique
+      }}
+    deployment_v2_router_runtime_iso_sources: >-
+      {{
+        (
+          (
+            (
+              deployment_v2_router_runtime_all_esxi_curl_iso_sources
+              + deployment_v2_router_runtime_all_esxi_rclone_iso_sources
+            )
+            if (deployment_v2_router_runtime_phase_esxi_enabled | bool)
+            else []
+          )
+          +
+          (
+            (
+              deployment_v2_router_runtime_all_vcenter_curl_iso_sources
+              + deployment_v2_router_runtime_all_vcenter_rclone_iso_sources
+              + deployment_v2_router_runtime_all_vcenter_datastore_iso_sources
+            )
+            if (deployment_v2_router_runtime_phase_vcenter_enabled | bool)
+            else []
+          )
+        )
+        | unique
+      }}
+    deployment_v2_router_runtime_rclone_sources: >-
+      {{
+        (
+          (
+            deployment_v2_router_runtime_all_esxi_rclone_iso_sources
+            if (deployment_v2_router_runtime_phase_esxi_enabled | bool)
+            else []
+          )
+          +
+          (
+            deployment_v2_router_runtime_all_vcenter_rclone_iso_sources
+            if (deployment_v2_router_runtime_phase_vcenter_enabled | bool)
+            else []
+          )
+        )
+        | unique
+      }}
+
 - name: Assert ESXi root password is provided for PXE preparation
   ansible.builtin.assert:
     that:
@@ -201,6 +303,7 @@
       - deployment_v2.credentials.vm_admin_password | length > 0
     fail_msg: "deployment_v2.credentials.vm_admin_password must be present in ansible_inventory_seed to render ESXi kickstart files"
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - deployment_v2_router_runtime_group_items | length > 0
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
 
@@ -220,7 +323,9 @@
   register: deployment_v2_router_runtime_esxi_https_checks
   changed_when: false
   ignore_errors: true
-  when: deployment_v2_router_runtime_group_items | length > 0
+  when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
+    - deployment_v2_router_runtime_group_items | length > 0
 
 - name: Derive whether PXE preparation can be skipped
   ansible.builtin.set_fact:
@@ -238,6 +343,7 @@
           deployment_v2_router_runtime_esxi_https_checks.results | length
         )
       }}
+  when: deployment_v2_router_runtime_phase_esxi_enabled | bool
 
 - name: Record PXE preparation decision
   ansible.builtin.debug:
@@ -251,6 +357,7 @@
           )
       }}
   when: deployment_v2_router_runtime_group_items | length > 0
+    and (deployment_v2_router_runtime_phase_esxi_enabled | bool)
 
 - name: Build required command list for router runtime
   ansible.builtin.set_fact:
@@ -297,6 +404,7 @@
     group: root
     mode: "0755"
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.http | default(false)
 
@@ -308,6 +416,7 @@
     group: root
     mode: "0755"
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.pxe | default(false)
 
@@ -372,6 +481,7 @@
     mode: "0755"
   loop: "{{ deployment_v2_router_runtime_esxi_iso_sources }}"
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.pxe | default(false)
     - deployment_v2_router_runtime_esxi_iso_sources | length > 0
@@ -385,6 +495,7 @@
     mode: "0755"
   loop: "{{ deployment_v2_router_runtime_esxi_iso_sources }}"
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.http | default(false)
     - deployment_v2_router_runtime_esxi_iso_sources | length > 0
@@ -397,6 +508,7 @@
     group: root
     mode: "0644"
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.pxe | default(false)
   notify: Restart dnsmasq
@@ -540,6 +652,7 @@
   loop_control:
     loop_var: deployment_v2_router_runtime_iso_source
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router_runtime_esxi_iso_sources | length > 0
 
@@ -549,6 +662,7 @@
   loop_control:
     loop_var: deployment_v2_router_runtime_group_host_item
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.http | default(false)
 
@@ -564,6 +678,7 @@
   loop_control:
     loop_var: deployment_v2_router_runtime_group_host_item
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.pxe | default(false)
     - deployment_v2_router.services.http | default(false)
@@ -582,6 +697,7 @@
     enabled: true
     state: started
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.http | default(false)
 
@@ -591,6 +707,7 @@
     enabled: true
     state: started
   when:
+    - deployment_v2_router_runtime_phase_esxi_enabled | bool
     - not (deployment_v2_router_runtime_skip_pxe_prepare | default(false))
     - deployment_v2_router.services.pxe | default(false)
 

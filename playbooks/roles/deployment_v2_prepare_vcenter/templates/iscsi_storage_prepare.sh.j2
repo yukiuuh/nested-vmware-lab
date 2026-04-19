@@ -9,6 +9,7 @@ DATASTORE={{ deployment_v2_vcenter_prepare_current.target.datastore | quote }}
 TARGET_LUN_ID={{ deployment_v2_vcenter_prepare_current.target.storage.iscsi.lun_id | string | quote }}
 PORTALS={{ deployment_v2_vcenter_prepare_current.target.storage.iscsi.portals | join(' ') | quote }}
 ISCSI_PORT_BINDING={{ (deployment_v2_vcenter_prepare_current.target.storage.iscsi.port_binding | default(false)) | ternary('1', '0') | quote }}
+MODE={{ deployment_v2_vcenter_prepare_iscsi_mode | quote }}
 MIN_FREE_MB={{ deployment_v2_vcenter_prepare_datastore_min_free_mb | int }}
 ADAPTER=""
 DEVICE=""
@@ -72,6 +73,12 @@ dump_diagnostics() {
   esxcli storage vmfs extent list || true
   echo "=== software iscsi adapters ==="
   esxcli iscsi adapter list || true
+  echo "=== nmp satp default aa iscsi_vmk round robin rules ==="
+  esxcli storage nmp satp rule list -s VMW_SATP_DEFAULT_AA | awk '
+    NR <= 2 || ($0 ~ /iscsi_vmk/ && $0 ~ /VMW_PSP_RR/) { print }
+  ' || true
+  echo "=== nmp psp plugins ==="
+  esxcli storage nmp psp list || true
   if [ -n "$ADAPTER" ]; then
     echo "=== sendtargets for $ADAPTER ==="
     esxcli iscsi adapter discovery sendtarget list -A "$ADAPTER" || true
@@ -83,6 +90,7 @@ dump_diagnostics() {
   if [ -n "$DEVICE" ]; then
     echo "=== selected storage device $DEVICE ==="
     esxcli storage core device list -d "$DEVICE" || true
+    esxcli storage nmp device list -d "$DEVICE" || true
     partedUtil getptbl "/vmfs/devices/disks/$DEVICE" || true
   fi
 }
@@ -159,6 +167,51 @@ select_software_iscsi_adapter() {
   fi
   if [ -z "$ADAPTER" ]; then
     fail_with_diagnostics "software iSCSI adapter was not found after enabling iSCSI"
+  fi
+}
+
+iscsi_round_robin_satp_rule_exists() {
+  esxcli storage nmp satp rule list -s VMW_SATP_DEFAULT_AA | awk '
+    NR <= 2 { next }
+    $0 ~ /iscsi_vmk/ && $0 ~ /VMW_PSP_RR/ {
+      found=1
+    }
+    END { exit !found }
+  '
+}
+
+ensure_iscsi_round_robin_satp_rule() {
+  if iscsi_round_robin_satp_rule_exists; then
+    log "iSCSI SATP rule for VMW_PSP_RR already exists"
+    return 0
+  fi
+
+  log "creating iSCSI SATP rule for VMW_PSP_RR (driver=iscsi_vmk, iops=1) before storage discovery"
+  SATP_ADD_OUT=""
+  SATP_ADD_RC=0
+  SATP_ADD_OUT="$(esxcli storage nmp satp rule add \
+    --satp=VMW_SATP_DEFAULT_AA \
+    --type=driver \
+    --driver=iscsi_vmk \
+    --psp=VMW_PSP_RR \
+    -O "iops=1" \
+    --description="deployment_v2 iSCSI round robin" 2>&1)" || SATP_ADD_RC=$?
+
+  if [ "$SATP_ADD_RC" -ne 0 ]; then
+    case "$SATP_ADD_OUT" in
+      *"Duplicate"*"rule"*)
+        log "iSCSI SATP rule for VMW_PSP_RR already present (duplicate detected by esxcli)"
+        return 0
+        ;;
+      *)
+        echo "$SATP_ADD_OUT" >&2
+        fail_with_diagnostics "failed to add iSCSI SATP rule for VMW_PSP_RR (rc=$SATP_ADD_RC)"
+        ;;
+    esac
+  fi
+
+  if ! iscsi_round_robin_satp_rule_exists; then
+    log "warning: iSCSI SATP rule for VMW_PSP_RR was added but detection did not confirm it; proceeding"
   fi
 }
 
@@ -264,9 +317,9 @@ create_vmfs_datastore() {
   fi
 }
 
-log "storage preparation run {{ deployment_v2_vcenter_prepare_storage_run_id }}"
+log "storage preparation run {{ deployment_v2_vcenter_prepare_storage_run_id }} mode=$MODE"
 
-{% for vmkernel_adapter in deployment_v2_vcenter_prepare_current.target.storage.iscsi.vmkernel_adapters | default([]) %}
+{% for vmkernel_adapter in deployment_v2_vcenter_prepare_iscsi_host.vmkernel_adapters | default([]) %}
 log "ensuring VMkernel adapter {{ vmkernel_adapter.name }} on {{ vmkernel_adapter.portgroup }}"
 ensure_vmkernel_adapter \
   {{ vmkernel_adapter.name | quote }} \
@@ -287,9 +340,10 @@ fi
 esxcli iscsi software set --enabled=true >/dev/null 2>&1 || true
 select_software_iscsi_adapter
 log "using software iSCSI adapter $ADAPTER for target LUN ID $TARGET_LUN_ID"
+ensure_iscsi_round_robin_satp_rule
 
 if [ "$ISCSI_PORT_BINDING" = "1" ]; then
-{% for vmkernel_adapter in deployment_v2_vcenter_prepare_current.target.storage.iscsi.vmkernel_adapters | default([]) %}
+{% for vmkernel_adapter in deployment_v2_vcenter_prepare_iscsi_host.vmkernel_adapters | default([]) %}
   if ! esxcli iscsi networkportal list -A "$ADAPTER" | awk -v vmk={{ vmkernel_adapter.name | quote }} '$1 == vmk { found=1 } END { exit !found }'; then
     esxcli iscsi networkportal add -A "$ADAPTER" -n {{ vmkernel_adapter.name | quote }}
   fi
@@ -302,7 +356,26 @@ for PORTAL in $PORTALS; do
   fi
 done
 
-rescan_for_datastore
-select_target_lun_device
-log "formatting unclaimed iSCSI disk $DEVICE as VMFS datastore $DATASTORE"
-create_vmfs_datastore
+case "$MODE" in
+  configure)
+    esxcli storage core adapter rescan --all >/dev/null 2>&1 || true
+    esxcli storage filesystem rescan >/dev/null 2>&1 || true
+    log "iSCSI discovery configured; VMFS creation is handled by the selected placement host"
+    ;;
+  format)
+    rescan_for_datastore
+    select_target_lun_device
+    log "NMP settings for selected iSCSI disk $DEVICE before VMFS creation"
+    esxcli storage nmp device list -d "$DEVICE" || true
+    log "formatting unclaimed iSCSI disk $DEVICE as VMFS datastore $DATASTORE"
+    create_vmfs_datastore
+    ;;
+  verify)
+    if ! wait_for_datastore_ready; then
+      fail_with_diagnostics "datastore $DATASTORE did not become visible after iSCSI configuration"
+    fi
+    ;;
+  *)
+    fail_with_diagnostics "unsupported iSCSI preparation mode: $MODE"
+    ;;
+esac
