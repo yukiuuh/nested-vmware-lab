@@ -38,6 +38,7 @@ resource "vsphere_virtual_machine" "ubuntu" {
   firmware                     = data.vsphere_ovf_vm_template.ubuntu.firmware
   scsi_type                    = data.vsphere_ovf_vm_template.ubuntu.scsi_type
   force_power_off              = true
+  shutdown_wait_timeout        = 1
   extra_config_reboot_required = false
   lifecycle {
     ignore_changes = [

@@ -23,6 +23,8 @@ resource "vsphere_virtual_machine" "vrops" {
   guest_id         = data.vsphere_ovf_vm_template.vrops_source.guest_id
   # firmware             = data.vsphere_ovf_vm_template.vrops_source.firmware
   scsi_type = data.vsphere_ovf_vm_template.vrops_source.scsi_type
+  force_power_off       = true
+  shutdown_wait_timeout = 1
   num_cpus  = data.vsphere_ovf_vm_template.vrops_source.num_cpus
   memory    = data.vsphere_ovf_vm_template.vrops_source.memory
 

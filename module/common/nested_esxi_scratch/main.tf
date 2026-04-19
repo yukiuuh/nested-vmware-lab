@@ -92,6 +92,7 @@ resource "vsphere_virtual_machine" "nested_esxi" {
   annotation            = "Provisioned from [${var.iso_datastore}] ${var.iso_path}"
   nvme_controller_count = 1
   force_power_off       = true
+  shutdown_wait_timeout = 1
   enable_disk_uuid      = true
 
   lifecycle {

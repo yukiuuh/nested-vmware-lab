@@ -23,6 +23,8 @@ resource "vsphere_virtual_machine" "vrli" {
   guest_id         = data.vsphere_ovf_vm_template.vrli_source.guest_id
   # firmware             = data.vsphere_ovf_vm_template.vrli_source.firmware
   scsi_type = data.vsphere_ovf_vm_template.vrli_source.scsi_type
+  force_power_off       = true
+  shutdown_wait_timeout = 1
   num_cpus  = data.vsphere_ovf_vm_template.vrli_source.num_cpus
   memory    = data.vsphere_ovf_vm_template.vrli_source.memory
 

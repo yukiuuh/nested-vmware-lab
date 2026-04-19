@@ -37,6 +37,7 @@ resource "vsphere_virtual_machine" "nested_esxi" {
   annotation            = var.annotation
   nvme_controller_count = var.nvme_enabled ? 1 : 0
   force_power_off       = true
+  shutdown_wait_timeout = 1
   enable_disk_uuid      = true
 
   lifecycle {

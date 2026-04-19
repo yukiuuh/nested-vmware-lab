@@ -36,6 +36,8 @@ resource "vsphere_virtual_machine" "vcsa" {
   memory               = data.vsphere_ovf_vm_template.vcsa.memory
   guest_id             = data.vsphere_ovf_vm_template.vcsa.guest_id
   scsi_type            = data.vsphere_ovf_vm_template.vcsa.scsi_type
+  force_power_off       = true
+  shutdown_wait_timeout = 1
 
   dynamic "network_interface" {
     for_each = data.vsphere_ovf_vm_template.vcsa.ovf_network_map

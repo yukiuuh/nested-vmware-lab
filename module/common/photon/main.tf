@@ -30,6 +30,7 @@ resource "vsphere_virtual_machine" "photon_with_cloudinit" {
   scsi_type            = data.vsphere_ovf_vm_template.photon.scsi_type
   annotation           = var.annotation != "" ? var.annotation : data.vsphere_ovf_vm_template.photon.annotation
   force_power_off      = true
+  shutdown_wait_timeout = 1
 
   lifecycle {
     ignore_changes = [

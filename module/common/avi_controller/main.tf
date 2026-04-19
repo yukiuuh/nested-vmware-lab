@@ -26,6 +26,7 @@ resource "vsphere_virtual_machine" "avi_controller" {
   num_cpus        = data.vsphere_ovf_vm_template.avi_controller_source.num_cpus
   memory          = data.vsphere_ovf_vm_template.avi_controller_source.memory
   force_power_off = true
+  shutdown_wait_timeout = 1
 
   lifecycle {
     ignore_changes = [

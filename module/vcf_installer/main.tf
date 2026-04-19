@@ -30,6 +30,8 @@ resource "vsphere_virtual_machine" "vcf_installer" {
   memory               = data.vsphere_ovf_vm_template.vcf_installer.memory
   guest_id             = data.vsphere_ovf_vm_template.vcf_installer.guest_id
   scsi_type            = data.vsphere_ovf_vm_template.vcf_installer.scsi_type
+  force_power_off       = true
+  shutdown_wait_timeout = 1
 
   dynamic "network_interface" {
     for_each = data.vsphere_ovf_vm_template.vcf_installer.ovf_network_map

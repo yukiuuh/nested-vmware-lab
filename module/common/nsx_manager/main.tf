@@ -27,6 +27,7 @@ resource "vsphere_virtual_machine" "nsx_manager" {
   num_cpus        = data.vsphere_ovf_vm_template.nsx_manager_source.num_cpus
   memory          = data.vsphere_ovf_vm_template.nsx_manager_source.memory
   force_power_off = true
+  shutdown_wait_timeout = 1
 
   lifecycle {
     ignore_changes = [
