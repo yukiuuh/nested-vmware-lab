@@ -1,0 +1,87 @@
+{
+  "apiVersion": "nvl.io/v1alpha1",
+  "kind": "Deployment",
+  "name": "lab-a",
+  "credentials": {
+    "vm_admin_password": "VMware123!",
+    "ansible": {
+      "private_key_file_env": "ANSIBLE_PRIVATE_KEY_FILE"
+    }
+  },
+  "ssh_authorized_keys": [],
+  "providers": {
+    "primary": {
+      "kind": "vsphere",
+      "credentials": {
+        "server_env": "VSPHERE_SERVER",
+        "user_env": "VSPHERE_USER",
+        "password_env": "VSPHERE_PASSWORD"
+      },
+      "placement_defaults": {
+        "datacenter": "Datacenter",
+        "resource_pool": "Resources",
+        "compute_host": "esxi.example.local",
+        "datastore": "datastore1",
+        "networks": {
+          "wan": "VM Network",
+          "lan": "Nested-Trunk"
+        }
+      }
+    }
+  },
+  "install_sources": {
+    "router_ova": {
+      "type": "http_ovf",
+      "url": "https://repo.example.local/ova/router/nvl-unified.ova"
+    },
+    "esxi_8u3_installer": {
+      "type": "http_iso",
+      "url": "https://repo.example.local/iso/VMware-VMvisor-Installer-8.0U3-24022510.x86_64.iso"
+    }
+  },
+  "routers": {
+    "router_a": {
+      "source": {
+        "install_source": "router_ova"
+      },
+      "placement": {
+        "provider": "primary"
+      },
+      "networks": {
+        "wan": {
+          "network_name": "VM Network",
+          "ip": null
+        },
+        "lan": {
+          "network_name": "Nested-Trunk",
+          "domain_name": "nested.lab",
+          "network": "10.0.0.0",
+          "gateway": "10.0.0.1"
+        }
+      }
+    }
+  },
+  "storages": {},
+  "esxi_groups": {
+    "management_a": {
+      "router": "router_a",
+      "placement": {
+        "provider": "primary"
+      },
+      "count": 1,
+      "hostname_prefix": "esxi",
+      "starting_ip": "10.0.0.101",
+      "domain_name": "nested.lab",
+      "install": {
+        "method": "ansible_router_pxe",
+        "source": {
+          "install_source": "esxi_8u3_installer"
+        },
+        "kickstart": {
+          "template": "esxi-8.0"
+        }
+      }
+    }
+  },
+  "vcenters": {}
+}

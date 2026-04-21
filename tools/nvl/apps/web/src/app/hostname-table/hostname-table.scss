@@ -1,0 +1,15 @@
+.hostname-grid {
+  min-width: 100%;
+}
+
+.hostname-issues {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.6rem;
+}
+
+.hostname-issue {
+  align-items: baseline;
+  display: flex;
+  gap: 0.35rem;
+}

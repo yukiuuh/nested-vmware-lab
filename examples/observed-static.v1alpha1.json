@@ -1,0 +1,34 @@
+{
+  "routers": {
+    "router_a": {
+      "ansible": {
+        "host": "192.168.1.60",
+        "user": "labadmin"
+      },
+      "wan_ip": "192.168.1.60",
+      "management_ip": "10.0.0.1",
+      "management_network": "10.0.0.0/24",
+      "provider_ref": {
+        "external_id": "router-a"
+      }
+    }
+  },
+  "esxi_groups": {
+    "management_a": {
+      "hosts": [
+        {
+          "hostname": "esxi01",
+          "fqdn": "esxi01.nested.lab",
+          "ip": "10.0.0.101",
+          "primary_mac_address": "00:50:56:aa:cc:01",
+          "mac_addresses": [
+            "00:50:56:aa:cc:01"
+          ],
+          "provider_ref": {
+            "external_id": "esxi01"
+          }
+        }
+      ]
+    }
+  }
+}

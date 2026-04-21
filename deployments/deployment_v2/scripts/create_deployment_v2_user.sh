@@ -40,7 +40,7 @@ Options:
   --help                          Show this help
 
 Examples:
-  export GOVC_URL='https://administrator@vsphere.local:***@vcsa.lab.local/sdk'
+  export GOVC_URL='https://administrator@vsphere.local:***@vcsa.nested.lab/sdk'
   export GOVC_INSECURE=1
   create_deployment_v2_user.sh \
     --username terraform-v2 \

@@ -1,0 +1,97 @@
+.schema-form {
+  display: grid;
+  gap: 0.45rem 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.schema-form-nested {
+  border-left: 0.08rem solid var(--clr-card-border-color);
+  padding-left: 0.6rem;
+}
+
+.schema-section {
+  border-top: 1px solid var(--clr-card-border-color);
+  grid-column: 1 / -1;
+  padding-top: 0.6rem;
+}
+
+.schema-section:first-child {
+  border-top: 0;
+}
+
+.schema-section-wide {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.schema-section-header,
+.map-entry-header {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  justify-content: space-between;
+}
+
+.schema-section-title {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.schema-section-header h3,
+.map-entry-header h4 {
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.required-mark {
+  color: var(--clr-color-action-600);
+  font-size: 0.45rem;
+  font-weight: 600;
+  margin-left: 0.2rem;
+  text-transform: uppercase;
+}
+
+.schema-description {
+  color: var(--clr-color-neutral-600);
+  font-size: 0.55rem;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.map-entry {
+  border: 1px solid var(--clr-card-border-color);
+  border-radius: 0.15rem;
+  padding: 0.5rem;
+}
+
+.map-add-row,
+.freeform-row {
+  align-items: flex-end;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.freeform-row clr-input-container,
+.map-add-row clr-input-container {
+  flex: 1;
+  margin-top: 0;
+}
+
+.schema-json-field {
+  grid-column: 1 / -1;
+}
+
+textarea[clrTextarea] {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.55rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 700px) {
+  .map-add-row,
+  .freeform-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

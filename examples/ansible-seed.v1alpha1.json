@@ -1,0 +1,172 @@
+{
+  "apiVersion": "nvl.io/v1alpha1",
+  "kind": "AnsibleSeed",
+  "credentials": {
+    "vm_admin_password": "VMware123!",
+    "vsphere": {
+      "server": "vcenter.example.local",
+      "user": "administrator@vsphere.local",
+      "password": "VMware123!",
+      "datacenter": "Datacenter"
+    }
+  },
+  "routers": {
+    "router_a": {
+      "name": "lab-a-router_a",
+      "wan_ip": "192.168.1.50",
+      "management_network": "10.0.0.0/24",
+      "management_ip": "10.0.0.1",
+      "lifecycle": {
+        "owner": "terraform",
+        "provider": "vsphere"
+      },
+      "capabilities": {
+        "guest_exec": "ssh",
+        "file_transfer": "scp"
+      },
+      "provider_ref": {
+        "provider": "vsphere",
+        "vm_name": "lab-a-router_a"
+      },
+      "networks": {
+        "lan": {
+          "domain_name": "nested.lab",
+          "network": "10.0.0.0",
+          "network_name": "Nested-Trunk"
+        }
+      },
+      "services": {
+        "http": true,
+        "pxe": true,
+        "rclone": false
+      },
+      "runtime": {
+        "http_root": "/var/www/html",
+        "tftp_root": "/srv/tftp"
+      },
+      "install_source": "router_ova",
+      "install_source_devices": {},
+      "ansible": {
+        "host": "192.168.1.50",
+        "user": "labadmin"
+      }
+    }
+  },
+  "esxi_groups": {
+    "management_a": {
+      "router": "router_a",
+      "lifecycle": {
+        "owner": "terraform",
+        "provider": "vsphere"
+      },
+      "capabilities": {
+        "power_control": "vsphere_api",
+        "boot_control": "vsphere_api",
+        "console_input": "vmware_sendkey",
+        "guest_exec": "vmware_tools",
+        "file_transfer": "guest_operations",
+        "guest_verification": "vmware_tools",
+        "esxi_install": [
+          "pxe",
+          "datastore_iso"
+        ],
+        "vcenter_deploy_target": [
+          "vc",
+          "esxi"
+        ]
+      },
+      "provider_ref": {
+        "provider": "vsphere",
+        "resource_pool": "Resources",
+        "datacenter": "Datacenter"
+      },
+      "network": {
+        "network_name": "Nested-Trunk",
+        "domain_name": "nested.lab",
+        "gateway": "10.0.0.1",
+        "nameservers": [
+          "10.0.0.1"
+        ],
+        "subnet_mask": "255.255.255.0"
+      },
+      "ntp_servers": [
+        "10.0.0.1"
+      ],
+      "install": {
+        "method": "ansible_router_pxe",
+        "install_source": "esxi_8u3_installer",
+        "kickstart": {
+          "template": "esxi-8.0"
+        },
+        "source": {
+          "type": "http_iso",
+          "url": "https://repo.example.local/iso/VMware-VMvisor-Installer-8.0U3-24022510.x86_64.iso"
+        },
+        "boot_mode": "pxe"
+      },
+      "managed_by": [],
+      "hosts": [
+        {
+          "name": "lab-a-management_a-esxi01",
+          "hostname": "esxi01",
+          "fqdn": "esxi01.nested.lab",
+          "ip": "10.0.0.101",
+          "mac_addresses": [
+            "00:50:56:aa:bb:01"
+          ],
+          "primary_mac_address": "00:50:56:aa:bb:01",
+          "observed": {
+            "provider_vm_id": "vm-1001",
+            "mac_addresses": [
+              "00:50:56:aa:bb:01"
+            ],
+            "primary_mac_address": "00:50:56:aa:bb:01"
+          },
+          "lifecycle": {
+            "owner": "terraform",
+            "provider": "vsphere"
+          },
+          "provider_ref": {
+            "provider": "vsphere",
+            "vm_name": "lab-a-management_a-esxi01",
+            "vm_id": "vm-1001"
+          },
+          "ansible": {
+            "host": "10.0.0.101",
+            "user": "root"
+          },
+          "pxe": {
+            "router": "router_a",
+            "router_name": "lab-a-router_a",
+            "router_management_ip": "10.0.0.1",
+            "kickstart_url": "http://10.0.0.1/kickstart/esxi_8u3_installer/management_a/esxi01.cfg",
+            "kickstart_template": "esxi-8.0",
+            "boot_kernel_options": " ks=http://10.0.0.1/kickstart/esxi_8u3_installer/management_a/esxi01.cfg nameserver=10.0.0.1 ip=10.0.0.101 netmask=255.255.255.0 gateway=10.0.0.1 allowLegacyCPU=true",
+            "install_source": {
+              "type": "http_iso",
+              "url": "https://repo.example.local/iso/VMware-VMvisor-Installer-8.0U3-24022510.x86_64.iso"
+            },
+            "install_source_ref": "esxi_8u3_installer",
+            "install_method": "ansible_router_pxe",
+            "router_services": {
+              "http": true,
+              "pxe": true,
+              "rclone": false
+            },
+            "router_runtime": {
+              "http_root": "/var/www/html",
+              "tftp_root": "/srv/tftp"
+            },
+            "router_ansible": {
+              "host": "192.168.1.50",
+              "user": "labadmin"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "storages": {},
+  "vcenters": {},
+  "services": {}
+}

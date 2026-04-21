@@ -1,0 +1,284 @@
+<clr-main-container>
+  <clr-header>
+    <div class="branding">
+      <a class="nav-link">
+        <cds-icon shape="deploy" size="24"></cds-icon>
+        <span class="title">NVL Configuration Editor</span>
+      </a>
+    </div>
+  </clr-header>
+
+  <div class="content-container">
+    <clr-vertical-nav [clrVerticalNavCollapsible]="true" [(clrVerticalNavCollapsed)]="navCollapsed">
+      <a
+        clrVerticalNavLink
+        [class.active]="activePanel() === 'document'"
+        (click)="activePanel.set('document')"
+      >
+        <cds-icon clrVerticalNavIcon shape="file"></cds-icon>
+        Document
+      </a>
+      <a
+        clrVerticalNavLink
+        [class.active]="activePanel() === 'hostnames'"
+        (click)="activePanel.set('hostnames')"
+      >
+        <cds-icon clrVerticalNavIcon shape="host"></cds-icon>
+        Hostnames
+      </a>
+      <a
+        clrVerticalNavLink
+        [class.active]="activePanel() === 'validation'"
+        (click)="activePanel.set('validation')"
+      >
+        <cds-icon clrVerticalNavIcon shape="check-circle"></cds-icon>
+        Validation
+      </a>
+      <a
+        clrVerticalNavLink
+        [class.active]="activePanel() === 'graph'"
+        (click)="activePanel.set('graph')"
+      >
+        <cds-icon clrVerticalNavIcon shape="network-globe"></cds-icon>
+        Reference Graph
+      </a>
+      <a
+        clrVerticalNavLink
+        [class.active]="activePanel() === 'preview'"
+        (click)="activePanel.set('preview')"
+      >
+        <cds-icon clrVerticalNavIcon shape="eye"></cds-icon>
+        Preview
+      </a>
+    </clr-vertical-nav>
+
+    <div class="content-area">
+      <nvl-schema-wizard
+        #schemaWizard
+        [document]="parsed().value"
+        [showLauncher]="false"
+        (applyDocument)="applyGeneratedDocument($event)"
+      />
+
+      <div class="screen-toolbar">
+        <div class="sample-controls">
+          <div class="btn-group btn-sm btn-outline-primary">
+            <button
+              type="button"
+              class="btn"
+              [class.btn-primary]="activeDocument() === 'deployment'"
+              (click)="loadSample('deployment')"
+            >
+              <cds-icon shape="cluster"></cds-icon>
+              Deployment
+            </button>
+            <button
+              type="button"
+              class="btn"
+              [class.btn-primary]="activeDocument() === 'seed'"
+              (click)="loadSample('seed')"
+            >
+              <cds-icon shape="tree-view"></cds-icon>
+              Seed
+            </button>
+          </div>
+        </div>
+        <div class="toolbar-actions">
+          @if (activePanel() === 'document') {
+            <button
+              type="button"
+              class="btn btn-sm btn-primary"
+              (click)="schemaWizard.openWizard()"
+            >
+              <cds-icon shape="wand"></cds-icon>
+              Design Wizard
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" (click)="formatDocument()">
+              <cds-icon shape="file"></cds-icon>
+              Format JSON
+            </button>
+            <button type="button" class="btn btn-sm btn-outline" (click)="copyDocument()">
+              <cds-icon shape="copy"></cds-icon>
+              {{ copiedTarget() === 'document' ? 'Copied JSON' : 'Copy JSON' }}
+            </button>
+          }
+          <label class="btn btn-sm btn-outline" for="nvl-file-input">
+            <cds-icon shape="upload"></cds-icon>
+            Load JSON
+          </label>
+          <input
+            id="nvl-file-input"
+            type="file"
+            accept=".json,application/json"
+            class="clr-sr-only"
+            (change)="loadFile($event)"
+          />
+          <button type="button" class="btn btn-sm btn-outline" (click)="downloadDocument()">
+            <cds-icon shape="download"></cds-icon>
+            Save JSON
+          </button>
+        </div>
+      </div>
+
+      @if (activePanel() === 'document') {
+        <section class="panel-section">
+          <div class="section-header">
+            <cds-icon shape="file" size="16"></cds-icon>
+            <h2>Document</h2>
+          </div>
+          <div class="document-editor-grid">
+            <section class="document-form-pane" aria-label="Deployment schema form">
+              @if (parsed().error) {
+                <clr-alert [clrAlertType]="'danger'" [clrAlertClosable]="false">
+                  <clr-alert-item>
+                    <span class="alert-text">{{ parsed().error }}</span>
+                  </clr-alert-item>
+                </clr-alert>
+              } @else if (isDeploymentDocument()) {
+                <nvl-schema-form
+                  [schema]="documentSchema"
+                  [model]="parsed().value"
+                  (modelChange)="updateDocumentFromForm($event)"
+                />
+              } @else {
+                <clr-alert [clrAlertType]="'info'" [clrAlertClosable]="false">
+                  <clr-alert-item>
+                    <span class="alert-text">
+                      Schema form editing is available for Deployment documents. Use the JSON editor
+                      for this document kind.
+                    </span>
+                  </clr-alert-item>
+                </clr-alert>
+              }
+            </section>
+
+            <section class="document-text-pane" aria-label="JSON document editor">
+              <textarea
+                id="nvl-json-document"
+                class="clr-textarea"
+                spellcheck="false"
+                rows="34"
+                [ngModel]="documentText()"
+                (ngModelChange)="documentText.set($event)"
+                aria-label="NVL JSON document"
+              ></textarea>
+            </section>
+          </div>
+        </section>
+      }
+
+      @if (activePanel() === 'hostnames') {
+        <section class="panel-section">
+          <div class="section-header">
+            <cds-icon shape="host" size="16"></cds-icon>
+            <h2>Hostnames</h2>
+            <span class="badge">{{ hostnameInventory().entries.length }}</span>
+          </div>
+          <nvl-hostname-table [inventory]="hostnameInventory()" />
+        </section>
+      }
+
+      @if (activePanel() === 'validation') {
+        <section class="panel-section">
+          <div class="section-header">
+            <cds-icon shape="check-circle" size="16"></cds-icon>
+            <h2>Validation</h2>
+            <span class="badge">{{ validation().messages.length }}</span>
+          </div>
+
+          @if (validation().valid) {
+            <clr-alert [clrAlertType]="'success'" [clrAlertClosable]="false">
+              <clr-alert-item>
+                <span class="alert-text">Schema, capability, and hostname checks passed.</span>
+              </clr-alert-item>
+            </clr-alert>
+          } @else {
+            @for (message of validation().messages; track message) {
+              <clr-alert [clrAlertType]="'danger'" [clrAlertClosable]="false">
+                <clr-alert-item>
+                  <span class="alert-text">{{ message }}</span>
+                </clr-alert-item>
+              </clr-alert>
+            }
+          }
+        </section>
+      }
+
+      @if (activePanel() === 'graph') {
+        <section class="panel-section">
+          <div class="section-header">
+            <cds-icon shape="network-globe" size="16"></cds-icon>
+            <h2>Reference Graph</h2>
+            <span class="badge">{{ graph().edges.length }}</span>
+          </div>
+
+          <div class="label-group">
+            @for (node of graph().nodes; track node.id) {
+              <span
+                class="label"
+                [class.label-purple]="node.kind === 'vcenter'"
+                [class.label-orange]="node.kind === 'storage'"
+                [class.label-blue]="node.kind === 'esxi'"
+                [class.label-light-blue]="node.kind === 'router'"
+              >
+                {{ node.kind }}: {{ node.label }}
+              </span>
+            }
+          </div>
+
+          <clr-datagrid>
+            <clr-dg-column>From</clr-dg-column>
+            <clr-dg-column>Relation</clr-dg-column>
+            <clr-dg-column>To</clr-dg-column>
+            @for (edge of graph().edges; track edge.from + edge.to + edge.label) {
+              <clr-dg-row>
+                <clr-dg-cell>{{ edge.from }}</clr-dg-cell>
+                <clr-dg-cell>
+                  <span class="label label-info">{{ edge.label }}</span>
+                </clr-dg-cell>
+                <clr-dg-cell>{{ edge.to }}</clr-dg-cell>
+              </clr-dg-row>
+            }
+            <clr-dg-footer>{{ graph().edges.length }} references</clr-dg-footer>
+          </clr-datagrid>
+        </section>
+      }
+
+      @if (activePanel() === 'preview') {
+        <section class="panel-section">
+          <div class="section-header">
+            <cds-icon shape="eye" size="16"></cds-icon>
+            <h2>Preview</h2>
+            <span class="label label-info">{{ previewLabel() }}</span>
+          </div>
+          <div class="preview-actions">
+            <div class="preview-mode-controls btn-group btn-sm btn-outline-primary">
+              @for (option of previewOptions(); track option.mode) {
+                <button
+                  type="button"
+                  class="btn"
+                  [class.btn-primary]="effectivePreviewMode() === option.mode"
+                  (click)="previewMode.set(option.mode)"
+                >
+                  {{ option.label }}
+                </button>
+              }
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" (click)="copyPreview()">
+              <cds-icon shape="copy"></cds-icon>
+              {{ copiedTarget() === 'preview' ? 'Copied Output' : 'Copy Output' }}
+            </button>
+          </div>
+          <textarea
+            class="preview-output copy-output"
+            readonly
+            rows="24"
+            [ngModel]="preview()"
+            (keydown)="selectAllCopyTarget($event)"
+            aria-label="Generated preview output"
+          ></textarea>
+        </section>
+      }
+    </div>
+  </div>
+</clr-main-container>

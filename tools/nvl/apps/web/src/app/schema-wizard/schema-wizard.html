@@ -1,0 +1,974 @@
+@if (showLauncher) {
+  <div class="wizard-launch">
+    <button type="button" class="btn btn-primary" (click)="open.set(true)">
+      Open Design Wizard
+    </button>
+    <button type="button" class="btn btn-outline" (click)="loadTemplate()">
+      Reset Selected Template
+    </button>
+    <button type="button" class="btn btn-outline" (click)="importCurrentDocument()">
+      Import Current JSON
+    </button>
+    <button type="button" class="btn btn-outline" (click)="apply()">Apply Generated JSON</button>
+  </div>
+}
+
+<clr-wizard
+  #deploymentWizard
+  [clrWizardOpen]="open()"
+  [clrWizardSize]="'xl'"
+  [clrWizardClosable]="true"
+  (clrWizardOpenChange)="open.set($event)"
+  (clrWizardOnFinish)="apply()"
+>
+  <clr-wizard-title>Deployment Design Wizard</clr-wizard-title>
+
+  <clr-wizard-page>
+    <ng-template clrPageTitle>Template</ng-template>
+    <ng-template clrPageNavTitle>Template</ng-template>
+    <ng-template clrPageButtons>
+      <button type="button" class="btn btn-outline" (click)="deploymentWizard.close()">
+        Cancel
+      </button>
+      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+        Use Template and Continue
+      </button>
+    </ng-template>
+
+    <clr-alert [clrAlertType]="'info'" [clrAlertClosable]="false">
+      <clr-alert-item>
+        <span class="alert-text">
+          Select a topology template. Later pages edit the shared lab settings once and generate the
+          component-specific Deployment JSON.
+        </span>
+      </clr-alert-item>
+    </clr-alert>
+
+    <div class="template-grid">
+      @for (template of templates; track template.id) {
+        <button
+          type="button"
+          class="template-option"
+          [class.template-option-selected]="blueprint().template === template.id"
+          (click)="selectTemplate(template.id)"
+        >
+          <span class="template-option-title">{{ template.label }}</span>
+          <span class="template-option-description">{{ template.description }}</span>
+        </button>
+      }
+    </div>
+  </clr-wizard-page>
+
+  <clr-wizard-page>
+    <ng-template clrPageTitle>Common Settings</ng-template>
+    <ng-template clrPageNavTitle>Common</ng-template>
+    <ng-template clrPageButtons>
+      <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
+        Back
+      </button>
+      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+        Continue
+      </button>
+    </ng-template>
+
+    <section class="wizard-section">
+      <h3>Lab Identity</h3>
+      <div class="form-grid">
+        <clr-input-container>
+          <label>Deployment Name</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().name"
+            (ngModelChange)="updateBlueprint('name', $event)"
+          />
+          <clr-control-helper
+            >DNS-safe lab name used in generated infrastructure.</clr-control-helper
+          >
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>DNS Domain</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().domain"
+            (ngModelChange)="updateBlueprint('domain', $event)"
+          />
+          <clr-control-helper
+            >Shared domain for router, ESXi, storage, and vCenter hostnames.</clr-control-helper
+          >
+        </clr-input-container>
+      </div>
+    </section>
+
+    <section class="wizard-section">
+      <h3>Access</h3>
+      <div class="form-grid">
+        <clr-password-container>
+          <label>Admin Password</label>
+          <input
+            clrPassword
+            required
+            [ngModel]="blueprint().vmAdminPassword"
+            (ngModelChange)="updateBlueprint('vmAdminPassword', $event)"
+          />
+          <clr-control-helper
+            >Used for Router labadmin and ESXi root unless overridden.</clr-control-helper
+          >
+        </clr-password-container>
+
+        <clr-input-container>
+          <label>Ansible Password Env</label>
+          <input
+            clrInput
+            [ngModel]="blueprint().ansiblePasswordEnv"
+            (ngModelChange)="updateBlueprint('ansiblePasswordEnv', $event)"
+          />
+          <clr-control-helper
+            >Optional runtime variable for SSH password. Empty uses Admin
+            Password.</clr-control-helper
+          >
+        </clr-input-container>
+
+        <clr-password-container>
+          <label>Ansible Password</label>
+          <input
+            clrPassword
+            [ngModel]="blueprint().ansiblePassword"
+            (ngModelChange)="updateBlueprint('ansiblePassword', $event)"
+          />
+          <clr-control-helper
+            >Optional explicit SSH password. Avoid committing real secrets.</clr-control-helper
+          >
+        </clr-password-container>
+
+        <clr-input-container>
+          <label>Private Key File</label>
+          <input
+            clrInput
+            [ngModel]="blueprint().ansiblePrivateKeyFile"
+            (ngModelChange)="updateBlueprint('ansiblePrivateKeyFile', $event)"
+          />
+          <clr-control-helper>Controller-side private key path for Ansible SSH.</clr-control-helper>
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Private Key Env</label>
+          <input
+            clrInput
+            [ngModel]="blueprint().ansiblePrivateKeyFileEnv"
+            (ngModelChange)="updateBlueprint('ansiblePrivateKeyFileEnv', $event)"
+          />
+          <clr-control-helper
+            >Runtime variable, usually ANSIBLE_PRIVATE_KEY_FILE.</clr-control-helper
+          >
+        </clr-input-container>
+
+        <clr-textarea-container class="wide-field">
+          <label>Authorized Keys</label>
+          <textarea
+            clrTextarea
+            rows="4"
+            [ngModel]="listText('sshAuthorizedKeys')"
+            (ngModelChange)="updateStringList('sshAuthorizedKeys', $event)"
+          ></textarea>
+          <clr-control-helper
+            >One public key per line. Injected into Router and storage appliance
+            guests.</clr-control-helper
+          >
+        </clr-textarea-container>
+      </div>
+    </section>
+
+    <section class="wizard-section">
+      <h3>Provider Placement</h3>
+      <div class="form-grid">
+        <clr-input-container>
+          <label>vSphere Server</label>
+          <input
+            clrInput
+            [ngModel]="blueprint().providerServer"
+            (ngModelChange)="updateBlueprint('providerServer', $event)"
+          />
+          <clr-control-helper
+            >Optional literal endpoint. Leave empty when using an environment
+            variable.</clr-control-helper
+          >
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Server Env</label>
+          <input
+            clrInput
+            [ngModel]="blueprint().providerServerEnv"
+            (ngModelChange)="updateBlueprint('providerServerEnv', $event)"
+          />
+          <clr-control-helper
+            >Runtime variable used by Terraform and Ansible, usually
+            VSPHERE_SERVER.</clr-control-helper
+          >
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>vSphere User</label>
+          <input
+            clrInput
+            [ngModel]="blueprint().providerUser"
+            (ngModelChange)="updateBlueprint('providerUser', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>User Env</label>
+          <input
+            clrInput
+            [ngModel]="blueprint().providerUserEnv"
+            (ngModelChange)="updateBlueprint('providerUserEnv', $event)"
+          />
+        </clr-input-container>
+
+        <clr-password-container>
+          <label>vSphere Password</label>
+          <input
+            clrPassword
+            [ngModel]="blueprint().providerPassword"
+            (ngModelChange)="updateBlueprint('providerPassword', $event)"
+          />
+        </clr-password-container>
+
+        <clr-input-container>
+          <label>Password Env</label>
+          <input
+            clrInput
+            [ngModel]="blueprint().providerPasswordEnv"
+            (ngModelChange)="updateBlueprint('providerPasswordEnv', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Datacenter</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().providerDatacenter"
+            (ngModelChange)="updateBlueprint('providerDatacenter', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Resource Pool</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().providerResourcePool"
+            (ngModelChange)="updateBlueprint('providerResourcePool', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Compute Host</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().providerComputeHost"
+            (ngModelChange)="updateBlueprint('providerComputeHost', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Datastore</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().providerDatastore"
+            (ngModelChange)="updateBlueprint('providerDatastore', $event)"
+          />
+        </clr-input-container>
+      </div>
+    </section>
+
+    <section class="wizard-section">
+      <h3>Lab Management Network</h3>
+      <div class="form-grid">
+        <clr-input-container>
+          <label>WAN Network</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().wanNetwork"
+            (ngModelChange)="updateBlueprint('wanNetwork', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>LAN / Trunk Network</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().lanNetwork"
+            (ngModelChange)="updateBlueprint('lanNetwork', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Management Network</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().managementNetwork"
+            (ngModelChange)="updateBlueprint('managementNetwork', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Gateway</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().managementGateway"
+            (ngModelChange)="updateBlueprint('managementGateway', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Subnet Mask</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().subnetMask"
+            (ngModelChange)="updateBlueprint('subnetMask', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>VLAN Start</label>
+          <input
+            clrInput
+            type="number"
+            required
+            [ngModel]="blueprint().vlanStart"
+            (ngModelChange)="updateNumber('vlanStart', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>VLAN Count</label>
+          <input
+            clrInput
+            type="number"
+            required
+            [ngModel]="blueprint().vlanCount"
+            (ngModelChange)="updateNumber('vlanCount', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>MTU</label>
+          <input
+            clrInput
+            type="number"
+            required
+            [ngModel]="blueprint().mtu"
+            (ngModelChange)="updateNumber('mtu', $event)"
+          />
+        </clr-input-container>
+
+        <clr-textarea-container>
+          <label>Nameservers</label>
+          <textarea
+            clrTextarea
+            rows="3"
+            [ngModel]="listText('nameservers')"
+            (ngModelChange)="updateStringList('nameservers', $event)"
+          ></textarea>
+          <clr-control-helper
+            >One IP or hostname per line. Used by generated ESXi, storage, and vCenter
+            settings.</clr-control-helper
+          >
+        </clr-textarea-container>
+
+        <clr-textarea-container>
+          <label>NTP Servers</label>
+          <textarea
+            clrTextarea
+            rows="3"
+            [ngModel]="listText('ntpServers')"
+            (ngModelChange)="updateStringList('ntpServers', $event)"
+          ></textarea>
+          <clr-control-helper
+            >One IP or hostname per line. Used by generated ESXi settings.</clr-control-helper
+          >
+        </clr-textarea-container>
+      </div>
+    </section>
+
+    <section class="wizard-section">
+      <h3>Lab Runtime Source</h3>
+      <div class="form-grid">
+        <clr-select-container>
+          <label>Unified OVA Source Type</label>
+          <select
+            clrSelect
+            [ngModel]="blueprint().unifiedOvaType"
+            (ngModelChange)="updateBlueprint('unifiedOvaType', $event)"
+          >
+            @for (type of unifiedOvaSourceTypes; track type) {
+              <option [value]="type">{{ installSourceTypeLabel(type) }}</option>
+            }
+          </select>
+          <clr-control-helper
+            >Used by the router and optional storage appliance.</clr-control-helper
+          >
+        </clr-select-container>
+
+        @if (sourceUsesUrl(blueprint().unifiedOvaType)) {
+          <clr-input-container class="wide-field">
+            <label>Unified OVA URL</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().unifiedOvaUrl"
+              (ngModelChange)="updateBlueprint('unifiedOvaUrl', $event)"
+            />
+          </clr-input-container>
+        }
+
+        @if (sourceUsesPath(blueprint().unifiedOvaType)) {
+          <clr-input-container class="wide-field">
+            <label>Unified OVA Path</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().unifiedOvaPath"
+              (ngModelChange)="updateBlueprint('unifiedOvaPath', $event)"
+            />
+          </clr-input-container>
+        }
+      </div>
+    </section>
+  </clr-wizard-page>
+
+  <clr-wizard-page>
+    <ng-template clrPageTitle>ESXi Group</ng-template>
+    <ng-template clrPageNavTitle>ESXi</ng-template>
+    <ng-template clrPageButtons>
+      <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
+        Back
+      </button>
+      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+        Continue
+      </button>
+    </ng-template>
+
+    <section class="wizard-section">
+      <h3>Group Identity</h3>
+      <div class="form-grid">
+        <clr-input-container>
+          <label>Group Key</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().esxiGroupName"
+            (ngModelChange)="updateBlueprint('esxiGroupName', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Hostname Prefix</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().esxiPrefix"
+            (ngModelChange)="updateBlueprint('esxiPrefix', $event)"
+          />
+          <clr-control-helper>Hostnames render as prefix + 01, 02, and so on.</clr-control-helper>
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Count</label>
+          <input
+            clrInput
+            type="number"
+            min="1"
+            required
+            [ngModel]="blueprint().esxiCount"
+            (ngModelChange)="updateNumber('esxiCount', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Starting IP</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().esxiStartIp"
+            (ngModelChange)="updateBlueprint('esxiStartIp', $event)"
+          />
+          <clr-control-helper>Later hosts increment from this address.</clr-control-helper>
+        </clr-input-container>
+      </div>
+    </section>
+
+    <section class="wizard-section">
+      <h3>ESXi Install Source</h3>
+      <div class="form-grid">
+        <clr-select-container>
+          <label>Source Type</label>
+          <select
+            clrSelect
+            [ngModel]="blueprint().esxiSourceType"
+            (ngModelChange)="updateBlueprint('esxiSourceType', $event)"
+          >
+            @for (type of isoSourceTypes; track type) {
+              <option [value]="type">{{ installSourceTypeLabel(type) }}</option>
+            }
+          </select>
+          <clr-control-helper
+            >Install method is generated as
+            {{ esxiInstallMethodLabel(esxiInstallMethod()) }}.</clr-control-helper
+          >
+        </clr-select-container>
+
+        @if (sourceUsesUrl(blueprint().esxiSourceType)) {
+          <clr-input-container class="wide-field">
+            <label>ESXi Source URL / Rclone Remote</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().esxiIsoUrl"
+              (ngModelChange)="updateBlueprint('esxiIsoUrl', $event)"
+            />
+          </clr-input-container>
+        }
+
+        @if (sourceUsesDatastore(blueprint().esxiSourceType)) {
+          <clr-input-container>
+            <label>Datastore</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().esxiSourceDatastore"
+              (ngModelChange)="updateBlueprint('esxiSourceDatastore', $event)"
+            />
+          </clr-input-container>
+        }
+
+        @if (sourceUsesPath(blueprint().esxiSourceType)) {
+          <clr-input-container class="wide-field">
+            <label>Path</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().esxiSourcePath"
+              (ngModelChange)="updateBlueprint('esxiSourcePath', $event)"
+            />
+          </clr-input-container>
+        }
+      </div>
+    </section>
+
+    <section class="wizard-section">
+      <h3>Shape</h3>
+      <div class="form-grid">
+        <clr-input-container>
+          <label>CPUs</label>
+          <input
+            clrInput
+            type="number"
+            min="1"
+            required
+            [ngModel]="blueprint().esxiCpu"
+            (ngModelChange)="updateNumber('esxiCpu', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Memory GB</label>
+          <input
+            clrInput
+            type="number"
+            min="1"
+            required
+            [ngModel]="blueprint().esxiMemoryGb"
+            (ngModelChange)="updateNumber('esxiMemoryGb', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>NIC Count</label>
+          <input
+            clrInput
+            type="number"
+            min="1"
+            required
+            [ngModel]="blueprint().esxiNicCount"
+            (ngModelChange)="updateNumber('esxiNicCount', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container class="wide-field">
+          <label>Boot Disk GB</label>
+          <input
+            clrInput
+            type="number"
+            min="1"
+            required
+            [ngModel]="blueprint().esxiDiskGb"
+            (ngModelChange)="updateNumber('esxiDiskGb', $event)"
+          />
+        </clr-input-container>
+      </div>
+    </section>
+  </clr-wizard-page>
+
+  <clr-wizard-page>
+    <ng-template clrPageTitle>vCenter and Storage</ng-template>
+    <ng-template clrPageNavTitle>vCenter</ng-template>
+    <ng-template clrPageButtons>
+      <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
+        Back
+      </button>
+      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+        Continue
+      </button>
+    </ng-template>
+
+    <section class="wizard-section">
+      <h3>vCenter Server</h3>
+      <div class="form-grid">
+        <clr-input-container>
+          <label>vCenter Key</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().vcenterKey"
+            (ngModelChange)="updateBlueprint('vcenterKey', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>Hostname</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().vcenterHostname"
+            (ngModelChange)="updateBlueprint('vcenterHostname', $event)"
+          />
+        </clr-input-container>
+
+        <clr-input-container>
+          <label>IP</label>
+          <input
+            clrInput
+            required
+            [ngModel]="blueprint().vcenterIp"
+            (ngModelChange)="updateBlueprint('vcenterIp', $event)"
+          />
+        </clr-input-container>
+
+        <clr-select-container>
+          <label>Deployment Size</label>
+          <select
+            clrSelect
+            [ngModel]="blueprint().vcenterSize"
+            (ngModelChange)="updateBlueprint('vcenterSize', $event)"
+          >
+            <option value="tiny">tiny</option>
+            <option value="small">small</option>
+            <option value="medium">medium</option>
+            <option value="large">large</option>
+            <option value="xlarge">xlarge</option>
+          </select>
+        </clr-select-container>
+
+        <clr-select-container>
+          <label>Placement</label>
+          <select
+            clrSelect
+            [ngModel]="blueprint().vcenterPlacement"
+            (ngModelChange)="updatePlacement($event)"
+          >
+            <option value="nested_vsphere">Nested ESXi / vSphere</option>
+            <option value="provider_vsphere">Provider vSphere</option>
+          </select>
+          <clr-control-helper
+            >Changing this also changes the generated placement object and hostname
+            validation.</clr-control-helper
+          >
+        </clr-select-container>
+
+        @if (blueprint().vcenterPlacement === 'nested_vsphere') {
+          <clr-input-container>
+            <label>Generated Target Host</label>
+            <input clrInput readonly [value]="nestedHostTarget()" />
+            <clr-control-helper
+              >Derived from the ESXi group prefix and DNS domain.</clr-control-helper
+            >
+          </clr-input-container>
+        }
+      </div>
+    </section>
+
+    <section class="wizard-section">
+      <h3>VCSA Install Source</h3>
+      <div class="form-grid">
+        <clr-select-container>
+          <label>Source Type</label>
+          <select
+            clrSelect
+            [ngModel]="blueprint().vcsaSourceType"
+            (ngModelChange)="updateBlueprint('vcsaSourceType', $event)"
+          >
+            @for (type of isoSourceTypes; track type) {
+              <option [value]="type">{{ installSourceTypeLabel(type) }}</option>
+            }
+          </select>
+        </clr-select-container>
+
+        @if (sourceUsesUrl(blueprint().vcsaSourceType)) {
+          <clr-input-container class="wide-field">
+            <label>VCSA Source URL / Rclone Remote</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().vcsaIsoUrl"
+              (ngModelChange)="updateBlueprint('vcsaIsoUrl', $event)"
+            />
+          </clr-input-container>
+        }
+
+        @if (sourceUsesDatastore(blueprint().vcsaSourceType)) {
+          <clr-input-container>
+            <label>Datastore</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().vcsaSourceDatastore"
+              (ngModelChange)="updateBlueprint('vcsaSourceDatastore', $event)"
+            />
+          </clr-input-container>
+        }
+
+        @if (sourceUsesPath(blueprint().vcsaSourceType)) {
+          <clr-input-container class="wide-field">
+            <label>Path</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().vcsaSourcePath"
+              (ngModelChange)="updateBlueprint('vcsaSourcePath', $event)"
+            />
+          </clr-input-container>
+        }
+      </div>
+    </section>
+
+    <section class="wizard-section">
+      <h3>Storage</h3>
+      <clr-checkbox-container>
+        <clr-checkbox-wrapper>
+          <input
+            clrCheckbox
+            type="checkbox"
+            [ngModel]="blueprint().includeStorage"
+            (ngModelChange)="updateBoolean('includeStorage', $event)"
+          />
+          <label>Create storage appliance</label>
+        </clr-checkbox-wrapper>
+      </clr-checkbox-container>
+
+      @if (blueprint().includeStorage) {
+        <div class="form-grid">
+          <clr-input-container>
+            <label>Storage Key</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().storageKey"
+              (ngModelChange)="updateBlueprint('storageKey', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Storage IP</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().storageIp"
+              (ngModelChange)="updateBlueprint('storageIp', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Storage Network 1 IP</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().storage1Ip"
+              (ngModelChange)="updateBlueprint('storage1Ip', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Storage Network 2 IP</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().storage2Ip"
+              (ngModelChange)="updateBlueprint('storage2Ip', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Storage VLAN 1</label>
+            <input
+              clrInput
+              type="number"
+              required
+              [ngModel]="blueprint().storage1Vlan"
+              (ngModelChange)="updateNumber('storage1Vlan', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Storage VLAN 2</label>
+            <input
+              clrInput
+              type="number"
+              required
+              [ngModel]="blueprint().storage2Vlan"
+              (ngModelChange)="updateNumber('storage2Vlan', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Storage CPUs</label>
+            <input
+              clrInput
+              type="number"
+              min="1"
+              required
+              [ngModel]="blueprint().storageCpu"
+              (ngModelChange)="updateNumber('storageCpu', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Storage Memory GB</label>
+            <input
+              clrInput
+              type="number"
+              min="1"
+              required
+              [ngModel]="blueprint().storageMemoryGb"
+              (ngModelChange)="updateNumber('storageMemoryGb', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Storage Disk GB</label>
+            <input
+              clrInput
+              type="number"
+              min="1"
+              required
+              [ngModel]="blueprint().storageDiskGb"
+              (ngModelChange)="updateNumber('storageDiskGb', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>LUN Name</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().storageLunName"
+              (ngModelChange)="updateBlueprint('storageLunName', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>LUN Size GB</label>
+            <input
+              clrInput
+              type="number"
+              min="1"
+              required
+              [ngModel]="blueprint().storageLunGb"
+              (ngModelChange)="updateNumber('storageLunGb', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Nested Datastore Name</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().storageDatastoreName"
+              (ngModelChange)="updateBlueprint('storageDatastoreName', $event)"
+            />
+          </clr-input-container>
+        </div>
+      }
+    </section>
+  </clr-wizard-page>
+
+  <clr-wizard-page>
+    <ng-template clrPageTitle>Hostnames</ng-template>
+    <ng-template clrPageNavTitle>Hostnames</ng-template>
+    <ng-template clrPageButtons>
+      <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
+        Back
+      </button>
+      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+        Continue
+      </button>
+    </ng-template>
+    <nvl-hostname-table [inventory]="hostnameInventory()" />
+  </clr-wizard-page>
+
+  <clr-wizard-page>
+    <ng-template clrPageTitle>Review</ng-template>
+    <ng-template clrPageNavTitle>Review</ng-template>
+    <ng-template clrPageButtons>
+      <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
+        Back
+      </button>
+      <button type="button" class="btn btn-primary" (click)="apply(); deploymentWizard.close()">
+        Apply to JSON
+      </button>
+    </ng-template>
+
+    @if (validation().valid) {
+      <clr-alert [clrAlertType]="'success'" [clrAlertClosable]="false">
+        <clr-alert-item>
+          <span class="alert-text">Generated Deployment is valid.</span>
+        </clr-alert-item>
+      </clr-alert>
+    } @else {
+      @for (message of validation().messages; track message) {
+        <clr-alert [clrAlertType]="'danger'" [clrAlertClosable]="false">
+          <clr-alert-item>
+            <span class="alert-text">{{ message }}</span>
+          </clr-alert-item>
+        </clr-alert>
+      }
+    }
+
+    <div class="copy-toolbar">
+      <button type="button" class="btn btn-sm btn-outline" (click)="copyDraftJson()">
+        <cds-icon shape="copy"></cds-icon>
+        {{ copiedDraft() ? 'Copied JSON' : 'Copy JSON' }}
+      </button>
+    </div>
+    <textarea
+      class="preview-output copy-output"
+      readonly
+      rows="18"
+      [ngModel]="draftJson()"
+      (keydown)="selectAllCopyTarget($event)"
+      aria-label="Generated Deployment JSON"
+    ></textarea>
+  </clr-wizard-page>
+</clr-wizard>

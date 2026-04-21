@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://nested-vmware-lab.local/schemas/deployment-schema-v1.json",
+  "$id": "https://nested-vmware-nested.lab/schemas/deployment-schema-v1.json",
   "title": "Nested VMware Lab Terraform Input Schema v1",
   "type": "object",
   "additionalProperties": false,

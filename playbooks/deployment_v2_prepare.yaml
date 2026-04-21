@@ -5,7 +5,7 @@
   gather_facts: true
   strategy: free # noqa: run-once[play]
   vars:
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_ssh_common_args: "-F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
   roles:
     - role: deployment_v2_prepare_runtime
       deployment_v2_router_runtime_prepare_phase: vcenter_media
@@ -18,7 +18,7 @@
   gather_facts: false
   strategy: free # noqa: run-once[play]
   vars:
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_ssh_common_args: "-F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
     deployment_v2_esxi_group_items: >-
       {{
         (deployment_v2.esxi_groups | default({}))
@@ -30,7 +30,38 @@
     - role: deployment_v2_prepare_runtime
       deployment_v2_router_runtime_prepare_phase: esxi_bootstrap
   tasks:
-    - name: Validate vSphere credentials are available for ESXi reset
+    - name: Validate ESXi bootstrap capabilities
+      ansible.builtin.assert:
+        that:
+          - item.value.install.method in ["ansible_router_pxe", "ansible_vsphere_iso_boot"]
+          - >-
+            item.value.install.method != "ansible_router_pxe"
+            or (
+              item.value.capabilities.power_control
+              | default('vsphere_api' if (item.value.placement.kind | default('')) == 'provider_vsphere' else 'none')
+            ) != "none"
+          - >-
+            item.value.install.method != "ansible_vsphere_iso_boot"
+            or (
+              item.value.capabilities.boot_control
+              | default('vsphere_api' if (item.value.placement.kind | default('')) == 'provider_vsphere' else 'none')
+            ) == "vsphere_api"
+          - >-
+            item.value.install.method != "ansible_vsphere_iso_boot"
+            or (
+              item.value.capabilities.console_input
+              | default('vmware_sendkey' if (item.value.placement.kind | default('')) == 'provider_vsphere' else 'none')
+            ) == "vmware_sendkey"
+        fail_msg: >-
+          Unsupported ESXi bootstrap capabilities for {{ item.key }}. This slice
+          supports ansible_router_pxe only when a power_control adapter is
+          declared, and ansible_vsphere_iso_boot only with
+          boot_control=vsphere_api plus console_input=vmware_sendkey.
+      loop: "{{ deployment_v2_esxi_group_items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Validate vSphere credentials are available for vSphere-backed ESXi bootstrap
       ansible.builtin.assert:
         that:
           - deployment_v2.credentials is defined
@@ -41,8 +72,25 @@
           - deployment_v2.credentials.vsphere.datacenter is defined
         fail_msg: >-
           deployment_v2.credentials.vsphere must be present in ansible_inventory_seed to
-          reset ESXi VMs automatically
-      when: deployment_v2_esxi_group_items | length > 0
+          run vSphere-backed ESXi bootstrap operations
+      loop: "{{ deployment_v2_esxi_group_items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when: >-
+        (
+          item.value.install.method == "ansible_router_pxe"
+          and (
+            item.value.capabilities.power_control
+            | default('vsphere_api' if (item.value.placement.kind | default('')) == 'provider_vsphere' else 'none')
+          ) == "vsphere_api"
+        )
+        or (
+          item.value.install.method == "ansible_vsphere_iso_boot"
+          and (
+            item.value.capabilities.boot_control
+            | default('vsphere_api' if (item.value.placement.kind | default('')) == 'provider_vsphere' else 'none')
+          ) == "vsphere_api"
+        )
 
     - name: Check whether ESXi management API is already reachable
       ansible.builtin.wait_for:
@@ -75,6 +123,11 @@
       when:
         - item.failed | default(false)
         - item.item.0.value.install.method == "ansible_router_pxe"
+        - >-
+          (
+            item.item.0.value.capabilities.power_control
+            | default('vsphere_api' if (item.item.0.value.placement.kind | default('')) == 'provider_vsphere' else 'none')
+          ) == "vsphere_api"
       delegate_to: localhost
       become: false
 
@@ -89,6 +142,16 @@
       when:
         - item.failed | default(false)
         - item.item.0.value.install.method == "ansible_vsphere_iso_boot"
+        - >-
+          (
+            item.item.0.value.capabilities.boot_control
+            | default('vsphere_api' if (item.item.0.value.placement.kind | default('')) == 'provider_vsphere' else 'none')
+          ) == "vsphere_api"
+        - >-
+          (
+            item.item.0.value.capabilities.console_input
+            | default('vmware_sendkey' if (item.item.0.value.placement.kind | default('')) == 'provider_vsphere' else 'none')
+          ) == "vmware_sendkey"
 
 - name: Verify nested-vCenter target deployment_v2 ESXi bootstrap completed
   hosts: deployment_v2_esxi
@@ -117,7 +180,7 @@
   gather_facts: false
   strategy: free # noqa: run-once[play]
   vars:
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_ssh_common_args: "-F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
   roles:
     - role: deployment_v2_prepare_vcenter
       deployment_v2_vcenter_prepare_phase: nested_launch
@@ -149,7 +212,7 @@
   gather_facts: false
   strategy: free # noqa: run-once[play]
   vars:
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_ssh_common_args: "-F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
   roles:
     - role: deployment_v2_prepare_vcenter
       deployment_v2_vcenter_prepare_phase: wait

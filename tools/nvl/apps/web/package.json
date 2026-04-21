@@ -1,0 +1,39 @@
+{
+  "name": "web",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "vitest run --environment jsdom --globals"
+  },
+  "private": true,
+  "packageManager": "pnpm@10.29.2",
+  "dependencies": {
+    "@angular/cdk": "^19.2.19",
+    "@angular/animations": "^19.2.19",
+    "@angular/common": "^19.2.19",
+    "@angular/compiler": "^19.2.19",
+    "@angular/core": "^19.2.19",
+    "@angular/forms": "^19.2.19",
+    "@angular/platform-browser": "^19.2.19",
+    "@angular/router": "^19.2.19",
+    "@cds/core": "^6.17.0",
+    "@clr/angular": "^17.12.2",
+    "@clr/ui": "^17.12.2",
+    "@nvl/core": "workspace:*",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.1"
+  },
+  "devDependencies": {
+    "@angular/build": "^19.2.19",
+    "@angular/cli": "^19.2.19",
+    "@angular/compiler-cli": "^19.2.19",
+    "jsdom": "^28.0.0",
+    "prettier": "^3.8.1",
+    "typescript": "~5.8.3",
+    "vitest": "^4.0.8"
+  }
+}

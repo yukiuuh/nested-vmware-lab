@@ -10,11 +10,31 @@
       {{ deployment_v2_vcenter_item.value.target.storage.mode | default('existing_datastore') }}
     deployment_v2_vcenter_prepare_datastore_min_free_mb: >-
       {{ (deployment_v2_vcenter_prepare_datastore_min_free_gb | int) * 1024 }}
+    deployment_v2_vcenter_prepare_router_proxy_ssh_prefix: >-
+      {{
+        (
+          "ssh -i "
+          ~ (hostvars[inventory_hostname].ansible_ssh_private_key_file | quote)
+          ~ " -o IdentitiesOnly=yes"
+        )
+        if hostvars[inventory_hostname].ansible_ssh_private_key_file | default('', true) | length > 0
+        else (
+          "sshpass -p "
+          ~ (hostvars[inventory_hostname].ansible_password | quote)
+          ~ " ssh"
+        )
+        if hostvars[inventory_hostname].ansible_password | default('', true) | length > 0
+        else "ssh"
+      }}
+
+- name: Build nested deployment_v2 vCenter ESXi SSH proxy args for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
     deployment_v2_vcenter_prepare_esxi_ssh_common_args: >-
       -F /dev/null
       -o StrictHostKeyChecking=no
       -o UserKnownHostsFile=/dev/null
-      -o ProxyCommand="ssh -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+      -o ProxyCommand="{{ deployment_v2_vcenter_prepare_router_proxy_ssh_prefix }}
+      -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
       -W %h:%p {{ hostvars[inventory_hostname].ansible_user }}@{{ hostvars[inventory_hostname].ansible_host }}"
 
 - name: Validate nested deployment_v2 vCenter storage metadata for {{ deployment_v2_vcenter_item.key }}

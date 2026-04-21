@@ -39,11 +39,17 @@ output "ansible_inventory_seed" {
   value = {
     credentials = {
       vm_admin_password = var.vm_admin_password
+      ansible           = local.ansible_connection
       vsphere = {
-        server     = local.provider.server
-        user       = local.provider.user
-        password   = local.provider.password
-        datacenter = local.provider.datacenter
+        server         = local.provider.server
+        server_env     = local.provider.server_env
+        user           = local.provider.user
+        user_env       = local.provider.user_env
+        password       = local.provider.password
+        password_env   = local.provider.password_env
+        datacenter     = local.provider.datacenter
+        datacenter_env = local.provider.datacenter_env
+        insecure       = local.provider.insecure
       }
     }
     routers     = local.router_outputs

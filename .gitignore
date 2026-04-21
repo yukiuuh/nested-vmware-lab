@@ -7,3 +7,7 @@ terraform.tfvars*
 *.vib
 variables.json
 .venv
+generated/
+tools/nvl/node_modules/
+tools/nvl/packages/*/node_modules/
+tools/nvl/packages/*/dist/

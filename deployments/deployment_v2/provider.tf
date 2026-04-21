@@ -10,7 +10,7 @@ terraform {
 }
 
 provider "vsphere" {
-  allow_unverified_ssl = true
+  allow_unverified_ssl = local.provider.insecure
   user                 = local.provider.user
   password             = local.provider.password
   vsphere_server       = local.provider.server

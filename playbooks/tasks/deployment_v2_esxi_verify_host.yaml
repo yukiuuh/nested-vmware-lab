@@ -1,4 +1,28 @@
 ---
+- name: Derive ESXi guest verification capability
+  ansible.builtin.set_fact:
+    deployment_v2_esxi_guest_verification: >-
+      {{
+        deployment_v2_esxi_host.capabilities.guest_verification
+        | default(
+            deployment_v2_esxi_group_config.capabilities.guest_verification
+            | default(
+                'vmware_tools'
+                if (deployment_v2_esxi_group_config.placement.kind | default('')) == 'provider_vsphere'
+                else 'ssh'
+              )
+          )
+      }}
+
+- name: Validate ESXi guest verification capability
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_esxi_guest_verification in ["vmware_tools", "ssh", "https"]
+    fail_msg: >-
+      Unsupported guest_verification={{ deployment_v2_esxi_guest_verification }}
+      for {{ deployment_v2_esxi_host.fqdn }}. Supported values are vmware_tools,
+      ssh, and https.
+
 - name: Wait for ESXi HTTPS API to become reachable
   ansible.builtin.wait_for:
     host: "{{ hostvars[inventory_hostname].ansible_host }}"
@@ -8,6 +32,32 @@
     sleep: 5
     state: started
   delegate_to: "{{ deployment_v2_verification_router }}"
+
+- name: Wait for ESXi SSH to become reachable
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[inventory_hostname].ansible_host }}"
+    port: 22
+    timeout: 1800
+    connect_timeout: 5
+    sleep: 5
+    state: started
+  delegate_to: "{{ deployment_v2_verification_router }}"
+  when: deployment_v2_esxi_guest_verification == "ssh"
+
+- name: Validate vSphere credentials are available for VMware Tools verification
+  ansible.builtin.assert:
+    that:
+      - deployment_v2.credentials is defined
+      - deployment_v2.credentials.vsphere is defined
+      - deployment_v2.credentials.vsphere.server is defined
+      - deployment_v2.credentials.vsphere.user is defined
+      - deployment_v2.credentials.vsphere.password is defined
+      - deployment_v2.credentials.vsphere.datacenter is defined
+      - deployment_v2.credentials.vm_admin_password is defined
+    fail_msg: >-
+      deployment_v2.credentials.vsphere and deployment_v2.credentials.vm_admin_password
+      must be present when guest_verification=vmware_tools.
+  when: deployment_v2_esxi_guest_verification == "vmware_tools"
 
 - name: Wait for VMware Tools on ESXi guest
   community.vmware.vmware_guest_tools_wait:
@@ -22,6 +72,7 @@
   retries: 90
   delay: 20
   delegate_to: localhost
+  when: deployment_v2_esxi_guest_verification == "vmware_tools"
 
 - name: Wait for ESXi provisioning marker via VMware Tools guest operations
   community.vmware.vmware_vm_shell:
@@ -43,3 +94,4 @@
   until: (deployment_v2_esxi_provisioned_marker.exit_code | default(1)) == 0
   failed_when: false
   delegate_to: localhost
+  when: deployment_v2_esxi_guest_verification == "vmware_tools"

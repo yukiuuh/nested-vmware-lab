@@ -66,8 +66,12 @@
     cmd: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_storage_local_script_path }}"
     executable: /bin/sh
   vars:
-    ansible_user: root
-    ansible_password: "{{ hostvars[inventory_hostname].deployment_v2.credentials.vm_admin_password }}"
+    ansible_user: "{{ deployment_v2_vcenter_prepare_iscsi_host.ansible.user | default('root', true) }}"
+    ansible_password: >-
+      {{
+        deployment_v2_vcenter_prepare_iscsi_host.ansible.password
+        | default(hostvars[inventory_hostname].deployment_v2.credentials.vm_admin_password, true)
+      }}
     ansible_ssh_common_args: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_esxi_ssh_common_args }}"
     ansible_remote_tmp: /var/tmp/.ansible-root/tmp
     ansible_ssh_transfer_method: piped
@@ -80,8 +84,12 @@
 - name: Fetch failed iSCSI datastore preparation log over ESXi SSH via Router for {{ deployment_v2_vcenter_prepare_iscsi_host.fqdn }}
   ansible.builtin.raw: "cat {{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_storage_guest_log_path | quote }}"
   vars:
-    ansible_user: root
-    ansible_password: "{{ hostvars[inventory_hostname].deployment_v2.credentials.vm_admin_password }}"
+    ansible_user: "{{ deployment_v2_vcenter_prepare_iscsi_host.ansible.user | default('root', true) }}"
+    ansible_password: >-
+      {{
+        deployment_v2_vcenter_prepare_iscsi_host.ansible.password
+        | default(hostvars[inventory_hostname].deployment_v2.credentials.vm_admin_password, true)
+      }}
     ansible_ssh_common_args: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_esxi_ssh_common_args }}"
     ansible_remote_tmp: /var/tmp/.ansible-root/tmp
   register: deployment_v2_vcenter_prepare_storage_log_fetch

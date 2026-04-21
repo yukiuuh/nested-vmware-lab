@@ -544,15 +544,15 @@ locals {
     length([
       for _, vcenter in local.vcenters : vcenter
       if try(vcenter.placement.kind, "") == "provider_vsphere"
-    ]) > 0 && try(local.provider.server, null) == null ? "provider_config.server" : null,
+    ]) > 0 && try(local.provider.server, null) == null && try(local.provider.server_env, null) == null ? "provider_config.server or provider_config.server_env" : null,
     length([
       for _, vcenter in local.vcenters : vcenter
       if try(vcenter.placement.kind, "") == "provider_vsphere"
-    ]) > 0 && try(local.provider.user, null) == null ? "provider_config.user" : null,
+    ]) > 0 && try(local.provider.user, null) == null && try(local.provider.user_env, null) == null ? "provider_config.user or provider_config.user_env" : null,
     length([
       for _, vcenter in local.vcenters : vcenter
       if try(vcenter.placement.kind, "") == "provider_vsphere"
-    ]) > 0 && try(local.provider.password, null) == null ? "provider_config.password" : null,
+    ]) > 0 && try(local.provider.password, null) == null && try(local.provider.password_env, null) == null ? "provider_config.password or provider_config.password_env" : null,
   ])
 
 }
@@ -935,7 +935,7 @@ resource "terraform_data" "validate_vcenter_inputs" {
 
     precondition {
       condition     = length(local.vcenters_missing_provider_credentials) == 0
-      error_message = "deployment_v2 vCenter prepare requires explicit provider credentials in provider_config. Missing: ${join(", ", local.vcenters_missing_provider_credentials)}"
+      error_message = "deployment_v2 vCenter prepare requires provider credentials or environment references in provider_config. Missing: ${join(", ", local.vcenters_missing_provider_credentials)}"
     }
   }
 }

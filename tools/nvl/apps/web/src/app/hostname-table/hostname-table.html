@@ -1,0 +1,38 @@
+@if (inventory.issues.length > 0) {
+  <div class="hostname-issues">
+    @for (issue of inventory.issues; track issue.message) {
+      <div class="hostname-issue">
+        <span
+          class="label"
+          [class.label-danger]="issue.severity === 'error'"
+          [class.label-warning]="issue.severity === 'warning'"
+        >
+          {{ issue.severity }}
+        </span>
+        <span>{{ issue.message }}</span>
+      </div>
+    }
+  </div>
+}
+
+<clr-datagrid class="hostname-grid">
+  <clr-dg-column>Kind</clr-dg-column>
+  <clr-dg-column>Name</clr-dg-column>
+  <clr-dg-column>Hostname</clr-dg-column>
+  <clr-dg-column>FQDN</clr-dg-column>
+  <clr-dg-column>IP</clr-dg-column>
+  <clr-dg-column>Source</clr-dg-column>
+
+  @for (entry of inventory.entries; track entry.source) {
+    <clr-dg-row>
+      <clr-dg-cell>{{ entry.kind }}</clr-dg-cell>
+      <clr-dg-cell>{{ entry.name }}</clr-dg-cell>
+      <clr-dg-cell>{{ entry.hostname }}</clr-dg-cell>
+      <clr-dg-cell>{{ entry.fqdn }}</clr-dg-cell>
+      <clr-dg-cell>{{ entry.ip }}</clr-dg-cell>
+      <clr-dg-cell>{{ entry.source }}</clr-dg-cell>
+    </clr-dg-row>
+  }
+
+  <clr-dg-footer>{{ inventory.entries.length }} names</clr-dg-footer>
+</clr-datagrid>

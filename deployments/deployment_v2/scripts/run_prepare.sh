@@ -8,14 +8,16 @@ DEPLOYMENT_DIR="$ROOT_DIR/deployments/deployment_v2"
 ANSIBLE_CONFIG_PATH="$ROOT_DIR/ansible.cfg"
 INVENTORY_FILE=""
 EXTRA_VARS_FILE=""
-SHOW_VERIFICATION_ERRORS="false"
 PLAYBOOK_PATH="$ROOT_DIR/playbooks/deployment_v2_prepare.yaml"
 PRETTY="false"
+SEED_FILE=""
 DEFAULT_EXTRA_VARS_BASENAME="tfvars/prepare.vars.yaml"
+PROVIDER_DISCOVERY="true"
+PROVIDER_DISCOVERY_WAIT="2m"
 
 usage() {
   cat <<EOF
-Run the deployment_v2 preparation playbook from Terraform output.
+Run the deployment_v2 preparation playbook from a saved seed file or Terraform output.
 
 Usage:
   $SCRIPT_NAME [options]
@@ -23,8 +25,15 @@ Usage:
 Options:
   --deployment-dir DIR   deployment_v2 Terraform working directory
                          default: $DEPLOYMENT_DIR
+  --seed-file FILE       read ansible_inventory_seed JSON from FILE instead of
+                         Terraform output
   --inventory-file FILE  write rendered inventory JSON to FILE and use it
                          default: temporary file
+  --no-provider-discovery
+                         do not resolve missing provider-observed values before rendering
+  --provider-discovery-wait DURATION
+                         wait duration for provider IP discovery
+                         default: $PROVIDER_DISCOVERY_WAIT
   --extra-vars FILE      Ansible extra-vars YAML/JSON file
                          default: auto-detect $DEPLOYMENT_DIR/$DEFAULT_EXTRA_VARS_BASENAME
   --pretty               pretty-print the generated inventory JSON
@@ -36,6 +45,10 @@ Expected extra vars include:
 Template:
   cp $DEPLOYMENT_DIR/tfvars/prepare.vars.yaml.example \\
      $DEPLOYMENT_DIR/tfvars/prepare.vars.yaml
+
+Examples:
+  $SCRIPT_NAME --seed-file generated/lab-a/seed.json
+  $SCRIPT_NAME --deployment-dir $DEPLOYMENT_DIR
 EOF
 }
 
@@ -54,8 +67,20 @@ while [[ $# -gt 0 ]]; do
       DEPLOYMENT_DIR="${2:-}"
       shift 2
       ;;
+    --seed-file)
+      SEED_FILE="${2:-}"
+      shift 2
+      ;;
     --inventory-file)
       INVENTORY_FILE="${2:-}"
+      shift 2
+      ;;
+    --no-provider-discovery)
+      PROVIDER_DISCOVERY="false"
+      shift
+      ;;
+    --provider-discovery-wait)
+      PROVIDER_DISCOVERY_WAIT="${2:-}"
       shift 2
       ;;
     --extra-vars)
@@ -76,12 +101,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-require_cmd terraform
 require_cmd ansible-playbook
+if [[ -z "$SEED_FILE" ]]; then
+  require_cmd terraform
+fi
 
 [[ -d "$DEPLOYMENT_DIR" ]] || fail "deployment directory not found: $DEPLOYMENT_DIR"
 [[ -f "$PLAYBOOK_PATH" ]] || fail "playbook not found: $PLAYBOOK_PATH"
 [[ -f "$ANSIBLE_CONFIG_PATH" ]] || fail "ansible config not found: $ANSIBLE_CONFIG_PATH"
+if [[ -n "$SEED_FILE" ]]; then
+  [[ -f "$SEED_FILE" ]] || fail "seed file not found: $SEED_FILE"
+fi
 
 if [[ -z "$EXTRA_VARS_FILE" && -f "$DEPLOYMENT_DIR/$DEFAULT_EXTRA_VARS_BASENAME" ]]; then
   EXTRA_VARS_FILE="$DEPLOYMENT_DIR/$DEFAULT_EXTRA_VARS_BASENAME"
@@ -91,9 +121,18 @@ if [[ -z "$INVENTORY_FILE" ]]; then
   INVENTORY_FILE="$(mktemp --suffix=.json)"
 fi
 
-RENDER_ARGS=(--deployment-dir "$DEPLOYMENT_DIR")
+if [[ -n "$SEED_FILE" ]]; then
+  RENDER_ARGS=(--seed-file "$SEED_FILE")
+else
+  RENDER_ARGS=(--deployment-dir "$DEPLOYMENT_DIR")
+fi
 if [[ "$PRETTY" == "true" ]]; then
   RENDER_ARGS+=(--pretty)
+fi
+if [[ "$PROVIDER_DISCOVERY" == "false" ]]; then
+  RENDER_ARGS+=(--no-provider-discovery)
+else
+  RENDER_ARGS+=(--provider-discovery-wait "$PROVIDER_DISCOVERY_WAIT")
 fi
 
 "$DEPLOYMENT_DIR/scripts/render_ansible_inventory.sh" "${RENDER_ARGS[@]}" > "$INVENTORY_FILE"

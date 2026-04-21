@@ -1,0 +1,369 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nvl.io/schemas/ansible-seed.v1alpha1.schema.json",
+  "title": "NVL AnsibleSeed v1alpha1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "apiVersion",
+    "kind",
+    "credentials",
+    "routers",
+    "esxi_groups",
+    "storages",
+    "vcenters"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "nvl.io/v1alpha1"
+    },
+    "kind": {
+      "const": "AnsibleSeed"
+    },
+    "credentials": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "routers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/router"
+      }
+    },
+    "esxi_groups": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/esxiGroup"
+      }
+    },
+    "storages": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/storage"
+      }
+    },
+    "vcenters": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/vcenter"
+      }
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "ansibleConnection": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["host", "user"],
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "user": {
+          "type": "string",
+          "minLength": 1
+        },
+        "password": {
+          "type": "string"
+        },
+        "password_env": {
+          "type": "string"
+        },
+        "private_key_file": {
+          "type": "string"
+        },
+        "private_key_file_env": {
+          "type": "string"
+        },
+        "ssh_common_args": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "discoverableAnsibleConnection": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["user"],
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "user": {
+          "type": "string",
+          "minLength": 1
+        },
+        "password": {
+          "type": "string"
+        },
+        "password_env": {
+          "type": "string"
+        },
+        "private_key_file": {
+          "type": "string"
+        },
+        "private_key_file_env": {
+          "type": "string"
+        },
+        "ssh_common_args": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "properties": {
+        "power_control": {
+          "type": "string"
+        },
+        "boot_control": {
+          "type": "string"
+        },
+        "console_input": {
+          "type": "string"
+        },
+        "guest_exec": {
+          "type": "string"
+        },
+        "file_transfer": {
+          "type": "string"
+        },
+        "guest_verification": {
+          "type": "string"
+        },
+        "esxi_install": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vcenter_deploy_target": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "owner": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        }
+      }
+    },
+    "providerRef": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "provider": {
+          "type": "string"
+        }
+      }
+    },
+    "observed": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "primary_mac_address": {
+          "type": "string"
+        },
+        "mac_addresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "provider_vm_id": {
+          "type": "string"
+        }
+      }
+    },
+    "router": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["ansible"],
+      "properties": {
+        "ansible": {
+          "$ref": "#/$defs/ansibleConnection"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/lifecycle"
+        },
+        "provider_ref": {
+          "$ref": "#/$defs/providerRef"
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "services": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "esxiGroup": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["router", "install", "hosts"],
+      "properties": {
+        "router": {
+          "type": "string",
+          "minLength": 1
+        },
+        "install": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["method"],
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": ["ansible_router_pxe", "ansible_vsphere_iso_boot"]
+            }
+          }
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/lifecycle"
+        },
+        "provider_ref": {
+          "$ref": "#/$defs/providerRef"
+        },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/esxiHost"
+          }
+        }
+      }
+    },
+    "esxiHost": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["hostname", "fqdn", "ip", "ansible"],
+      "properties": {
+        "hostname": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fqdn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ip": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ansible": {
+          "$ref": "#/$defs/discoverableAnsibleConnection"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/lifecycle"
+        },
+        "provider_ref": {
+          "$ref": "#/$defs/providerRef"
+        },
+        "observed": {
+          "$ref": "#/$defs/observed"
+        },
+        "mac_addresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "primary_mac_address": {
+          "type": "string"
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "ansible": {
+          "$ref": "#/$defs/ansibleConnection"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/lifecycle"
+        },
+        "provider_ref": {
+          "$ref": "#/$defs/providerRef"
+        },
+        "observed": {
+          "$ref": "#/$defs/observed"
+        }
+      }
+    },
+    "vcenter": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["fqdn", "ansible"],
+      "properties": {
+        "fqdn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ansible": {
+          "$ref": "#/$defs/ansibleConnection"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/lifecycle"
+        },
+        "provider_ref": {
+          "$ref": "#/$defs/providerRef"
+        },
+        "observed": {
+          "$ref": "#/$defs/observed"
+        }
+      }
+    }
+  }
+}

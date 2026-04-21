@@ -2,13 +2,18 @@ variable "provider_config" {
   description = "Top-level provider settings for deployment v2"
   type = object({
     server           = optional(string)
+    server_env       = optional(string)
     user             = optional(string)
+    user_env         = optional(string)
     password         = optional(string)
+    password_env     = optional(string)
     datacenter       = string
+    datacenter_env   = optional(string)
     resource_pool    = string
     compute_host     = string
     datastore        = string
     default_networks = optional(map(string), {})
+    insecure         = optional(bool, true)
   })
 }
 
@@ -23,6 +28,20 @@ variable "vm_admin_password" {
   type        = string
   default     = "VMware123!"
   sensitive   = true
+}
+
+variable "ansible_connection" {
+  description = "Optional controller-side Ansible SSH connection defaults for deployment v2 inventory rendering"
+  type = object({
+    user                 = optional(string)
+    password             = optional(string)
+    password_env         = optional(string)
+    private_key_file     = optional(string)
+    private_key_file_env = optional(string)
+    ssh_common_args      = optional(string)
+  })
+  default   = {}
+  sensitive = true
 }
 
 variable "ssh_authorized_keys" {

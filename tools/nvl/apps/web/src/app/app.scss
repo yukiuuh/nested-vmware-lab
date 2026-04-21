@@ -1,0 +1,137 @@
+:host {
+  display: block;
+  height: 100vh;
+}
+
+.screen-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.sample-controls,
+.toolbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.toolbar-actions {
+  justify-content: flex-end;
+}
+
+.btn cds-icon,
+.section-header cds-icon {
+  margin-right: 0.2rem;
+}
+
+.panel-section {
+  border-top: 1px solid var(--clr-card-border-color);
+  padding-top: 0.6rem;
+}
+
+.panel-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.section-header {
+  align-items: center;
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.6rem;
+}
+
+.section-header h2 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.clr-textarea,
+.preview-output {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.55rem;
+  line-height: 1.4;
+}
+
+.clr-textarea {
+  min-height: 34rem;
+  resize: vertical;
+  width: 100%;
+}
+
+.document-editor-grid {
+  align-items: start;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(22rem, 1fr) minmax(22rem, 1fr);
+}
+
+.document-form-pane,
+.document-text-pane {
+  min-width: 0;
+}
+
+.document-form-pane {
+  max-height: calc(100vh - 9rem);
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.preview-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.preview-mode-controls {
+  margin-bottom: 0;
+}
+
+.preview-output {
+  background: var(--clr-color-neutral-0);
+  border: 1px solid var(--clr-card-border-color);
+  color: var(--clr-color-neutral-900);
+  margin: 0;
+  max-height: 34rem;
+  min-height: 24rem;
+  overflow: auto;
+  resize: vertical;
+  white-space: pre-wrap;
+  width: 100%;
+  word-break: break-word;
+}
+
+.copy-output {
+  cursor: text;
+}
+
+.label-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.6rem;
+}
+
+@media (max-width: 900px) {
+  .screen-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .document-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-actions {
+    justify-content: flex-start;
+  }
+}

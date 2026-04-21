@@ -54,7 +54,7 @@
           },
           "lan": {
             "network_name": "Nested-Trunk",
-            "domain_name": "lab.local",
+            "domain_name": "nested.lab",
             "network": "10.0.0.0",
             "vlan_starts_with": 1001,
             "vlan_network_count": 20,
@@ -76,7 +76,7 @@
         "count": 3,
         "hostname_prefix": "esx-a",
         "starting_ip": "10.0.0.11",
-        "domain_name": "lab.local",
+        "domain_name": "nested.lab",
         "gateway": "10.0.0.1",
         "nameservers": [
           "10.0.0.1"
@@ -128,7 +128,7 @@
         "count": 2,
         "hostname_prefix": "esx-b",
         "starting_ip": "10.0.0.21",
-        "domain_name": "lab.local",
+        "domain_name": "nested.lab",
         "gateway": "10.0.0.1",
         "nameservers": [
           "10.0.0.1"
@@ -204,7 +204,7 @@
         "nameservers": [
           "10.0.0.1"
         ],
-        "domain_name": "lab.local",
+        "domain_name": "nested.lab",
         "subnet_mask": "255.255.255.0",
         "storage1_ip": "10.0.4.10",
         "storage2_ip": "10.0.5.10",
@@ -247,7 +247,7 @@
         "placement": {
           "kind": "nested_vsphere",
           "esxi_group": "management_b",
-          "host": "esx-b01.lab.local",
+          "host": "esx-b01.nested.lab",
           "datastore": "iscsi01",
           "network": "VM Network",
           "storage": {

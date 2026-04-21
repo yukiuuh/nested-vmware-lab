@@ -3,13 +3,18 @@ locals {
 
   provider = {
     server           = try(var.provider_config.server, null)
+    server_env       = try(var.provider_config.server_env, null)
     user             = try(var.provider_config.user, null)
+    user_env         = try(var.provider_config.user_env, null)
     password         = try(var.provider_config.password, null)
+    password_env     = try(var.provider_config.password_env, null)
     datacenter       = var.provider_config.datacenter
+    datacenter_env   = try(var.provider_config.datacenter_env, null)
     resource_pool    = var.provider_config.resource_pool
     compute_host     = var.provider_config.compute_host
     datastore        = var.provider_config.datastore
     default_networks = try(var.provider_config.default_networks, {})
+    insecure         = try(var.provider_config.insecure, true)
   }
 
   install_sources = {
@@ -25,8 +30,16 @@ locals {
   esxi_groups         = var.esxi_groups
   storages            = var.storages
   ssh_authorized_keys = var.ssh_authorized_keys
-  vcenters            = var.vcenters
-  services            = var.services
+  ansible_connection = {
+    user                 = try(var.ansible_connection.user, null)
+    password             = try(var.ansible_connection.password, null)
+    password_env         = try(var.ansible_connection.password_env, null)
+    private_key_file     = try(var.ansible_connection.private_key_file, null)
+    private_key_file_env = try(var.ansible_connection.private_key_file_env, null)
+    ssh_common_args      = try(var.ansible_connection.ssh_common_args, null)
+  }
+  vcenters = var.vcenters
+  services = var.services
 
   supported_router_source_types = toset([
     "http_ovf",
@@ -234,7 +247,8 @@ locals {
   router_ansible = {
     for name, _ in local.routers :
     name => {
-      user = "labadmin"
+      user     = "labadmin"
+      password = var.vm_admin_password
     }
   }
 
@@ -599,7 +613,8 @@ locals {
         zfs_nfs_dedup   = try(storage.zfs_nfs_dedup, "off")
       }
       ansible = {
-        user = "labadmin"
+        user     = "labadmin"
+        password = var.vm_admin_password
       }
     }
     if contains(keys(local.routers), try(storage.router, ""))
@@ -870,8 +885,9 @@ locals {
           primary_mac_address = module.esxi_hosts[host.key].primary_mac_address
           group               = name
           ansible = {
-            host = host.ip
-            user = "root"
+            host     = host.ip
+            user     = "root"
+            password = var.vm_admin_password
           }
           pxe = {
             router               = local.esxi_host_execution[host.key].router

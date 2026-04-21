@@ -1,0 +1,348 @@
+<ng-container
+  *ngTemplateOutlet="nodeTemplate; context: { nodeSchema: schema, nodePath: '', level: 0 }"
+/>
+
+<ng-template #nodeTemplate let-nodeSchema="nodeSchema" let-nodePath="nodePath" let-level="level">
+  <div class="schema-form" [class.schema-form-nested]="level > 0">
+    @for (field of fieldsFor(nodeSchema, nodePath); track field.path) {
+      @switch (field.widget) {
+        @case ('object') {
+          <section class="schema-section">
+            <div class="schema-section-header">
+              <h3>{{ field.label }}</h3>
+              @if (field.required) {
+                <span class="label label-info">required</span>
+              }
+            </div>
+            @if (field.description) {
+              <p class="schema-description">{{ field.description }}</p>
+            }
+            <ng-container
+              *ngTemplateOutlet="
+                nodeTemplate;
+                context: { nodeSchema: field.schema, nodePath: field.path, level: level + 1 }
+              "
+            />
+          </section>
+        }
+
+        @case ('map') {
+          <section class="schema-section schema-section-wide">
+            <div class="schema-section-header">
+              <h3>{{ field.label }}</h3>
+              @if (field.required) {
+                <span class="label label-info">required</span>
+              }
+            </div>
+            @if (field.description) {
+              <p class="schema-description">{{ field.description }}</p>
+            }
+
+            <div class="map-add-row">
+              <clr-input-container>
+                <label>Entry Key</label>
+                <input
+                  clrInput
+                  [ngModel]="newEntryName(field.path)"
+                  (ngModelChange)="updateNewEntryName(field.path, $event)"
+                />
+              </clr-input-container>
+              <button type="button" class="btn btn-sm btn-outline" (click)="addMapEntry(field)">
+                Add
+              </button>
+            </div>
+
+            @for (entry of mapEntries(field); track entry.key) {
+              <section class="map-entry">
+                <div class="map-entry-header">
+                  <h4>{{ entry.key }}</h4>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-link"
+                    (click)="removeMapEntry(field, entry.key)"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <ng-container
+                  *ngTemplateOutlet="
+                    nodeTemplate;
+                    context: {
+                      nodeSchema: mapValueSchema(field),
+                      nodePath: entry.path,
+                      level: level + 1,
+                    }
+                  "
+                />
+              </section>
+            }
+          </section>
+        }
+
+        @case ('freeform-map') {
+          <section class="schema-section schema-section-wide">
+            <div class="schema-section-header">
+              <h3>{{ field.label }}</h3>
+              @if (field.required) {
+                <span class="label label-info">required</span>
+              }
+            </div>
+            @if (field.description) {
+              <p class="schema-description">{{ field.description }}</p>
+            }
+
+            @for (entry of freeformEntries(field); track entry.key) {
+              <div class="freeform-row">
+                <clr-input-container>
+                  <label>{{ entry.key }}</label>
+                  <input
+                    clrInput
+                    [ngModel]="freeformTextValue(entry)"
+                    (ngModelChange)="updateFreeformValue(field, entry.key, $event)"
+                  />
+                </clr-input-container>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-link"
+                  (click)="removeFreeformEntry(field, entry.key)"
+                >
+                  Remove
+                </button>
+              </div>
+            }
+
+            <div class="map-add-row">
+              <clr-input-container>
+                <label>New Key</label>
+                <input
+                  clrInput
+                  [ngModel]="newFreeformKey(field.path)"
+                  (ngModelChange)="updateNewFreeformKey(field.path, $event)"
+                />
+              </clr-input-container>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline"
+                (click)="addFreeformEntry(field)"
+              >
+                Add
+              </button>
+            </div>
+          </section>
+        }
+
+        @case ('readonly') {
+          <clr-input-container>
+            <label>
+              {{ field.label }}
+              @if (field.required) {
+                <span class="required-mark">Required</span>
+              }
+            </label>
+            <input clrInput [value]="textValue(field)" readonly />
+            @if (hasHelperText(field)) {
+              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+            }
+          </clr-input-container>
+        }
+
+        @case ('select') {
+          <clr-select-container>
+            <label>
+              {{ field.label }}
+              @if (field.required) {
+                <span class="required-mark">Required</span>
+              }
+            </label>
+            <select
+              clrSelect
+              [required]="field.required"
+              [ngModel]="textValue(field)"
+              (ngModelChange)="updateScalar(field, $event)"
+            >
+              @for (option of field.schema.enum ?? []; track option) {
+                <option [value]="option">{{ option }}</option>
+              }
+            </select>
+            @if (hasHelperText(field)) {
+              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+            }
+          </clr-select-container>
+        }
+
+        @case ('checkbox') {
+          <clr-checkbox-container>
+            <clr-checkbox-wrapper>
+              <input
+                clrCheckbox
+                type="checkbox"
+                [ngModel]="checkedValue(field)"
+                (ngModelChange)="updateScalar(field, $event)"
+              />
+              <label>
+                {{ field.label }}
+                @if (field.required) {
+                  <span class="required-mark">Required</span>
+                }
+              </label>
+            </clr-checkbox-wrapper>
+            @if (hasHelperText(field)) {
+              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+            }
+          </clr-checkbox-container>
+        }
+
+        @case ('number') {
+          <clr-input-container>
+            <label>
+              {{ field.label }}
+              @if (field.required) {
+                <span class="required-mark">Required</span>
+              }
+            </label>
+            <input
+              clrInput
+              type="number"
+              [required]="field.required"
+              [ngModel]="textValue(field)"
+              (ngModelChange)="updateScalar(field, $event)"
+            />
+            @if (hasHelperText(field)) {
+              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+            }
+          </clr-input-container>
+        }
+
+        @case ('array-string') {
+          <clr-textarea-container>
+            <label>
+              {{ field.label }}
+              @if (field.required) {
+                <span class="required-mark">Required</span>
+              }
+            </label>
+            <textarea
+              clrTextarea
+              rows="4"
+              [required]="field.required"
+              [ngModel]="stringListValue(field)"
+              (ngModelChange)="updateStringList(field, $event)"
+            ></textarea>
+            <clr-control-helper>{{ helperText(field, 'One value per line.') }}</clr-control-helper>
+          </clr-textarea-container>
+        }
+
+        @case ('array-object') {
+          <section class="schema-section schema-section-wide">
+            <div class="schema-section-header">
+              <div class="schema-section-title">
+                <h3>{{ field.label }}</h3>
+                @if (field.required) {
+                  <span class="label label-info">required</span>
+                }
+              </div>
+              <button type="button" class="btn btn-sm btn-outline" (click)="addArrayItem(field)">
+                Add
+              </button>
+            </div>
+            @if (field.description) {
+              <p class="schema-description">{{ field.description }}</p>
+            }
+            @for (entry of arrayEntries(field); track entry.key) {
+              <section class="map-entry">
+                <div class="map-entry-header">
+                  <h4>{{ arrayEntryLabel(entry.key) }}</h4>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-link"
+                    (click)="removeArrayItem(field, entry.key)"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <ng-container
+                  *ngTemplateOutlet="
+                    nodeTemplate;
+                    context: {
+                      nodeSchema: arrayItemSchema(field),
+                      nodePath: entry.path,
+                      level: level + 1,
+                    }
+                  "
+                />
+              </section>
+            }
+          </section>
+        }
+
+        @case ('array-json') {
+          <clr-textarea-container class="schema-json-field">
+            <label>
+              {{ field.label }}
+              @if (field.required) {
+                <span class="required-mark">Required</span>
+              }
+            </label>
+            <textarea
+              clrTextarea
+              rows="8"
+              spellcheck="false"
+              [required]="field.required"
+              [ngModel]="jsonValue(field)"
+              (ngModelChange)="updateJson(field, $event)"
+            ></textarea>
+            @if (jsonErrors()[field.path]) {
+              <clr-control-error>{{ jsonErrors()[field.path] }}</clr-control-error>
+            } @else if (hasHelperText(field)) {
+              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+            }
+          </clr-textarea-container>
+        }
+
+        @case ('json') {
+          <clr-textarea-container class="schema-json-field">
+            <label>
+              {{ field.label }}
+              @if (field.required) {
+                <span class="required-mark">Required</span>
+              }
+            </label>
+            <textarea
+              clrTextarea
+              rows="8"
+              spellcheck="false"
+              [required]="field.required"
+              [ngModel]="jsonValue(field)"
+              (ngModelChange)="updateJson(field, $event)"
+            ></textarea>
+            @if (jsonErrors()[field.path]) {
+              <clr-control-error>{{ jsonErrors()[field.path] }}</clr-control-error>
+            } @else if (hasHelperText(field)) {
+              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+            }
+          </clr-textarea-container>
+        }
+
+        @default {
+          <clr-input-container>
+            <label>
+              {{ field.label }}
+              @if (field.required) {
+                <span class="required-mark">Required</span>
+              }
+            </label>
+            <input
+              clrInput
+              [required]="field.required"
+              [ngModel]="textValue(field)"
+              (ngModelChange)="updateScalar(field, $event)"
+            />
+            @if (hasHelperText(field)) {
+              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+            }
+          </clr-input-container>
+        }
+      }
+    }
+  </div>
+</ng-template>

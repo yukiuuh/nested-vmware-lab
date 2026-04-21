@@ -29,6 +29,8 @@
             govc
             gomplate
             packer
+            nodejs_22
+            pnpm
 
             # Utilities
             yq-go
@@ -108,6 +110,8 @@
             echo "  govc          $(govc version 2>/dev/null || echo 'not found')"
             echo "  terraform     $(terraform version -json 2>/dev/null | yq -p json '.terraform_version' || echo 'not found')"
             echo "  packer        $(packer version 2>/dev/null || echo 'not found')"
+            echo "  node          $(node --version 2>/dev/null || echo 'not found')"
+            echo "  pnpm          $(pnpm --version 2>/dev/null || echo 'not found')"
             echo "  yq            $(yq --version 2>/dev/null || echo 'not found')"
             echo "  rclone        $(rclone version 2>/dev/null | head -1 || echo 'not found')"
             echo ""
