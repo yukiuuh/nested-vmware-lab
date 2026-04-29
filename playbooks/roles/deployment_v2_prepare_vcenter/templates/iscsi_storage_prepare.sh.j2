@@ -132,19 +132,25 @@ ensure_vmkernel_adapter() {
   VMK="$1"
   VSWITCH="$2"
   PORTGROUP="$3"
-  UPLINK="$4"
-  VLAN="$5"
-  MTU="$6"
-  IPADDR="$7"
-  NETMASK="$8"
+  UPLINKS="$4"
+  ACTIVE_UPLINKS="$5"
+  STANDBY_UPLINKS="$6"
+  UNUSED_UPLINKS="$7"
+  VLAN="$8"
+  MTU="$9"
+  IPADDR="${10}"
+  NETMASK="${11}"
+  SERVICES="${12}"
 
   if ! vswitch_exists "$VSWITCH"; then
     esxcli network vswitch standard add --vswitch-name="$VSWITCH"
   fi
   esxcli network vswitch standard set --vswitch-name="$VSWITCH" --mtu="$MTU"
-  esxcli network vswitch standard uplink add \
-    --vswitch-name="$VSWITCH" \
-    --uplink-name="$UPLINK" >/dev/null 2>&1 || true
+  for UPLINK in $UPLINKS; do
+    esxcli network vswitch standard uplink add \
+      --vswitch-name="$VSWITCH" \
+      --uplink-name="$UPLINK" >/dev/null 2>&1 || true
+  done
 
   if ! portgroup_exists "$PORTGROUP" "$VSWITCH"; then
     esxcli network vswitch standard portgroup add \
@@ -152,12 +158,79 @@ ensure_vmkernel_adapter() {
       --portgroup-name="$PORTGROUP"
   fi
   esxcli network vswitch standard portgroup set -p "$PORTGROUP" -v "$VLAN"
+  configure_portgroup_failover "$PORTGROUP" "$ACTIVE_UPLINKS" "$STANDBY_UPLINKS" "$UNUSED_UPLINKS"
 
   if ! vmkernel_exists "$VMK"; then
     esxcli network ip interface add -i "$VMK" -p "$PORTGROUP"
   fi
   esxcli network ip interface set -i "$VMK" -m "$MTU"
   esxcli network ip interface ipv4 set -i "$VMK" -t=static -I="$IPADDR" -N="$NETMASK"
+  configure_vmkernel_services "$VMK" "$SERVICES"
+}
+
+space_to_csv() {
+  echo "$1" | awk '{$1=$1; gsub(/[[:space:]]+/, ","); print}'
+}
+
+configure_portgroup_failover() {
+  PORTGROUP="$1"
+  ACTIVE_UPLINKS="$2"
+  STANDBY_UPLINKS="$3"
+  UNUSED_UPLINKS="$4"
+
+  if [ -n "$ACTIVE_UPLINKS" ]; then
+    esxcli network vswitch standard portgroup policy failover set \
+      --portgroup-name="$PORTGROUP" \
+      --active-uplinks="$(space_to_csv "$ACTIVE_UPLINKS")"
+  fi
+  if [ -n "$STANDBY_UPLINKS" ]; then
+    esxcli network vswitch standard portgroup policy failover set \
+      --portgroup-name="$PORTGROUP" \
+      --standby-uplinks="$(space_to_csv "$STANDBY_UPLINKS")"
+  fi
+}
+
+service_to_vmkernel_tag() {
+  case "$1" in
+    vmotion) echo "VMotion" ;;
+    vsan) echo "VSAN" ;;
+    *) return 1 ;;
+  esac
+}
+
+vmkernel_tag_exists() {
+  VMK="$1"
+  TAG="$2"
+
+  esxcli network ip interface tag get -i "$VMK" | awk -v tag="$TAG" '
+    $1 == tag || $0 == tag { found=1 }
+    END { exit !found }
+  '
+}
+
+configure_vmkernel_services() {
+  VMK="$1"
+  SERVICES="$2"
+
+  for SERVICE in $SERVICES; do
+    TAG="$(service_to_vmkernel_tag "$SERVICE")" || fail_with_diagnostics "unsupported VMkernel service: $SERVICE"
+    if ! vmkernel_tag_exists "$VMK" "$TAG"; then
+      TAG_ADD_OUT=""
+      TAG_ADD_RC=0
+      TAG_ADD_OUT="$(esxcli network ip interface tag add -i "$VMK" -t "$TAG" 2>&1)" || TAG_ADD_RC=$?
+      if [ "$TAG_ADD_RC" -ne 0 ]; then
+        case "$TAG_ADD_OUT" in
+          *"already tagged with $TAG"*)
+            log "VMkernel adapter $VMK already has tag $TAG"
+            ;;
+          *)
+            echo "$TAG_ADD_OUT" >&2
+            fail_with_diagnostics "failed to set VMkernel tag $TAG on $VMK"
+            ;;
+        esac
+      fi
+    fi
+  done
 }
 
 select_software_iscsi_adapter() {
@@ -325,11 +398,15 @@ ensure_vmkernel_adapter \
   {{ vmkernel_adapter.name | quote }} \
   {{ vmkernel_adapter.vswitch | quote }} \
   {{ vmkernel_adapter.portgroup | quote }} \
-  {{ vmkernel_adapter.uplink | quote }} \
+  {{ vmkernel_adapter.uplinks | default([vmkernel_adapter.uplink]) | join(' ') | quote }} \
+  {{ vmkernel_adapter.active_uplinks | default([vmkernel_adapter.uplink]) | join(' ') | quote }} \
+  {{ vmkernel_adapter.standby_uplinks | default([]) | join(' ') | quote }} \
+  {{ vmkernel_adapter.unused_uplinks | default([]) | join(' ') | quote }} \
   {{ vmkernel_adapter.vlan | string | quote }} \
   {{ vmkernel_adapter.mtu | string | quote }} \
   {{ vmkernel_adapter.ip | quote }} \
-  {{ vmkernel_adapter.subnet_mask | quote }}
+  {{ vmkernel_adapter.subnet_mask | quote }} \
+  {{ vmkernel_adapter.services | default([]) | join(' ') | quote }}
 {% endfor %}
 
 if datastore_ready; then
@@ -344,9 +421,11 @@ ensure_iscsi_round_robin_satp_rule
 
 if [ "$ISCSI_PORT_BINDING" = "1" ]; then
 {% for vmkernel_adapter in deployment_v2_vcenter_prepare_iscsi_host.vmkernel_adapters | default([]) %}
+{% if vmkernel_adapter.purpose in (deployment_v2_vcenter_prepare_current.target.storage.iscsi.vmkernel_purposes | default([])) %}
   if ! esxcli iscsi networkportal list -A "$ADAPTER" | awk -v vmk={{ vmkernel_adapter.name | quote }} '$1 == vmk { found=1 } END { exit !found }'; then
     esxcli iscsi networkportal add -A "$ADAPTER" -n {{ vmkernel_adapter.name | quote }}
   fi
+{% endif %}
 {% endfor %}
 fi
 

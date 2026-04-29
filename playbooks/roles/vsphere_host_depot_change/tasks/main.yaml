@@ -3,21 +3,105 @@
 
 - name: "Fail if required variables are not defined for update"
   ansible.builtin.fail:
-    msg: "When action is 'update', 'vsphere_host_depot_fqdn' and 'vsphere_host_depot_download_token' must be defined."
+    msg: >-
+      When action is 'update', either 'vsphere_override_new_depots' must contain
+      depot entries or 'vsphere_host_depot_fqdn' and
+      'vsphere_host_depot_download_token' must be defined.
   when:
     - vsphere_host_depot_action == "update"
-    - (vsphere_host_depot_fqdn is not defined or vsphere_host_depot_download_token is not defined)
+    - vsphere_override_new_depots | default([]) | length == 0
+    - >-
+      vsphere_host_depot_fqdn | default('', true) | length == 0
+      or vsphere_host_depot_download_token | default('', true) | length == 0
+
+- name: "Validate override depot entries"
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          item is mapping
+          and (
+            item.location | default(item.url | default('', true), true)
+            | length
+          ) > 0
+          and item.description | default('', true) | length > 0
+        )
+        or (
+          item is sequence
+          and item is not string
+          and item | length >= 2
+          and item[0] | default('', true) | length > 0
+          and item[1] | default('', true) | length > 0
+        )
+    fail_msg: >-
+      vsphere_override_new_depots entries must be objects with location or url
+      plus description, or two-item lists [location, description].
+  loop: "{{ vsphere_override_new_depots | default([]) }}"
+  loop_control:
+    label: >-
+      {{
+        item.description
+        | default(item[1] | default(item.location | default(item.url | default('depot'))))
+      }}
+  when:
+    - vsphere_host_depot_action == "update"
+    - vsphere_override_new_depots | default([]) | length > 0
+
+- name: "Initialize override depot list"
+  ansible.builtin.set_fact:
+    new_depots: []
+  when:
+    - vsphere_host_depot_action == "update"
+    - vsphere_override_new_depots | default([]) | length > 0
+
+- name: "Construct new depot URLs and descriptions from override"
+  ansible.builtin.set_fact:
+    new_depots: >-
+      {{
+        (new_depots | default([]))
+        + [[
+          (
+            item.location
+            | default(item.url | default('', true), true)
+          ) if item is mapping else item[0],
+          (item.description if item is mapping else item[1])
+        ]]
+      }}
+  loop: "{{ vsphere_override_new_depots | default([]) }}"
+  loop_control:
+    label: >-
+      {{
+        item.description
+        | default(item[1] | default(item.location | default(item.url | default('depot'))))
+      }}
+  when:
+    - vsphere_host_depot_action == "update"
+    - vsphere_override_new_depots | default([]) | length > 0
 
 - name: "Construct new depot URLs and descriptions"
   ansible.builtin.set_fact:
     new_depots:
-      - ["https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token }}/PROD/COMP/ESX_HOST/addon-main/vmw-depot-index.xml", "Partner provided Addons for ESXi"]
-      - ["https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token }}/PROD/COMP/ESX_HOST/main/vmw-depot-index.xml", "Download vSphere ESXi and ESX patches"]
-      - ["https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token }}/PROD/COMP/ESX_HOST/iovp-main/vmw-depot-index.xml", "VMware Certified Async Drivers for ESXi"]
-      - ["https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token }}/PROD/COMP/ESX_HOST/vmtools-main/vmw-depot-index.xml", "VMware Async Releases for VM-tools on ESXi"]
-  when: vsphere_host_depot_action == "update"
+      - - >-
+          https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token
+          }}/PROD/COMP/ESX_HOST/addon-main/vmw-depot-index.xml
+        - Partner provided Addons for ESXi
+      - - >-
+          https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token
+          }}/PROD/COMP/ESX_HOST/main/vmw-depot-index.xml
+        - Download vSphere ESXi and ESX patches
+      - - >-
+          https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token
+          }}/PROD/COMP/ESX_HOST/iovp-main/vmw-depot-index.xml
+        - VMware Certified Async Drivers for ESXi
+      - - >-
+          https://{{ vsphere_host_depot_fqdn }}/{{ vsphere_host_depot_download_token
+          }}/PROD/COMP/ESX_HOST/vmtools-main/vmw-depot-index.xml
+        - VMware Async Releases for VM-tools on ESXi
+  when:
+    - vsphere_host_depot_action == "update"
+    - vsphere_override_new_depots | default([]) | length == 0
 
-- name: "vCenter API Block"
+- name: "VCenter API Block"
   block:
     - name: "Authenticate to vCenter and get session token"
       ansible.builtin.uri:
@@ -81,20 +165,37 @@
             body_format: json
             validate_certs: false
             status_code: 204
-          loop: "{{ current_depots_for_loop | selectattr('value.system_defined', 'equalto', true) | selectattr('value.enabled', 'equalto', true) }}"
+          loop: >-
+            {{
+              current_depots_for_loop
+              | selectattr('value.system_defined', 'equalto', true)
+              | selectattr('value.enabled', 'equalto', true)
+            }}
           loop_control:
             label: "Disabling {{ item.value.description }}"
 
         - name: "Delete existing custom depots with matching descriptions"
           ansible.builtin.uri:
-            url: "https://{{ vsphere_host_depot_vcenter_address }}/api/esx/settings/depots/online/{{ (current_depots_for_loop | selectattr('value.system_defined', 'equalto', false) | selectattr('value.description', 'equalto', item[1]))[0].depot }}"
+            url: >-
+              https://{{ vsphere_host_depot_vcenter_address
+              }}/api/esx/settings/depots/online/{{
+                vsphere_host_depot_matching_custom_depots[0].depot
+              }}
             method: DELETE
             headers:
               Cookie: "{{ vcenter_session_token.set_cookie }}"
             validate_certs: false
             status_code: 204
           loop: "{{ new_depots }}"
-          when: "(current_depots_for_loop | selectattr('value.system_defined', 'equalto', false) | selectattr('value.description', 'equalto', item[1])) | length > 0"
+          when: vsphere_host_depot_matching_custom_depots | length > 0
+          vars:
+            vsphere_host_depot_matching_custom_depots: >-
+              {{
+                current_depots_for_loop
+                | selectattr('value.system_defined', 'equalto', false)
+                | selectattr('value.description', 'equalto', item[1])
+                | list
+              }}
           loop_control:
             label: "Deleting old depot: {{ item[1] }}"
 

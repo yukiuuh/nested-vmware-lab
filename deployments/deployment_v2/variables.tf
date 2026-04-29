@@ -27,7 +27,7 @@ variable "vm_admin_password" {
   description = "Administrative password used for Router and ESXi guest operations in deployment v2"
   type        = string
   default     = "VMware123!"
-  sensitive   = true
+  sensitive   = false
 }
 
 variable "ansible_connection" {
@@ -64,7 +64,7 @@ variable "routers" {
 
 variable "esxi_groups" {
   description = "Named ESXi group definitions"
-  type        = map(any)
+  type        = any
   default     = {}
 }
 

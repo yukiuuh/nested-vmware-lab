@@ -1,3 +1,21 @@
+@if (sectionNavigation().length > 0) {
+  <nav class="schema-section-nav" aria-label="Form sections">
+    @for (section of sectionNavigation(); track section.path) {
+      <button
+        type="button"
+        class="btn btn-sm btn-link"
+        [class.schema-section-nav-has-errors]="sectionIssueCount(section) > 0"
+        (click)="goToSection(section.path)"
+      >
+        {{ section.label }}
+        @if (sectionIssueCount(section); as issueCount) {
+          <span class="label label-danger">{{ issueCount }}</span>
+        }
+      </button>
+    }
+  </nav>
+}
+
 <ng-container
   *ngTemplateOutlet="nodeTemplate; context: { nodeSchema: schema, nodePath: '', level: 0 }"
 />
@@ -7,157 +25,250 @@
     @for (field of fieldsFor(nodeSchema, nodePath); track field.path) {
       @switch (field.widget) {
         @case ('object') {
-          <section class="schema-section">
-            <div class="schema-section-header">
-              <h3>{{ field.label }}</h3>
-              @if (field.required) {
-                <span class="label label-info">required</span>
+          <clr-accordion
+            class="schema-section schema-accordion"
+            [class.schema-section-collapsed]="isSectionCollapsed(field.path)"
+            [attr.data-schema-path]="field.path"
+          >
+            <clr-accordion-panel
+              [clrAccordionPanelOpen]="!isSectionCollapsed(field.path)"
+              (clrAccordionPanelOpenChange)="setSectionOpen(field.path, $event)"
+            >
+              <clr-accordion-title>
+                <span class="schema-section-title">
+                  {{ field.label }}
+                </span>
+                @if (field.required) {
+                  <span class="label label-info">required</span>
+                }
+                @if (sectionIssueCount(field); as issueCount) {
+                  <span class="label label-danger schema-section-issue-count">{{
+                    issueCountLabel(issueCount)
+                  }}</span>
+                }
+              </clr-accordion-title>
+              @if (field.description) {
+                <clr-accordion-description>{{ field.description }}</clr-accordion-description>
               }
-            </div>
-            @if (field.description) {
-              <p class="schema-description">{{ field.description }}</p>
-            }
-            <ng-container
-              *ngTemplateOutlet="
-                nodeTemplate;
-                context: { nodeSchema: field.schema, nodePath: field.path, level: level + 1 }
-              "
-            />
-          </section>
+              <ng-container
+                *ngTemplateOutlet="
+                  nodeTemplate;
+                  context: { nodeSchema: field.schema, nodePath: field.path, level: level + 1 }
+                "
+              />
+            </clr-accordion-panel>
+          </clr-accordion>
         }
 
         @case ('map') {
-          <section class="schema-section schema-section-wide">
-            <div class="schema-section-header">
-              <h3>{{ field.label }}</h3>
-              @if (field.required) {
-                <span class="label label-info">required</span>
+          <clr-accordion
+            class="schema-section schema-accordion"
+            [class.schema-section-collapsed]="isSectionCollapsed(field.path)"
+            [attr.data-schema-path]="field.path"
+          >
+            <clr-accordion-panel
+              [clrAccordionPanelOpen]="!isSectionCollapsed(field.path)"
+              (clrAccordionPanelOpenChange)="setSectionOpen(field.path, $event)"
+            >
+              <clr-accordion-title>
+                <span class="schema-section-title">
+                  {{ field.label }}
+                </span>
+                @if (field.required) {
+                  <span class="label label-info">required</span>
+                }
+                @if (sectionIssueCount(field); as issueCount) {
+                  <span class="label label-danger schema-section-issue-count">{{
+                    issueCountLabel(issueCount)
+                  }}</span>
+                }
+              </clr-accordion-title>
+              @if (field.description) {
+                <clr-accordion-description>{{ field.description }}</clr-accordion-description>
               }
-            </div>
-            @if (field.description) {
-              <p class="schema-description">{{ field.description }}</p>
-            }
 
-            <div class="map-add-row">
-              <clr-input-container>
-                <label>Entry Key</label>
-                <input
-                  clrInput
-                  [ngModel]="newEntryName(field.path)"
-                  (ngModelChange)="updateNewEntryName(field.path, $event)"
-                />
-              </clr-input-container>
-              <button type="button" class="btn btn-sm btn-outline" (click)="addMapEntry(field)">
-                Add
-              </button>
-            </div>
+              <div class="map-add-row">
+                <clr-input-container>
+                  <label>Entry Key</label>
+                  <input
+                    clrInput
+                    [ngModel]="newEntryName(field.path)"
+                    (ngModelChange)="updateNewEntryName(field.path, $event)"
+                  />
+                </clr-input-container>
+                <button type="button" class="btn btn-sm btn-outline" (click)="addMapEntry(field)">
+                  Add
+                </button>
+              </div>
 
-            @for (entry of mapEntries(field); track entry.key) {
-              <section class="map-entry">
-                <div class="map-entry-header">
-                  <h4>{{ entry.key }}</h4>
+              @for (entry of mapEntries(field); track entry.key) {
+                <clr-accordion
+                  class="schema-entry-accordion"
+                  [class.schema-section-collapsed]="isSectionCollapsed(entry.path)"
+                  [attr.data-schema-path]="entry.path"
+                >
+                  <clr-accordion-panel
+                    [clrAccordionPanelOpen]="!isSectionCollapsed(entry.path)"
+                    (clrAccordionPanelOpenChange)="setSectionOpen(entry.path, $event)"
+                  >
+                    <clr-accordion-title>
+                      <span class="schema-section-title">
+                        {{ entry.key }}
+                      </span>
+                      @if (mapEntryIssueCount(field, entry.path); as issueCount) {
+                        <span class="label label-danger schema-section-issue-count">{{
+                          issueCountLabel(issueCount)
+                        }}</span>
+                      }
+                    </clr-accordion-title>
+                    <div class="schema-entry-actions">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-danger-outline"
+                        [attr.aria-label]="removeMapEntryLabel(field, entry.key)"
+                        (click)="removeMapEntry(field, entry.key)"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <ng-container
+                      *ngTemplateOutlet="
+                        nodeTemplate;
+                        context: {
+                          nodeSchema: mapValueSchema(field),
+                          nodePath: entry.path,
+                          level: level + 1,
+                        }
+                      "
+                    />
+                  </clr-accordion-panel>
+                </clr-accordion>
+              }
+            </clr-accordion-panel>
+          </clr-accordion>
+        }
+
+        @case ('freeform-map') {
+          <clr-accordion
+            class="schema-section schema-accordion"
+            [class.schema-section-collapsed]="isSectionCollapsed(field.path)"
+            [attr.data-schema-path]="field.path"
+          >
+            <clr-accordion-panel
+              [clrAccordionPanelOpen]="!isSectionCollapsed(field.path)"
+              (clrAccordionPanelOpenChange)="setSectionOpen(field.path, $event)"
+            >
+              <clr-accordion-title>
+                <span class="schema-section-title">
+                  {{ field.label }}
+                </span>
+                @if (field.required) {
+                  <span class="label label-info">required</span>
+                }
+                @if (sectionIssueCount(field); as issueCount) {
+                  <span class="label label-danger schema-section-issue-count">{{
+                    issueCountLabel(issueCount)
+                  }}</span>
+                }
+              </clr-accordion-title>
+              @if (field.description) {
+                <clr-accordion-description>{{ field.description }}</clr-accordion-description>
+              }
+
+              @for (entry of freeformEntries(field); track entry.key) {
+                <div class="freeform-row">
+                  <clr-input-container>
+                    <label>{{ entry.key }}</label>
+                    <input
+                      clrInput
+                      [ngModel]="freeformTextValue(entry)"
+                      (ngModelChange)="updateFreeformValue(field, entry.key, $event)"
+                    />
+                  </clr-input-container>
                   <button
                     type="button"
-                    class="btn btn-sm btn-link"
-                    (click)="removeMapEntry(field, entry.key)"
+                    class="btn btn-sm btn-danger-outline"
+                    [attr.aria-label]="removeMapEntryLabel(field, entry.key)"
+                    (click)="removeFreeformEntry(field, entry.key)"
                   >
                     Remove
                   </button>
                 </div>
-                <ng-container
-                  *ngTemplateOutlet="
-                    nodeTemplate;
-                    context: {
-                      nodeSchema: mapValueSchema(field),
-                      nodePath: entry.path,
-                      level: level + 1,
-                    }
-                  "
-                />
-              </section>
-            }
-          </section>
-        }
-
-        @case ('freeform-map') {
-          <section class="schema-section schema-section-wide">
-            <div class="schema-section-header">
-              <h3>{{ field.label }}</h3>
-              @if (field.required) {
-                <span class="label label-info">required</span>
               }
-            </div>
-            @if (field.description) {
-              <p class="schema-description">{{ field.description }}</p>
-            }
 
-            @for (entry of freeformEntries(field); track entry.key) {
-              <div class="freeform-row">
+              <div class="map-add-row">
                 <clr-input-container>
-                  <label>{{ entry.key }}</label>
+                  <label>New Key</label>
                   <input
                     clrInput
-                    [ngModel]="freeformTextValue(entry)"
-                    (ngModelChange)="updateFreeformValue(field, entry.key, $event)"
+                    [ngModel]="newFreeformKey(field.path)"
+                    (ngModelChange)="updateNewFreeformKey(field.path, $event)"
                   />
                 </clr-input-container>
                 <button
                   type="button"
-                  class="btn btn-sm btn-link"
-                  (click)="removeFreeformEntry(field, entry.key)"
+                  class="btn btn-sm btn-outline"
+                  (click)="addFreeformEntry(field)"
                 >
-                  Remove
+                  Add
                 </button>
               </div>
-            }
-
-            <div class="map-add-row">
-              <clr-input-container>
-                <label>New Key</label>
-                <input
-                  clrInput
-                  [ngModel]="newFreeformKey(field.path)"
-                  (ngModelChange)="updateNewFreeformKey(field.path, $event)"
-                />
-              </clr-input-container>
-              <button
-                type="button"
-                class="btn btn-sm btn-outline"
-                (click)="addFreeformEntry(field)"
-              >
-                Add
-              </button>
-            </div>
-          </section>
+            </clr-accordion-panel>
+          </clr-accordion>
         }
 
         @case ('readonly') {
-          <clr-input-container>
-            <label>
+          <clr-input-container
+            [class.schema-field-wide]="isWideField(field)"
+            [class.schema-field-invalid]="hasFieldErrors(field)"
+            [attr.data-schema-path]="field.path"
+          >
+            <label [attr.for]="fieldInputId(field)">
               {{ field.label }}
               @if (field.required) {
-                <span class="required-mark">Required</span>
+                <span class="required-indicator" aria-hidden="true">*</span>
               }
             </label>
-            <input clrInput [value]="textValue(field)" readonly />
+            <input
+              clrInput
+              [id]="fieldInputId(field)"
+              [value]="textValue(field)"
+              [attr.aria-describedby]="fieldDescribedBy(field) || null"
+              [attr.aria-invalid]="hasFieldErrors(field)"
+              readonly
+            />
             @if (hasHelperText(field)) {
-              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+              <clr-control-helper [id]="fieldHelperId(field)">{{
+                helperText(field)
+              }}</clr-control-helper>
+            }
+            @if (hasFieldErrors(field)) {
+              <div class="schema-field-error" [id]="fieldErrorId(field)" role="alert">
+                {{ fieldErrorText(field) }}
+              </div>
             }
           </clr-input-container>
         }
 
         @case ('select') {
-          <clr-select-container>
-            <label>
+          <clr-select-container
+            [class.schema-field-wide]="isWideField(field)"
+            [class.schema-field-invalid]="hasFieldErrors(field)"
+            [attr.data-schema-path]="field.path"
+          >
+            <label [attr.for]="fieldInputId(field)">
               {{ field.label }}
               @if (field.required) {
-                <span class="required-mark">Required</span>
+                <span class="required-indicator" aria-hidden="true">*</span>
               }
             </label>
             <select
               clrSelect
+              [id]="fieldInputId(field)"
               [required]="field.required"
               [ngModel]="textValue(field)"
+              [attr.aria-describedby]="fieldDescribedBy(field) || null"
+              [attr.aria-invalid]="hasFieldErrors(field)"
               (ngModelChange)="updateScalar(field, $event)"
             >
               @for (option of field.schema.enum ?? []; track option) {
@@ -165,180 +276,304 @@
               }
             </select>
             @if (hasHelperText(field)) {
-              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+              <clr-control-helper [id]="fieldHelperId(field)">{{
+                helperText(field)
+              }}</clr-control-helper>
+            }
+            @if (hasFieldErrors(field)) {
+              <div class="schema-field-error" [id]="fieldErrorId(field)" role="alert">
+                {{ fieldErrorText(field) }}
+              </div>
             }
           </clr-select-container>
         }
 
         @case ('checkbox') {
-          <clr-checkbox-container>
+          <clr-checkbox-container
+            [class.schema-field-wide]="isWideField(field)"
+            [class.schema-field-invalid]="hasFieldErrors(field)"
+            [attr.data-schema-path]="field.path"
+          >
             <clr-checkbox-wrapper>
               <input
                 clrCheckbox
+                [id]="fieldInputId(field)"
                 type="checkbox"
                 [ngModel]="checkedValue(field)"
+                [attr.aria-describedby]="fieldDescribedBy(field) || null"
+                [attr.aria-invalid]="hasFieldErrors(field)"
                 (ngModelChange)="updateScalar(field, $event)"
               />
-              <label>
+              <label [attr.for]="fieldInputId(field)">
                 {{ field.label }}
                 @if (field.required) {
-                  <span class="required-mark">Required</span>
+                  <span class="required-indicator" aria-hidden="true">*</span>
                 }
               </label>
             </clr-checkbox-wrapper>
             @if (hasHelperText(field)) {
-              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+              <clr-control-helper [id]="fieldHelperId(field)">{{
+                helperText(field)
+              }}</clr-control-helper>
+            }
+            @if (hasFieldErrors(field)) {
+              <div class="schema-field-error" [id]="fieldErrorId(field)" role="alert">
+                {{ fieldErrorText(field) }}
+              </div>
             }
           </clr-checkbox-container>
         }
 
         @case ('number') {
-          <clr-input-container>
-            <label>
+          <clr-input-container
+            [class.schema-field-wide]="isWideField(field)"
+            [class.schema-field-invalid]="hasFieldErrors(field)"
+            [attr.data-schema-path]="field.path"
+          >
+            <label [attr.for]="fieldInputId(field)">
               {{ field.label }}
               @if (field.required) {
-                <span class="required-mark">Required</span>
+                <span class="required-indicator" aria-hidden="true">*</span>
               }
             </label>
             <input
               clrInput
+              [id]="fieldInputId(field)"
               type="number"
               [required]="field.required"
+              [min]="field.schema.minimum ?? null"
+              [max]="field.schema.maximum ?? null"
               [ngModel]="textValue(field)"
+              [attr.aria-describedby]="fieldDescribedBy(field) || null"
+              [attr.aria-invalid]="hasFieldErrors(field)"
               (ngModelChange)="updateScalar(field, $event)"
             />
             @if (hasHelperText(field)) {
-              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+              <clr-control-helper [id]="fieldHelperId(field)">{{
+                helperText(field)
+              }}</clr-control-helper>
+            }
+            @if (hasFieldErrors(field)) {
+              <div class="schema-field-error" [id]="fieldErrorId(field)" role="alert">
+                {{ fieldErrorText(field) }}
+              </div>
             }
           </clr-input-container>
         }
 
         @case ('array-string') {
-          <clr-textarea-container>
-            <label>
+          <clr-textarea-container
+            [class.schema-field-wide]="isWideField(field)"
+            [class.schema-field-invalid]="hasFieldErrors(field)"
+            [attr.data-schema-path]="field.path"
+          >
+            <label [attr.for]="fieldInputId(field)">
               {{ field.label }}
               @if (field.required) {
-                <span class="required-mark">Required</span>
+                <span class="required-indicator" aria-hidden="true">*</span>
               }
             </label>
             <textarea
               clrTextarea
+              [id]="fieldInputId(field)"
               rows="4"
               [required]="field.required"
               [ngModel]="stringListValue(field)"
+              [attr.aria-describedby]="fieldDescribedBy(field, 'One value per line.') || null"
+              [attr.aria-invalid]="hasFieldErrors(field)"
               (ngModelChange)="updateStringList(field, $event)"
             ></textarea>
-            <clr-control-helper>{{ helperText(field, 'One value per line.') }}</clr-control-helper>
+            <clr-control-helper [id]="fieldHelperId(field)">{{
+              helperText(field, 'One value per line.')
+            }}</clr-control-helper>
+            @if (hasFieldErrors(field)) {
+              <div class="schema-field-error" [id]="fieldErrorId(field)" role="alert">
+                {{ fieldErrorText(field) }}
+              </div>
+            }
           </clr-textarea-container>
         }
 
         @case ('array-object') {
-          <section class="schema-section schema-section-wide">
-            <div class="schema-section-header">
-              <div class="schema-section-title">
-                <h3>{{ field.label }}</h3>
+          <clr-accordion
+            class="schema-section schema-accordion"
+            [class.schema-section-collapsed]="isSectionCollapsed(field.path)"
+            [attr.data-schema-path]="field.path"
+          >
+            <clr-accordion-panel
+              [clrAccordionPanelOpen]="!isSectionCollapsed(field.path)"
+              (clrAccordionPanelOpenChange)="setSectionOpen(field.path, $event)"
+            >
+              <clr-accordion-title>
+                <span class="schema-section-title">
+                  {{ field.label }}
+                </span>
                 @if (field.required) {
                   <span class="label label-info">required</span>
                 }
+                @if (sectionIssueCount(field); as issueCount) {
+                  <span class="label label-danger schema-section-issue-count">{{
+                    issueCountLabel(issueCount)
+                  }}</span>
+                }
+              </clr-accordion-title>
+              @if (field.description) {
+                <clr-accordion-description>{{ field.description }}</clr-accordion-description>
+              }
+              <div class="schema-entry-actions">
+                <button type="button" class="btn btn-sm btn-outline" (click)="addArrayItem(field)">
+                  Add
+                </button>
               </div>
-              <button type="button" class="btn btn-sm btn-outline" (click)="addArrayItem(field)">
-                Add
-              </button>
-            </div>
-            @if (field.description) {
-              <p class="schema-description">{{ field.description }}</p>
-            }
-            @for (entry of arrayEntries(field); track entry.key) {
-              <section class="map-entry">
-                <div class="map-entry-header">
-                  <h4>{{ arrayEntryLabel(entry.key) }}</h4>
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-link"
-                    (click)="removeArrayItem(field, entry.key)"
+              @for (entry of arrayEntries(field); track entry.key) {
+                <clr-accordion
+                  class="schema-entry-accordion"
+                  [class.schema-section-collapsed]="isSectionCollapsed(entry.path)"
+                  [attr.data-schema-path]="entry.path"
+                >
+                  <clr-accordion-panel
+                    [clrAccordionPanelOpen]="!isSectionCollapsed(entry.path)"
+                    (clrAccordionPanelOpenChange)="setSectionOpen(entry.path, $event)"
                   >
-                    Remove
-                  </button>
-                </div>
-                <ng-container
-                  *ngTemplateOutlet="
-                    nodeTemplate;
-                    context: {
-                      nodeSchema: arrayItemSchema(field),
-                      nodePath: entry.path,
-                      level: level + 1,
-                    }
-                  "
-                />
-              </section>
-            }
-          </section>
+                    <clr-accordion-title>
+                      <span class="schema-section-title">
+                        {{ arrayEntryLabel(entry.key) }}
+                      </span>
+                      @if (arrayEntryIssueCount(field, entry.path); as issueCount) {
+                        <span class="label label-danger schema-section-issue-count">{{
+                          issueCountLabel(issueCount)
+                        }}</span>
+                      }
+                    </clr-accordion-title>
+                    <div class="schema-entry-actions">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-danger-outline"
+                        [attr.aria-label]="removeArrayItemLabel(field, entry.key)"
+                        (click)="removeArrayItem(field, entry.key)"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <ng-container
+                      *ngTemplateOutlet="
+                        nodeTemplate;
+                        context: {
+                          nodeSchema: arrayItemSchema(field),
+                          nodePath: entry.path,
+                          level: level + 1,
+                        }
+                      "
+                    />
+                  </clr-accordion-panel>
+                </clr-accordion>
+              }
+            </clr-accordion-panel>
+          </clr-accordion>
         }
 
         @case ('array-json') {
-          <clr-textarea-container class="schema-json-field">
-            <label>
+          <clr-textarea-container
+            class="schema-json-field"
+            [class.schema-field-invalid]="hasFieldErrors(field)"
+            [attr.data-schema-path]="field.path"
+          >
+            <label [attr.for]="fieldInputId(field)">
               {{ field.label }}
               @if (field.required) {
-                <span class="required-mark">Required</span>
+                <span class="required-indicator" aria-hidden="true">*</span>
               }
             </label>
             <textarea
               clrTextarea
+              [id]="fieldInputId(field)"
               rows="8"
               spellcheck="false"
               [required]="field.required"
               [ngModel]="jsonValue(field)"
+              [attr.aria-describedby]="fieldDescribedBy(field) || null"
+              [attr.aria-invalid]="hasFieldErrors(field)"
               (ngModelChange)="updateJson(field, $event)"
             ></textarea>
-            @if (jsonErrors()[field.path]) {
-              <clr-control-error>{{ jsonErrors()[field.path] }}</clr-control-error>
-            } @else if (hasHelperText(field)) {
-              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+            @if (hasHelperText(field)) {
+              <clr-control-helper [id]="fieldHelperId(field)">{{
+                helperText(field)
+              }}</clr-control-helper>
+            }
+            @if (hasFieldErrors(field)) {
+              <div class="schema-field-error" [id]="fieldErrorId(field)" role="alert">
+                {{ fieldErrorText(field) }}
+              </div>
             }
           </clr-textarea-container>
         }
 
         @case ('json') {
-          <clr-textarea-container class="schema-json-field">
-            <label>
+          <clr-textarea-container
+            class="schema-json-field"
+            [class.schema-field-invalid]="hasFieldErrors(field)"
+            [attr.data-schema-path]="field.path"
+          >
+            <label [attr.for]="fieldInputId(field)">
               {{ field.label }}
               @if (field.required) {
-                <span class="required-mark">Required</span>
+                <span class="required-indicator" aria-hidden="true">*</span>
               }
             </label>
             <textarea
               clrTextarea
+              [id]="fieldInputId(field)"
               rows="8"
               spellcheck="false"
               [required]="field.required"
               [ngModel]="jsonValue(field)"
+              [attr.aria-describedby]="fieldDescribedBy(field) || null"
+              [attr.aria-invalid]="hasFieldErrors(field)"
               (ngModelChange)="updateJson(field, $event)"
             ></textarea>
-            @if (jsonErrors()[field.path]) {
-              <clr-control-error>{{ jsonErrors()[field.path] }}</clr-control-error>
-            } @else if (hasHelperText(field)) {
-              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+            @if (hasHelperText(field)) {
+              <clr-control-helper [id]="fieldHelperId(field)">{{
+                helperText(field)
+              }}</clr-control-helper>
+            }
+            @if (hasFieldErrors(field)) {
+              <div class="schema-field-error" [id]="fieldErrorId(field)" role="alert">
+                {{ fieldErrorText(field) }}
+              </div>
             }
           </clr-textarea-container>
         }
 
         @default {
-          <clr-input-container>
-            <label>
+          <clr-input-container
+            [class.schema-field-wide]="isWideField(field)"
+            [class.schema-field-invalid]="hasFieldErrors(field)"
+            [attr.data-schema-path]="field.path"
+          >
+            <label [attr.for]="fieldInputId(field)">
               {{ field.label }}
               @if (field.required) {
-                <span class="required-mark">Required</span>
+                <span class="required-indicator" aria-hidden="true">*</span>
               }
             </label>
             <input
               clrInput
+              [id]="fieldInputId(field)"
               [required]="field.required"
               [ngModel]="textValue(field)"
+              [attr.aria-describedby]="fieldDescribedBy(field) || null"
+              [attr.aria-invalid]="hasFieldErrors(field)"
               (ngModelChange)="updateScalar(field, $event)"
             />
             @if (hasHelperText(field)) {
-              <clr-control-helper>{{ helperText(field) }}</clr-control-helper>
+              <clr-control-helper [id]="fieldHelperId(field)">{{
+                helperText(field)
+              }}</clr-control-helper>
+            }
+            @if (hasFieldErrors(field)) {
+              <div class="schema-field-error" [id]="fieldErrorId(field)" role="alert">
+                {{ fieldErrorText(field) }}
+              </div>
             }
           </clr-input-container>
         }

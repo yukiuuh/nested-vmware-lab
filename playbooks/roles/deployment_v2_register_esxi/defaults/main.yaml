@@ -10,3 +10,6 @@ deployment_v2_register_esxi_api_retries: 30
 deployment_v2_register_esxi_api_delay: 20
 deployment_v2_register_esxi_python_vendor_dir: /opt/nested-vmware-lab/python-vendor/vmware
 deployment_v2_register_esxi_python_vendor_archive: "/tmp/deployment_v2_register_esxi_pyvmomi_{{ inventory_hostname }}.tar.gz"
+deployment_v2_register_esxi_configure_depots: true
+deployment_v2_register_esxi_override_new_depots: []
+deployment_v2_register_esxi_vsan_ftt0_policy_name: vSAN FTT0

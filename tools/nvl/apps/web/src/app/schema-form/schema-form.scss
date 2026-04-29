@@ -1,3 +1,27 @@
+.schema-section-nav {
+  background: var(--clr-global-app-background);
+  border-bottom: 1px solid var(--clr-card-border-color);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.35rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.schema-section-nav .btn {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.2rem;
+  margin: 0;
+}
+
+.schema-section-nav-has-errors {
+  color: var(--clr-global-error-color);
+}
+
 .schema-form {
   display: grid;
   gap: 0.45rem 1rem;
@@ -10,59 +34,38 @@
 }
 
 .schema-section {
-  border-top: 1px solid var(--clr-card-border-color);
   grid-column: 1 / -1;
-  padding-top: 0.6rem;
-}
-
-.schema-section:first-child {
-  border-top: 0;
-}
-
-.schema-section-wide {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.schema-section-header,
-.map-entry-header {
-  align-items: center;
-  display: flex;
-  gap: 0.35rem;
-  justify-content: space-between;
+  margin-top: 0.35rem;
 }
 
 .schema-section-title {
   align-items: center;
-  display: flex;
-  gap: 0.35rem;
+  display: inline-flex;
+  gap: 0.25rem;
+  min-width: 0;
 }
 
-.schema-section-header h3,
-.map-entry-header h4 {
-  font-size: 0.7rem;
-  font-weight: 600;
-  margin: 0;
+.schema-section-issue-count {
+  margin-left: 0.25rem;
+  white-space: nowrap;
 }
 
-.required-mark {
+.required-indicator {
   color: var(--clr-color-action-600);
-  font-size: 0.45rem;
+  font-size: 0.65rem;
   font-weight: 600;
-  margin-left: 0.2rem;
-  text-transform: uppercase;
+  margin-left: 0.15rem;
 }
 
-.schema-description {
-  color: var(--clr-color-neutral-600);
-  font-size: 0.55rem;
-  margin: 0.2rem 0 0.4rem;
+.schema-entry-accordion {
+  display: block;
+  margin-top: 0.4rem;
 }
 
-.map-entry {
-  border: 1px solid var(--clr-card-border-color);
-  border-radius: 0.15rem;
-  padding: 0.5rem;
+.schema-entry-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.4rem;
 }
 
 .map-add-row,
@@ -80,6 +83,37 @@
 
 .schema-json-field {
   grid-column: 1 / -1;
+}
+
+.schema-field-wide {
+  grid-column: 1 / -1;
+}
+
+.schema-field-invalid input,
+.schema-field-invalid select,
+.schema-field-invalid textarea {
+  border-color: var(--clr-color-danger-600);
+}
+
+.schema-field-error {
+  color: var(--clr-color-danger-700);
+  font-size: 0.52rem;
+  line-height: 1.35;
+  margin-top: 0.15rem;
+}
+
+.schema-jump-highlight {
+  animation: schema-jump-pulse 1.4s ease-out;
+}
+
+@keyframes schema-jump-pulse {
+  0% {
+    background-color: var(--clr-accordion-active-background-color);
+  }
+
+  100% {
+    background-color: transparent;
+  }
 }
 
 textarea[clrTextarea] {

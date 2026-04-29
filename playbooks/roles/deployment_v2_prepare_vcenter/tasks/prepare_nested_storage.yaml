@@ -85,6 +85,55 @@
       nested_vsphere vCenter storage metadata is incomplete for {{ deployment_v2_vcenter_item.key }}.
       mode={{ deployment_v2_vcenter_prepare_storage_mode }}
 
+- name: Build VMkernel network preparation host set for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_vmkernel_hosts: >-
+      {{
+        (
+          deployment_v2.esxi_groups[
+            deployment_v2_vcenter_prepare_current.target.esxi_group
+          ].hosts | default([])
+        )
+        if deployment_v2_vcenter_prepare_current.target.esxi_group | default('', true) | length > 0
+        else []
+      }}
+
+- name: Check sshpass is available for ESXi SSH VMkernel network preparation
+  ansible.builtin.command:
+    argv:
+      - sshpass
+      - -V
+  register: deployment_v2_vcenter_prepare_vmkernel_sshpass_check
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  when:
+    - deployment_v2_vcenter_prepare_storage_mode != "iscsi_datastore"
+    - >-
+      (
+        deployment_v2_vcenter_prepare_vmkernel_hosts
+        | selectattr('vmkernel_adapters', 'defined')
+        | selectattr('vmkernel_adapters')
+        | list
+        | length
+      ) > 0
+
+- name: Prepare VMkernel networking before nested storage handling for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.include_tasks: prepare_vmkernel_host.yaml
+  vars:
+    deployment_v2_vcenter_prepare_vmkernel_host: "{{ deployment_v2_vcenter_prepare_vmkernel_host_item }}"
+  loop: >-
+    {{
+      deployment_v2_vcenter_prepare_vmkernel_hosts
+      | selectattr('vmkernel_adapters', 'defined')
+      | selectattr('vmkernel_adapters')
+      | list
+    }}
+  loop_control:
+    loop_var: deployment_v2_vcenter_prepare_vmkernel_host_item
+    label: "{{ deployment_v2_vcenter_prepare_vmkernel_host_item.fqdn }}"
+  when: deployment_v2_vcenter_prepare_storage_mode != "iscsi_datastore"
+
 - name: Build existing datastore verification script for {{ deployment_v2_vcenter_item.key }}
   ansible.builtin.set_fact:
     deployment_v2_vcenter_prepare_storage_script: |
@@ -208,44 +257,8 @@
     label: "{{ deployment_v2_vcenter_prepare_iscsi_host_item.fqdn }}"
   when: deployment_v2_vcenter_prepare_storage_mode == "iscsi_datastore"
 
-- name: Build vSAN bootstrap preflight script for {{ deployment_v2_vcenter_item.key }}
-  ansible.builtin.set_fact:
-    deployment_v2_vcenter_prepare_storage_script: |
-      set -eu
-      DATASTORE={{ deployment_v2_vcenter_prepare_current.target.storage.vsan.datastore_name | quote }}
-      CACHE_DISKS={{ deployment_v2_vcenter_prepare_current.target.storage.vsan.cache_disks | join(' ') | quote }}
-      CAPACITY_DISKS={{ deployment_v2_vcenter_prepare_current.target.storage.vsan.capacity_disks | join(' ') | quote }}
-      if esxcli storage filesystem list | awk -v ds="$DATASTORE" '$1 == ds { found=1 } END { exit !found }'; then
-        exit 0
-      fi
-      for DISK in $CACHE_DISKS $CAPACITY_DISKS; do
-        if [ ! -e "/vmfs/devices/disks/$DISK" ]; then
-          echo "vSAN bootstrap disk $DISK is not visible on this ESXi host" >&2
-          exit 1
-        fi
-        if esxcli storage vmfs extent list | awk 'NR > 2 { print $(NF-1) }' | grep -qx "$DISK"; then
-          echo "vSAN bootstrap disk $DISK is already claimed by a VMFS datastore" >&2
-          exit 1
-        fi
-      done
-  when: deployment_v2_vcenter_prepare_storage_mode == "vsan_bootstrap"
-
-- name: Preflight vSAN bootstrap disks for {{ deployment_v2_vcenter_item.key }}
-  community.vmware.vmware_vm_shell:
-    hostname: "{{ deployment_v2.credentials.vsphere.server }}"
-    username: "{{ deployment_v2.credentials.vsphere.user }}"
-    password: "{{ deployment_v2.credentials.vsphere.password }}"
-    validate_certs: false
-    datacenter: "{{ deployment_v2.credentials.vsphere.datacenter }}"
-    vm_id: "{{ deployment_v2_vcenter_prepare_current.target.esxi_host.vm_name }}"
-    vm_username: root
-    vm_password: "{{ deployment_v2.credentials.vm_admin_password }}"
-    vm_shell: /bin/sh
-    vm_shell_args: "-c {{ deployment_v2_vcenter_prepare_storage_script | quote }}"
-    wait_for_process: true
-  register: deployment_v2_vcenter_prepare_vsan_preflight
-  changed_when: false
-  failed_when: (deployment_v2_vcenter_prepare_vsan_preflight.exit_code | default(1)) != 0
-  delegate_to: localhost
-  become: false
+- name: Prepare vSAN bootstrap target disks for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.include_tasks: prepare_vsan_host.yaml
+  vars:
+    deployment_v2_vcenter_prepare_vsan_host: "{{ deployment_v2_vcenter_prepare_current.target.esxi_host }}"
   when: deployment_v2_vcenter_prepare_storage_mode == "vsan_bootstrap"

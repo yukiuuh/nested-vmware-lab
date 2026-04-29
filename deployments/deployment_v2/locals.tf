@@ -80,6 +80,11 @@ locals {
     "vsan_bootstrap",
   ])
 
+  supported_vmkernel_adapter_services = toset([
+    "vmotion",
+    "vsan",
+  ])
+
   install_source_version_search_text = {
     for name, source in local.install_sources :
     name => lower(join(" ", compact([
@@ -98,6 +103,11 @@ locals {
     name => regexall("([0-9]+)\\.([0-9]+)[._ -]*u([0-9]+)", text)
   }
 
+  install_source_major_minor_matches = {
+    for name, text in local.install_source_version_search_text :
+    name => regexall("([0-9]+)\\.([0-9]+)", text)
+  }
+
   install_source_vcenter_versions = {
     for name, source in local.install_sources :
     name => length(local.install_source_semver_matches[name]) > 0 ? {
@@ -112,6 +122,12 @@ locals {
       minor    = tonumber(local.install_source_update_matches[name][0][1])
       patch    = tonumber(local.install_source_update_matches[name][0][2])
       label    = format("%s.%s U%s", local.install_source_update_matches[name][0][0], local.install_source_update_matches[name][0][1], local.install_source_update_matches[name][0][2])
+      } : length(local.install_source_major_minor_matches[name]) > 0 ? {
+      detected = true
+      major    = tonumber(local.install_source_major_minor_matches[name][0][0])
+      minor    = tonumber(local.install_source_major_minor_matches[name][0][1])
+      patch    = 0
+      label    = join(".", local.install_source_major_minor_matches[name][0])
       } : {
       detected = false
       major    = null
@@ -373,7 +389,7 @@ locals {
 
   storage_luns = merge(concat([{}], [
     for storage_name, storage in local.storages : {
-      for idx, lun in coalesce(try(storage.luns, null), []) : "${storage_name}/${lun.name}" => merge(lun, {
+      for idx, lun in try(storage.luns, []) : "${storage_name}/${lun.name}" => merge(lun, {
         storage = storage_name
         lun_id  = idx
       })
@@ -397,7 +413,7 @@ locals {
         vmkernel_purposes = try(vcenter.placement.storage.vmkernel_purposes, [])
         port_binding      = try(vcenter.placement.storage.port_binding, false)
         vmkernel_adapters = [
-          for adapter in coalesce(try(local.vcenter_nested_target_hosts[name].vmkernel_adapters, null), []) : adapter
+          for adapter in try(local.vcenter_nested_target_hosts[name].vmkernel_adapters, []) : adapter
           if contains(try(vcenter.placement.storage.vmkernel_purposes, []), adapter.purpose)
         ]
         portals = distinct([
@@ -452,18 +468,38 @@ locals {
   esxi_group_vmkernel_adapter_definitions = {
     for name, group in local.esxi_groups :
     name => [
-      for adapter in coalesce(try(group.vmkernel_adapters, null), []) : {
-        name                      = try(tostring(adapter.name), null)
-        purpose                   = try(tostring(adapter.purpose), null)
-        vswitch                   = try(tostring(adapter.vswitch), null)
-        portgroup                 = try(tostring(adapter.portgroup), null)
-        uplink                    = try(tostring(adapter.uplink), null)
+      for adapter in try(group.vmkernel_adapters, []) : {
+        name      = try(tostring(adapter.name), null)
+        purpose   = try(tostring(adapter.purpose), null)
+        vswitch   = try(tostring(adapter.vswitch), null)
+        portgroup = try(tostring(adapter.portgroup), null)
+        uplink    = try(tostring(adapter.uplink), null)
+        active_uplinks = distinct(compact(concat(
+          try(trimspace(tostring(adapter.uplink)), "") != "" ? [trimspace(tostring(adapter.uplink))] : [],
+          try([for uplink in adapter.active_uplinks : trimspace(tostring(uplink))], [])
+        )))
+        standby_uplinks = distinct(compact(try([
+          for uplink in adapter.standby_uplinks : trimspace(tostring(uplink))
+        ], [])))
+        unused_uplinks = distinct(compact(try([
+          for uplink in adapter.unused_uplinks : trimspace(tostring(uplink))
+        ], [])))
+        uplinks = distinct(compact(concat(
+          try(trimspace(tostring(adapter.uplink)), "") != "" ? [trimspace(tostring(adapter.uplink))] : [],
+          try([for uplink in adapter.active_uplinks : trimspace(tostring(uplink))], []),
+          try([for uplink in adapter.standby_uplinks : trimspace(tostring(uplink))], []),
+          try([for uplink in adapter.unused_uplinks : trimspace(tostring(uplink))], [])
+        )))
         vlan                      = try(tonumber(adapter.vlan), null)
         mtu                       = try(tonumber(adapter.mtu), try(tonumber(local.routers[group.router].networks.lan.mtu), null))
         subnet                    = try(tostring(adapter.subnet), null)
         subnet_mask               = try(cidrnetmask(adapter.subnet), null)
         ip                        = try(tostring(adapter.ip), null)
         ip_offset_from_management = coalesce(try(adapter.ip_offset_from_management, null), true)
+        services = distinct(compact(concat(
+          try([for service in adapter.services : lower(trimspace(tostring(service)))], []),
+          contains(["vmotion", "vsan"], lower(trimspace(try(tostring(adapter.purpose), "")))) ? [lower(trimspace(tostring(adapter.purpose)))] : []
+        )))
       }
     ]
   }
@@ -605,7 +641,7 @@ locals {
         storage_subnet_mask  = storage.storage_subnet_mask
         storage_disk_size_gb = storage.disk_size_gb
         luns = [
-          for idx, lun in coalesce(try(storage.luns, null), []) : merge(lun, {
+          for idx, lun in try(storage.luns, []) : merge(lun, {
             lun_id = idx
           })
         ]
@@ -654,6 +690,7 @@ locals {
       deployment_size = vcenter.deployment_size
       sso_domain_name = try(vcenter.sso_domain_name, "vsphere.local")
       manages         = try(vcenter.manages, [])
+      depots          = try(vcenter.depots, [])
       ntp_servers = distinct(compact(concat(
         flatten([
           for managed_group in try(vcenter.manages, []) : try(local.esxi_groups[managed_group].ntp_servers, [])
@@ -684,7 +721,7 @@ locals {
         )
         hostname = (
           vcenter.placement.kind == "nested_vsphere"
-          ? try(local.vcenter_nested_target_hosts[name].ip, try(vcenter.placement.host, null))
+          ? try(local.vcenter_nested_target_hosts[name].fqdn, try(vcenter.placement.host, null))
           : (
             local.provider_vcenter_target_kind == "esxi"
             ? coalesce(try(vcenter.placement.host, null), local.provider.compute_host)
@@ -921,6 +958,7 @@ locals {
       deployment_size = vcenter.deployment_size
       sso_domain_name = vcenter.sso_domain_name
       manages         = vcenter.manages
+      depots          = vcenter.depots
       managed_hosts = flatten([
         for managed_group in vcenter.manages : try(local.esxi_group_outputs[managed_group].hosts, [])
       ])

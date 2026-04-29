@@ -1,0 +1,48 @@
+---
+- name: Build deployment_v2 vSAN post-registration script path for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.set_fact:
+    deployment_v2_register_esxi_vsan_post_config_path: >-
+      {{
+        "/tmp/deployment_v2_register_"
+        ~ deployment_v2_register_esxi_current_name
+        ~ "_vsan_post_config_"
+        ~ deployment_v2_register_esxi_run_id
+        ~ ".py"
+      }}
+
+- name: Render deployment_v2 vSAN post-registration script for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.template:
+    src: vsan_post_config.py.j2
+    dest: "{{ deployment_v2_register_esxi_vsan_post_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Run deployment_v2 vSAN post-registration configuration for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ deployment_v2_register_esxi_vsan_post_config_path }}"
+  register: deployment_v2_register_esxi_vsan_post_config
+  failed_when: false
+  changed_when: >-
+    deployment_v2_register_esxi_vsan_post_config.rc == 0
+    and (
+      deployment_v2_register_esxi_vsan_post_config.stdout
+      | from_json
+    ).changed | default(false)
+  environment:
+    PYTHONPATH: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+
+- name: Show deployment_v2 vSAN post-registration failure details for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.fail:
+    msg: |-
+      vSAN post-registration configuration failed for {{ deployment_v2_register_esxi_current_name }}.
+      script={{ deployment_v2_register_esxi_vsan_post_config_path }}
+      rc={{ deployment_v2_register_esxi_vsan_post_config.rc | default('unknown') }}
+
+      === stdout ===
+      {{ deployment_v2_register_esxi_vsan_post_config.stdout | default('') }}
+      === stderr ===
+      {{ deployment_v2_register_esxi_vsan_post_config.stderr | default('') }}
+  when: deployment_v2_register_esxi_vsan_post_config.rc | default(1) != 0

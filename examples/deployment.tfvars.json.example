@@ -160,7 +160,12 @@
             "purpose": "iscsi_a",
             "vswitch": "vSwitch1",
             "portgroup": "Storage1",
-            "uplink": "vmnic2",
+            "active_uplinks": [
+              "vmnic2"
+            ],
+            "unused_uplinks": [
+              "vmnic3"
+            ],
             "vlan": 1004,
             "mtu": 9000,
             "subnet": "10.0.4.0/24"
@@ -168,12 +173,43 @@
           {
             "name": "vmk2",
             "purpose": "iscsi_b",
-            "vswitch": "vSwitch2",
+            "vswitch": "vSwitch1",
             "portgroup": "Storage2",
-            "uplink": "vmnic3",
+            "active_uplinks": [
+              "vmnic3"
+            ],
+            "unused_uplinks": [
+              "vmnic2"
+            ],
             "vlan": 1005,
             "mtu": 9000,
             "subnet": "10.0.5.0/24"
+          },
+          {
+            "name": "vmk3",
+            "purpose": "vmotion",
+            "vswitch": "vSwitch1",
+            "portgroup": "vMotion",
+            "active_uplinks": [
+              "vmnic2",
+              "vmnic3"
+            ],
+            "vlan": 1006,
+            "mtu": 9000,
+            "subnet": "10.0.6.0/24"
+          },
+          {
+            "name": "vmk4",
+            "purpose": "vsan",
+            "vswitch": "vSwitch1",
+            "portgroup": "vSAN",
+            "active_uplinks": [
+              "vmnic2",
+              "vmnic3"
+            ],
+            "vlan": 1007,
+            "mtu": 9000,
+            "subnet": "10.0.7.0/24"
           }
         ],
         "install": {

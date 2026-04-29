@@ -29,7 +29,7 @@ Commands:
   validate             Validate an NVL Deployment or AnsibleSeed document
   check-capabilities  Validate AnsibleSeed capability/method compatibility
   providers           List provider adapter capabilities
-  generate            Generate provider-specific artifacts from a Deployment
+  generate            Generate provider-specific artifacts from a Deployment; edit the Deployment source, not generated output
   seed                Produce a realized AnsibleSeed from a producer`;
 }
 

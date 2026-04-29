@@ -30,27 +30,44 @@
       <button type="button" class="btn btn-outline" (click)="deploymentWizard.close()">
         Cancel
       </button>
-      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+      <button type="button" class="btn btn-primary" (click)="deploymentWizard.next()">
         Use Template and Continue
       </button>
     </ng-template>
 
-    <clr-alert [clrAlertType]="'info'" [clrAlertClosable]="false">
-      <clr-alert-item>
-        <span class="alert-text">
-          Select a topology template. Later pages edit the shared lab settings once and generate the
-          component-specific Deployment JSON.
-        </span>
-      </clr-alert-item>
-    </clr-alert>
+    <div class="wizard-status-row">
+      <span class="label label-info">{{ wizardSourceLabel() }}</span>
+      <div class="wizard-status-actions">
+        @if (canImportCurrentDocument()) {
+          <button type="button" class="btn btn-sm btn-outline" (click)="importCurrentDocument()">
+            Import Current JSON
+          </button>
+        }
+        <button type="button" class="btn btn-sm btn-outline" (click)="loadTemplate()">
+          Reset Template Defaults
+        </button>
+      </div>
+    </div>
 
-    <div class="template-grid">
+    <p class="wizard-description">
+      Select a topology template. Later pages edit shared lab settings once and generate the
+      component-specific Deployment JSON.
+    </p>
+
+    <div class="template-grid" role="radiogroup" aria-label="Deployment topology template">
       @for (template of templates; track template.id) {
         <button
           type="button"
           class="template-option"
+          role="radio"
           [class.template-option-selected]="blueprint().template === template.id"
+          [attr.aria-checked]="blueprint().template === template.id"
+          [attr.tabindex]="blueprint().template === template.id ? 0 : -1"
           (click)="selectTemplate(template.id)"
+          (keydown.arrowRight)="selectAdjacentTemplate(1)"
+          (keydown.arrowDown)="selectAdjacentTemplate(1)"
+          (keydown.arrowLeft)="selectAdjacentTemplate(-1)"
+          (keydown.arrowUp)="selectAdjacentTemplate(-1)"
         >
           <span class="template-option-title">{{ template.label }}</span>
           <span class="template-option-description">{{ template.description }}</span>
@@ -66,10 +83,23 @@
       <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
         Back
       </button>
-      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+      <button
+        type="button"
+        class="btn btn-primary"
+        [disabled]="!commonPageReady()"
+        (click)="deploymentWizard.next()"
+      >
         Continue
       </button>
     </ng-template>
+
+    @if (!commonPageReady()) {
+      <div class="wizard-issue-list" role="alert">
+        @for (issue of commonPageIssues(); track issue) {
+          <p>{{ issue }}</p>
+        }
+      </div>
+    }
 
     <section class="wizard-section">
       <h3>Lab Identity</h3>
@@ -143,7 +173,7 @@
           >
         </clr-password-container>
 
-        <clr-input-container>
+        <clr-input-container class="wide-field">
           <label>Private Key File</label>
           <input
             clrInput
@@ -184,7 +214,7 @@
     <section class="wizard-section">
       <h3>Provider Placement</h3>
       <div class="form-grid">
-        <clr-input-container>
+        <clr-input-container class="wide-field">
           <label>vSphere Server</label>
           <input
             clrInput
@@ -266,7 +296,7 @@
           />
         </clr-input-container>
 
-        <clr-input-container>
+        <clr-input-container class="wide-field">
           <label>Compute Host</label>
           <input
             clrInput
@@ -456,10 +486,23 @@
       <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
         Back
       </button>
-      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+      <button
+        type="button"
+        class="btn btn-primary"
+        [disabled]="!esxiPageReady()"
+        (click)="deploymentWizard.next()"
+      >
         Continue
       </button>
     </ng-template>
+
+    @if (!esxiPageReady()) {
+      <div class="wizard-issue-list" role="alert">
+        @for (issue of esxiPageIssues(); track issue) {
+          <p>{{ issue }}</p>
+        }
+      </div>
+    }
 
     <section class="wizard-section">
       <h3>Group Identity</h3>
@@ -629,10 +672,23 @@
       <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
         Back
       </button>
-      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+      <button
+        type="button"
+        class="btn btn-primary"
+        [disabled]="!vcenterPageReady()"
+        (click)="deploymentWizard.next()"
+      >
         Continue
       </button>
     </ng-template>
+
+    @if (!vcenterPageReady()) {
+      <div class="wizard-issue-list" role="alert">
+        @for (issue of vcenterPageIssues(); track issue) {
+          <p>{{ issue }}</p>
+        }
+      </div>
+    }
 
     <section class="wizard-section">
       <h3>vCenter Server</h3>
@@ -762,23 +818,171 @@
           </clr-input-container>
         }
       </div>
+
+      <div class="form-grid">
+        @for (depot of blueprint().vcenterDepots; track $index; let depotIndex = $index) {
+          <clr-input-container class="wide-field">
+            <label>vLCM Depot {{ depotIndex + 1 }} Location</label>
+            <input
+              clrInput
+              [required]="vcsaRequiresDepot()"
+              [ngModel]="depot.location"
+              (ngModelChange)="updateDepot(depotIndex, 'location', $event)"
+            />
+            <clr-control-helper
+              >Required for vCenter 9.0+ image-based ESXi management; optional for
+              earlier versions.</clr-control-helper
+            >
+          </clr-input-container>
+
+          <clr-input-container class="wide-field">
+            <label>vLCM Depot {{ depotIndex + 1 }} Description</label>
+            <input
+              clrInput
+              [required]="vcsaRequiresDepot()"
+              [ngModel]="depot.description"
+              (ngModelChange)="updateDepot(depotIndex, 'description', $event)"
+            />
+          </clr-input-container>
+
+          <div class="wizard-inline-actions">
+            <button type="button" class="btn btn-sm btn-outline" (click)="removeDepot(depotIndex)">
+              Remove Depot
+            </button>
+          </div>
+        }
+      </div>
+      <button type="button" class="btn btn-sm btn-outline" (click)="addDepot()">Add Depot</button>
     </section>
 
     <section class="wizard-section">
-      <h3>Storage</h3>
-      <clr-checkbox-container>
-        <clr-checkbox-wrapper>
-          <input
-            clrCheckbox
-            type="checkbox"
-            [ngModel]="blueprint().includeStorage"
-            (ngModelChange)="updateBoolean('includeStorage', $event)"
-          />
-          <label>Create storage appliance</label>
-        </clr-checkbox-wrapper>
-      </clr-checkbox-container>
+      <h3>Nested vCenter Storage</h3>
+      @if (isNestedVcenter()) {
+        <div class="form-grid">
+          <clr-select-container>
+            <label>Storage Mode</label>
+            <select
+              clrSelect
+              [ngModel]="blueprint().vcenterStorageMode"
+              (ngModelChange)="updateStorageMode($event)"
+            >
+              <option value="existing_datastore">Existing Datastore</option>
+              <option value="iscsi_datastore">iSCSI Datastore</option>
+              <option value="vsan_bootstrap">vSAN Bootstrap</option>
+            </select>
+          </clr-select-container>
+        </div>
+      }
 
-      @if (blueprint().includeStorage) {
+      @if (isNestedVcenter() && blueprint().vcenterStorageMode === 'existing_datastore') {
+        <div class="form-grid">
+          <clr-input-container>
+            <label>Nested VCSA Datastore Name</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().storageDatastoreName"
+              (ngModelChange)="updateBlueprint('storageDatastoreName', $event)"
+            />
+          </clr-input-container>
+        </div>
+      }
+
+      @if (isNestedVcenter() && blueprint().vcenterStorageMode === 'vsan_bootstrap') {
+        <div class="form-grid">
+          <clr-input-container>
+            <label>vSAN Datastore Name</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().vsanDatastoreName"
+              (ngModelChange)="updateBlueprint('vsanDatastoreName', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>vSAN Datacenter</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().vsanDatacenter"
+              (ngModelChange)="updateBlueprint('vsanDatacenter', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>vSAN Cluster</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().vsanCluster"
+              (ngModelChange)="updateBlueprint('vsanCluster', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Cache Disk</label>
+            <input
+              clrInput
+              required
+              [ngModel]="blueprint().vsanCacheDisk"
+              (ngModelChange)="updateBlueprint('vsanCacheDisk', $event)"
+            />
+            <clr-control-helper>Use a canonical naa.* device name or a vmhba runtime path.</clr-control-helper>
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Cache Disk GB</label>
+            <input
+              clrInput
+              type="number"
+              min="1"
+              required
+              [ngModel]="blueprint().vsanCacheDiskGb"
+              (ngModelChange)="updateNumber('vsanCacheDiskGb', $event)"
+            />
+          </clr-input-container>
+
+          <clr-input-container>
+            <label>Capacity Disk GB</label>
+            <input
+              clrInput
+              type="number"
+              min="1"
+              required
+              [ngModel]="blueprint().vsanCapacityDiskGb"
+              (ngModelChange)="updateNumber('vsanCapacityDiskGb', $event)"
+            />
+          </clr-input-container>
+
+          <clr-textarea-container class="wide-field">
+            <label>Capacity Disks</label>
+            <textarea
+              clrTextarea
+              rows="4"
+              required
+              [ngModel]="listText('vsanCapacityDisks')"
+              (ngModelChange)="updateStringList('vsanCapacityDisks', $event)"
+            ></textarea>
+            <clr-control-helper>One canonical naa.* device name or vmhba runtime path per line.</clr-control-helper>
+          </clr-textarea-container>
+        </div>
+      }
+
+      @if (isNestedVcenter() && blueprint().vcenterStorageMode === 'iscsi_datastore') {
+        <clr-checkbox-container>
+          <clr-checkbox-wrapper>
+            <input
+              clrCheckbox
+              type="checkbox"
+              [ngModel]="blueprint().includeStorage"
+              (ngModelChange)="updateBoolean('includeStorage', $event)"
+            />
+            <label>Create storage appliance</label>
+          </clr-checkbox-wrapper>
+        </clr-checkbox-container>
+
+        @if (blueprint().includeStorage) {
         <div class="form-grid">
           <clr-input-container>
             <label>Storage Key</label>
@@ -791,7 +995,7 @@
           </clr-input-container>
 
           <clr-input-container>
-            <label>Storage IP</label>
+            <label>Storage Management IP</label>
             <input
               clrInput
               required
@@ -867,7 +1071,7 @@
           </clr-input-container>
 
           <clr-input-container>
-            <label>Storage Disk GB</label>
+            <label>Storage Appliance Disk GB</label>
             <input
               clrInput
               type="number"
@@ -879,29 +1083,7 @@
           </clr-input-container>
 
           <clr-input-container>
-            <label>LUN Name</label>
-            <input
-              clrInput
-              required
-              [ngModel]="blueprint().storageLunName"
-              (ngModelChange)="updateBlueprint('storageLunName', $event)"
-            />
-          </clr-input-container>
-
-          <clr-input-container>
-            <label>LUN Size GB</label>
-            <input
-              clrInput
-              type="number"
-              min="1"
-              required
-              [ngModel]="blueprint().storageLunGb"
-              (ngModelChange)="updateNumber('storageLunGb', $event)"
-            />
-          </clr-input-container>
-
-          <clr-input-container>
-            <label>Nested Datastore Name</label>
+            <label>Nested VCSA Datastore Name</label>
             <input
               clrInput
               required
@@ -909,7 +1091,65 @@
               (ngModelChange)="updateBlueprint('storageDatastoreName', $event)"
             />
           </clr-input-container>
+
+          <clr-select-container>
+            <label>vCenter Datastore LUN</label>
+            <select
+              clrSelect
+              required
+              [ngModel]="blueprint().vcenterStorageLun"
+              (ngModelChange)="updateBlueprint('vcenterStorageLun', $event)"
+            >
+              @for (lun of blueprint().storageLuns; track $index) {
+                <option [value]="lun.name">{{ lun.name || 'Unnamed LUN' }}</option>
+              }
+            </select>
+            <clr-control-helper
+              >The selected LUN is formatted as the VMFS datastore used for nested VCSA
+              deployment.</clr-control-helper
+            >
+          </clr-select-container>
         </div>
+
+        <div class="form-grid">
+          @for (lun of blueprint().storageLuns; track $index; let lunIndex = $index) {
+            <clr-input-container>
+              <label>LUN {{ lunIndex + 1 }} Name</label>
+              <input
+                clrInput
+                required
+                [ngModel]="lun.name"
+                (ngModelChange)="updateStorageLun(lunIndex, 'name', $event)"
+              />
+            </clr-input-container>
+
+            <clr-input-container>
+              <label>LUN {{ lunIndex + 1 }} Size GB</label>
+              <input
+                clrInput
+                type="number"
+                min="1"
+                required
+                [ngModel]="lun.sizeGb"
+                (ngModelChange)="updateStorageLun(lunIndex, 'sizeGb', $event)"
+              />
+            </clr-input-container>
+
+            <div class="wizard-inline-actions">
+              <button
+                type="button"
+                class="btn btn-sm btn-outline"
+                (click)="removeStorageLun(lunIndex)"
+              >
+                Remove LUN
+              </button>
+            </div>
+          }
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" (click)="addStorageLun()">
+          Add LUN
+        </button>
+        }
       }
     </section>
   </clr-wizard-page>
@@ -921,10 +1161,22 @@
       <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
         Back
       </button>
-      <button type="button" class="btn btn-primary" (click)="deploymentWizard.forceNext()">
+      <button
+        type="button"
+        class="btn btn-primary"
+        [disabled]="!hostnamePageReady()"
+        (click)="deploymentWizard.next()"
+      >
         Continue
       </button>
     </ng-template>
+    @if (!hostnamePageReady()) {
+      <div class="wizard-issue-list" role="alert">
+        @for (issue of hostnamePageIssues(); track issue) {
+          <p>{{ issue }}</p>
+        }
+      </div>
+    }
     <nvl-hostname-table [inventory]="hostnameInventory()" />
   </clr-wizard-page>
 
@@ -935,18 +1187,33 @@
       <button type="button" class="btn btn-outline" (click)="deploymentWizard.previous()">
         Back
       </button>
-      <button type="button" class="btn btn-primary" (click)="apply(); deploymentWizard.close()">
+      <button
+        type="button"
+        class="btn btn-primary"
+        [disabled]="!canApply()"
+        (click)="apply(); deploymentWizard.close()"
+      >
         Apply to JSON
       </button>
     </ng-template>
 
-    @if (validation().valid) {
+    @if (wizardIssues().length > 0) {
+      @for (message of wizardIssues(); track message) {
+        <clr-alert [clrAlertType]="'danger'" [clrAlertClosable]="false">
+          <clr-alert-item>
+            <span class="alert-text">{{ message }}</span>
+          </clr-alert-item>
+        </clr-alert>
+      }
+    }
+
+    @if (canApply()) {
       <clr-alert [clrAlertType]="'success'" [clrAlertClosable]="false">
         <clr-alert-item>
           <span class="alert-text">Generated Deployment is valid.</span>
         </clr-alert-item>
       </clr-alert>
-    } @else {
+    } @else if (!validation().valid) {
       @for (message of validation().messages; track message) {
         <clr-alert [clrAlertType]="'danger'" [clrAlertClosable]="false">
           <clr-alert-item>

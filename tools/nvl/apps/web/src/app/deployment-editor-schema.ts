@@ -61,6 +61,104 @@ const providerPlacement = {
       title: 'ESXi Group',
       description: 'Nested ESXi group used when kind is nested_vsphere.',
     },
+    storage: {
+      type: 'object',
+      title: 'Nested vCenter Storage',
+      description:
+        'Storage preparation mode for nested-ESXi-target vCenter deployment.',
+      required: ['mode'],
+      properties: {
+        mode: {
+          type: 'string',
+          title: 'Mode',
+          description:
+            'existing_datastore uses an existing datastore, iscsi_datastore prepares VMFS on iSCSI, and vsan_bootstrap creates vSAN through the VCSA installer.',
+          enum: ['existing_datastore', 'iscsi_datastore', 'vsan_bootstrap'],
+          default: 'existing_datastore',
+        },
+        storage: {
+          type: 'string',
+          title: 'Storage Appliance',
+          description: 'Storage object key used by iscsi_datastore.',
+        },
+        lun: {
+          type: 'string',
+          title: 'LUN',
+          description: 'LUN name used by iscsi_datastore.',
+        },
+        vmkernel_purposes: {
+          type: 'array',
+          title: 'VMkernel Purposes',
+          description: 'VMkernel adapter purpose keys used by iscsi_datastore.',
+          items: { type: 'string' },
+          default: ['iscsi_a', 'iscsi_b'],
+        },
+        port_binding: {
+          type: 'boolean',
+          title: 'Port Binding',
+          description: 'Enable ESXi iSCSI port binding for iscsi_datastore.',
+          default: false,
+        },
+        vsan: {
+          type: 'object',
+          title: 'vSAN Bootstrap',
+          description: 'VCSA installer vSAN bootstrap settings.',
+          required: ['datastore_name', 'datacenter', 'cluster', 'cache_disks', 'capacity_disks'],
+          properties: {
+            datastore_name: {
+              type: 'string',
+              title: 'Datastore Name',
+              description: 'vSAN datastore name.',
+              default: 'vsanDatastore',
+            },
+            datacenter: {
+              type: 'string',
+              title: 'Datacenter',
+              description: 'Datacenter created or adopted by the VCSA installer.',
+              default: 'Datacenter',
+            },
+            cluster: {
+              type: 'string',
+              title: 'Cluster',
+              description: 'Cluster created or adopted by the VCSA installer.',
+              default: 'Cluster',
+            },
+            cache_disks: {
+              type: 'array',
+              title: 'Cache Disks',
+              description:
+                'Canonical naa.* ESXi disk names or vmhba runtime paths for vSAN cache. deployment_v2 currently supports one cache disk.',
+              items: { type: 'string' },
+              default: ['vmhba0:C0:T1:L0'],
+            },
+            capacity_disks: {
+              type: 'array',
+              title: 'Capacity Disks',
+              description: 'Canonical naa.* ESXi disk names or vmhba runtime paths for vSAN capacity.',
+              items: { type: 'string' },
+              default: ['vmhba0:C0:T2:L0'],
+            },
+            compression_only: {
+              type: 'boolean',
+              title: 'Compression Only',
+              default: false,
+            },
+            deduplication_and_compression: {
+              type: 'boolean',
+              title: 'Deduplication And Compression',
+              default: false,
+            },
+            enable_vlcm: {
+              type: 'boolean',
+              title: 'Enable vLCM',
+              default: false,
+            },
+          },
+          additionalProperties: true,
+        },
+      },
+      additionalProperties: true,
+    },
   },
   additionalProperties: true,
 } satisfies JsonSchema;
@@ -70,16 +168,138 @@ const stringArray = {
   items: { type: 'string' },
 } satisfies JsonSchema;
 
+const vmkernelAdapter = {
+  type: 'object',
+  title: 'VMkernel Adapter',
+  description:
+    'ESXi VMkernel adapter, standard vSwitch portgroup, uplink policy, and optional VMkernel service tags.',
+  required: ['name', 'purpose', 'vswitch', 'portgroup', 'vlan', 'subnet'],
+  properties: {
+    name: {
+      type: 'string',
+      title: 'Name',
+      description: 'VMkernel interface name such as vmk1.',
+      default: 'vmk1',
+    },
+    purpose: {
+      type: 'string',
+      title: 'Purpose',
+      description: 'Stable purpose key. vmotion and vsan automatically enable matching VMkernel tags.',
+      default: 'iscsi_a',
+    },
+    vswitch: {
+      type: 'string',
+      title: 'vSwitch',
+      description: 'Standard vSwitch to create or reuse.',
+      default: 'vSwitch1',
+    },
+    portgroup: {
+      type: 'string',
+      title: 'Portgroup',
+      description: 'Standard portgroup for this VMkernel adapter.',
+      default: 'Storage1',
+    },
+    uplink: {
+      type: 'string',
+      title: 'Legacy Active Uplink',
+      description: 'Backward-compatible single active vmnic. Prefer active_uplinks for new configs.',
+    },
+    active_uplinks: {
+      ...stringArray,
+      title: 'Active Uplinks',
+      description:
+        'vmnic names active for this portgroup. For iSCSI port binding, use exactly one active uplink.',
+      default: ['vmnic2'],
+    },
+    standby_uplinks: {
+      ...stringArray,
+      title: 'Standby Uplinks',
+      description: 'Optional standby vmnic names for this portgroup.',
+    },
+    unused_uplinks: {
+      ...stringArray,
+      title: 'Unused Uplinks',
+      description:
+        'vmnic names attached to the vSwitch but intentionally omitted from this portgroup active/standby policy.',
+    },
+    vlan: {
+      type: 'integer',
+      title: 'VLAN',
+      description: 'VLAN ID for the portgroup.',
+      minimum: 0,
+      maximum: 4094,
+      default: 1004,
+    },
+    mtu: {
+      type: 'integer',
+      title: 'MTU',
+      description: 'VMkernel interface and vSwitch MTU.',
+      minimum: 576,
+      maximum: 9000,
+      default: 9000,
+    },
+    subnet: {
+      type: 'string',
+      title: 'Subnet',
+      description: 'IPv4 CIDR used to derive per-host VMkernel IPs when ip is omitted.',
+      default: '10.0.4.0/24',
+    },
+    ip: {
+      type: 'string',
+      title: 'Static IP',
+      description: 'Optional static IP. Leave empty for per-host derived addresses.',
+    },
+    ip_offset_from_management: {
+      type: 'boolean',
+      title: 'Derive IP From Management Offset',
+      description: 'Derive the host portion from each ESXi management IP.',
+      default: true,
+    },
+    services: {
+      type: 'array',
+      title: 'Services',
+      description: 'Optional VMkernel service tags. Supported values are vmotion and vsan.',
+      items: {
+        type: 'string',
+        enum: ['vmotion', 'vsan'],
+      },
+    },
+  },
+  additionalProperties: true,
+} satisfies JsonSchema;
+
 const freeform = {
   type: 'object',
+  additionalProperties: true,
+} satisfies JsonSchema;
+
+const storageLun = {
+  type: 'object',
+  title: 'Storage LUN',
+  description: 'iSCSI LUN exposed by the storage appliance.',
+  required: ['name', 'size_gb'],
+  properties: {
+    name: {
+      type: 'string',
+      title: 'Name',
+      description: 'LUN name referenced by vCenter nested storage placement.',
+      default: 'lun01',
+    },
+    size_gb: {
+      type: 'integer',
+      title: 'Size GB',
+      description: 'LUN size in GiB.',
+      default: 200,
+      minimum: 1,
+    },
+  },
   additionalProperties: true,
 } satisfies JsonSchema;
 
 const installSource = {
   type: 'object',
   title: 'Install Source',
-  description:
-    'Reusable media source such as the unified OVA, ESXi ISO, or VCSA ISO.',
+  description: 'Reusable media source such as the unified OVA, ESXi ISO, or VCSA ISO.',
   required: ['type'],
   properties: {
     type: {
@@ -92,17 +312,18 @@ const installSource = {
     url: {
       type: 'string',
       title: 'URL',
-      description: 'HTTP(S) URL for http_ovf or http_iso sources.',
+      description:
+        'Required when type is http_ovf, http_iso, or rclone_iso. For rclone_iso, use the rclone remote URI.',
     },
     datastore: {
       type: 'string',
       title: 'Datastore',
-      description: 'Provider datastore containing the source when using datastore-backed media.',
+      description: 'Required when type is datastore_iso.',
     },
     path: {
       type: 'string',
       title: 'Path',
-      description: 'Path to the ISO on a datastore or local OVF/OVA path.',
+      description: 'Required when type is local_ovf or datastore_iso.',
     },
   },
   additionalProperties: true,
@@ -125,12 +346,13 @@ const provider = {
     credentials: {
       type: 'object',
       title: 'Credentials',
-      description: 'Literal vSphere credentials or environment variable references for Terraform and Ansible.',
+      description:
+        'Use either literal vSphere credentials or *_env fields for Terraform and Ansible runtime variables.',
       properties: {
         server: {
           type: 'string',
           title: 'Server',
-          description: 'vSphere endpoint written to provider_config.server.',
+          description: 'Literal vSphere endpoint written to provider_config.server.',
         },
         server_env: {
           type: 'string',
@@ -150,7 +372,8 @@ const provider = {
         password: {
           type: 'string',
           title: 'Password',
-          description: 'Explicit provider password. Avoid committing real secrets.',
+          description:
+            'Explicit provider password. Prefer password_env for shared files and avoid committing real secrets.',
         },
         password_env: {
           type: 'string',
@@ -312,18 +535,24 @@ const router = {
               title: 'VLAN Start',
               description: 'First VLAN ID reserved for additional nested networks.',
               default: 1001,
+              minimum: 1,
+              maximum: 4094,
             },
             vlan_network_count: {
               type: 'integer',
               title: 'VLAN Count',
               description: 'Number of VLAN-backed lab networks to allocate.',
               default: 20,
+              minimum: 1,
+              maximum: 4094,
             },
             mtu: {
               type: 'integer',
               title: 'MTU',
               description: 'MTU configured for lab-side networking.',
               default: 8000,
+              minimum: 576,
+              maximum: 9000,
             },
           },
           additionalProperties: true,
@@ -381,6 +610,7 @@ const esxiGroup = {
       title: 'Count',
       description: 'Number of ESXi hosts generated in this group.',
       default: 1,
+      minimum: 1,
     },
     hostname_prefix: {
       type: 'string',
@@ -432,18 +662,21 @@ const esxiGroup = {
           title: 'CPUs',
           description: 'vCPU count per nested ESXi VM.',
           default: 16,
+          minimum: 1,
         },
         mem_gb: {
           type: 'integer',
           title: 'Memory GB',
           description: 'Memory size per nested ESXi VM.',
           default: 32,
+          minimum: 1,
         },
         nic_count: {
           type: 'integer',
           title: 'NICs',
           description: 'Number of virtual NICs per ESXi VM.',
           default: 8,
+          minimum: 1,
         },
         tpm_enabled: {
           type: 'boolean',
@@ -471,8 +704,8 @@ const esxiGroup = {
       type: 'array',
       title: 'VMkernel Adapters',
       description:
-        'Optional ESXi VMkernel adapter definitions used by nested vCenter storage preparation.',
-      items: freeform,
+        'Optional ESXi VMkernel adapter definitions used by nested vCenter storage, vMotion, and vSAN preparation.',
+      items: vmkernelAdapter,
     },
     install: {
       type: 'object',
@@ -561,18 +794,24 @@ const storage = {
       title: 'Storage VLAN 1',
       description: 'VLAN for the first storage network.',
       default: 1004,
+      minimum: 1,
+      maximum: 4094,
     },
     storage2_vlan: {
       type: 'integer',
       title: 'Storage VLAN 2',
       description: 'VLAN for the second storage network.',
       default: 1005,
+      minimum: 1,
+      maximum: 4094,
     },
     mtu: {
       type: 'integer',
       title: 'MTU',
       description: 'Storage network MTU.',
       default: 8000,
+      minimum: 576,
+      maximum: 9000,
     },
     storage_subnet_mask: {
       type: 'string',
@@ -582,28 +821,36 @@ const storage = {
     },
     disk_size_gb: {
       type: 'integer',
-      title: 'Storage Disk GB',
+      title: 'Storage Appliance Disk GB',
       description: 'Backing disk size for the storage appliance.',
       default: 200,
+      minimum: 1,
     },
     num_cpus: {
       type: 'integer',
       title: 'CPUs',
       description: 'vCPU count for the storage appliance.',
       default: 4,
+      minimum: 1,
     },
     mem_gb: {
       type: 'integer',
       title: 'Memory GB',
       description: 'Memory size for the storage appliance.',
       default: 4,
+      minimum: 1,
     },
     luns: {
       type: 'array',
       title: 'LUNs',
       description: 'iSCSI LUNs exposed by the storage appliance.',
-      items: freeform,
-      default: [{ name: 'lun01', size_gb: 200 },{ name: 'lun02', size_gb: 201 }],
+      items: storageLun,
+      default: [
+        { name: 'lun01', size_gb: 200 },
+        { name: 'lun02', size_gb: 200 },
+        { name: 'lun03', size_gb: 200 },
+        { name: 'lun04', size_gb: 200 },
+      ],
     },
     zfs_compression: {
       type: 'string',
@@ -657,6 +904,30 @@ const vcenter = {
       ...stringArray,
       title: 'Manages',
       description: 'ESXi group keys that this vCenter should own.',
+    },
+    depots: {
+      type: 'array',
+      title: 'vLCM Online Depots',
+      description:
+        'vCenter Lifecycle Manager online depots. Required for vCenter 9.0+ image-based ESXi management.',
+      items: {
+        type: 'object',
+        title: 'Depot',
+        required: ['location', 'description'],
+        properties: {
+          location: {
+            type: 'string',
+            title: 'Location',
+            description: 'Depot index URL, such as https://repo.example.local/vmw-depot-index.xml.',
+          },
+          description: {
+            type: 'string',
+            title: 'Description',
+            description: 'vCenter depot description.',
+          },
+        },
+        additionalProperties: true,
+      },
     },
     sso_domain_name: {
       type: 'string',
@@ -769,7 +1040,8 @@ export const deploymentEditorSchema = {
             password: {
               type: 'string',
               title: 'Password',
-              description: 'Explicit SSH password for Ansible. Prefer password_env for shared files.',
+              description:
+                'Explicit SSH password for Ansible. Prefer password_env for shared files.',
             },
             password_env: {
               type: 'string',
@@ -784,7 +1056,8 @@ export const deploymentEditorSchema = {
             private_key_file_env: {
               type: 'string',
               title: 'Private Key Env',
-              description: 'Environment variable that provides the controller-side private key path.',
+              description:
+                'Environment variable that provides the controller-side private key path.',
             },
             ssh_common_args: {
               type: 'string',

@@ -1,0 +1,241 @@
+#!/bin/sh
+set -eu
+
+LOG_PATH={{ deployment_v2_vcenter_prepare_vsan_guest_log_path | quote }}
+CACHE_DISKS={{ deployment_v2_vcenter_prepare_current.target.storage.vsan.cache_disks | join(' ') | quote }}
+CAPACITY_DISKS={{ deployment_v2_vcenter_prepare_current.target.storage.vsan.capacity_disks | join(' ') | quote }}
+DATASTORE={{ deployment_v2_vcenter_prepare_current.target.storage.vsan.datastore_name | quote }}
+RESOLVED_PATH="${LOG_PATH}.resolved.json"
+
+exec >"$LOG_PATH" 2>&1
+
+log() {
+  printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"
+}
+
+fail() {
+  log "ERROR: $*"
+  exit 1
+}
+
+json_array() {
+  FIRST=1
+  printf '['
+  for ITEM in "$@"; do
+    [ "$FIRST" -eq 0 ] && printf ', '
+    FIRST=0
+    printf '"%s"' "$(printf '%s' "$ITEM" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  done
+  printf ']'
+}
+
+write_resolved_disks() {
+  {
+    printf '{\n'
+    printf '  "cache_disks": '
+    json_array $RESOLVED_CACHE_DISKS
+    printf ',\n'
+    printf '  "capacity_disks": '
+    json_array $RESOLVED_CAPACITY_DISKS
+    printf '\n}\n'
+  } >"$RESOLVED_PATH"
+  log "wrote resolved vSAN disk names to $RESOLVED_PATH"
+}
+
+log_available_disks() {
+  log "visible ESXi storage devices:"
+  for DISK_PATH in /vmfs/devices/disks/*; do
+    [ -e "$DISK_PATH" ] || continue
+    DISK_NAME="${DISK_PATH##*/}"
+    case "$DISK_NAME" in
+      *:[0-9]|*:[0-9][0-9]|vml.*)
+        continue
+        ;;
+    esac
+
+    DEVICE_INFO="$(esxcli storage core device list -d "$DISK_NAME" 2>/dev/null || true)"
+    [ -n "$DEVICE_INFO" ] || continue
+    printf '%s\n' "$DEVICE_INFO" | awk -F: -v disk="$DISK_NAME" '
+      BEGIN {
+        size = "unknown"
+        is_local = "unknown"
+        is_ssd = "unknown"
+        devfs = "unknown"
+        model = "unknown"
+      }
+      /^[[:space:]]+Size:/ {
+        value = $2
+        sub(/^[[:space:]]+/, "", value)
+        size = value
+      }
+      /^[[:space:]]+Is Local:/ {
+        value = $2
+        sub(/^[[:space:]]+/, "", value)
+        is_local = value
+      }
+      /^[[:space:]]+Is SSD:/ {
+        value = $2
+        sub(/^[[:space:]]+/, "", value)
+        is_ssd = value
+      }
+      /^[[:space:]]+Devfs Path:/ {
+        value = $2
+        sub(/^[[:space:]]+/, "", value)
+        devfs = value
+      }
+      /^[[:space:]]+Model:/ {
+        value = $2
+        sub(/^[[:space:]]+/, "", value)
+        model = value
+      }
+      END {
+        printf "%s size=%s local=%s ssd=%s model=%s devfs=%s\n", disk, size, is_local, is_ssd, model, devfs
+      }
+    ' | while IFS= read -r LINE; do
+      log "  $LINE"
+    done
+  done
+  log "hint: use a canonical device name shown under /vmfs/devices/disks, such as naa.*, or an explicit runtime path such as vmhba0:C0:T1:L0"
+  log "hint: if the vSAN disks were added after the nested ESXi VM was created, recreate the ESXi VM because deployment_v2 ignores disk drift on existing nested ESXi VMs"
+}
+
+resolve_disk() {
+  DISK="$1"
+  RESOLVED_DISK=""
+
+  if [ -e "/vmfs/devices/disks/$DISK" ]; then
+    RESOLVED_DISK="$DISK"
+    return 0
+  fi
+
+  case "$DISK" in
+    vmhba*:C*:T*:L*)
+      MAPPED_DISK="$(esxcfg-mpath -P "$DISK" -L 2>/dev/null | awk 'NF >= 3 { print $3; exit }')"
+      if [ -n "$MAPPED_DISK" ] && [ -e "/vmfs/devices/disks/$MAPPED_DISK" ]; then
+        RESOLVED_DISK="$MAPPED_DISK"
+        log "resolved vSAN runtime path $DISK to canonical device $RESOLVED_DISK"
+        return 0
+      fi
+      ;;
+  esac
+
+  return 1
+}
+
+version_at_least_7u2() {
+  VERSION="$(vmware -v | awk '{ print $3 }' | sed 's/[^0-9.].*$//')"
+  MAJOR="$(printf '%s' "$VERSION" | cut -d. -f1)"
+  MINOR="$(printf '%s' "$VERSION" | cut -d. -f2)"
+  PATCH="$(printf '%s' "$VERSION" | cut -d. -f3)"
+  MAJOR="${MAJOR:-0}"
+  MINOR="${MINOR:-0}"
+  PATCH="${PATCH:-0}"
+
+  log "detected ESXi version $VERSION"
+  if [ "$MAJOR" -gt 7 ]; then
+    return 0
+  fi
+  if [ "$MAJOR" -eq 7 ] && [ "$MINOR" -gt 0 ]; then
+    return 0
+  fi
+  if [ "$MAJOR" -eq 7 ] && [ "$MINOR" -eq 0 ] && [ "$PATCH" -ge 2 ]; then
+    return 0
+  fi
+  return 1
+}
+
+device_is_ssd() {
+  esxcli storage core device list -d "$1" | awk -F: '
+    tolower($1) ~ /is ssd/ {
+      gsub(/[[:space:]]/, "", $2)
+      print tolower($2)
+      found=1
+    }
+    END {
+      if (!found) {
+        print "unknown"
+      }
+    }
+  '
+}
+
+add_ssd_satp_rule() {
+  DISK="$1"
+  OUT=""
+  RC=0
+  OUT="$(esxcli storage nmp satp rule add \
+    --satp=VMW_SATP_LOCAL \
+    --device="$DISK" \
+    --option=enable_ssd \
+    --description="deployment_v2 vSAN SSD override" 2>&1)" || RC=$?
+
+  if [ "$RC" -ne 0 ]; then
+    case "$OUT" in
+      *Duplicate*|*"already exists"*)
+        log "SSD SATP rule already exists for $DISK"
+        ;;
+      *)
+        printf '%s\n' "$OUT"
+        fail "failed to add SSD SATP rule for $DISK"
+        ;;
+    esac
+  else
+    log "added SSD SATP rule for $DISK"
+  fi
+}
+
+mark_disk_as_ssd() {
+  DISK="$1"
+  STATUS="$(device_is_ssd "$DISK")"
+  if [ "$STATUS" = "true" ]; then
+    log "$DISK is already marked as SSD"
+    return 0
+  fi
+
+  add_ssd_satp_rule "$DISK"
+  esxcli storage core claiming reclaim -d "$DISK" || true
+  esxcli storage core adapter rescan --all || true
+  sleep 2
+
+  STATUS="$(device_is_ssd "$DISK")"
+  if [ "$STATUS" != "true" ]; then
+    fail "$DISK is not marked as SSD after applying the SATP rule; current Is SSD=$STATUS"
+  fi
+  log "$DISK is marked as SSD"
+}
+
+validate_disk() {
+  DISK="$1"
+  if ! resolve_disk "$DISK"; then
+    log_available_disks
+    fail "vSAN bootstrap disk $DISK is neither a visible canonical ESXi disk nor a resolvable vmhba runtime path"
+  fi
+  if esxcli storage vmfs extent list | awk 'NR > 2 { print $(NF-1) }' | grep -qx "$RESOLVED_DISK"; then
+    fail "vSAN bootstrap disk $RESOLVED_DISK is already claimed by a VMFS datastore"
+  fi
+}
+
+if ! version_at_least_7u2; then
+  fail "vSAN bootstrap requires ESXi 7.0 U2 or later"
+fi
+
+if esxcli storage filesystem list | awk -v ds="$DATASTORE" '$1 == ds { found=1 } END { exit !found }'; then
+  log "vSAN datastore $DATASTORE already exists; validating requested disks only"
+fi
+
+RESOLVED_CACHE_DISKS=""
+for DISK in $CACHE_DISKS; do
+  validate_disk "$DISK"
+  mark_disk_as_ssd "$RESOLVED_DISK"
+  RESOLVED_CACHE_DISKS="${RESOLVED_CACHE_DISKS}${RESOLVED_CACHE_DISKS:+ }$RESOLVED_DISK"
+done
+
+RESOLVED_CAPACITY_DISKS=""
+for DISK in $CAPACITY_DISKS; do
+  validate_disk "$DISK"
+  mark_disk_as_ssd "$RESOLVED_DISK"
+  RESOLVED_CAPACITY_DISKS="${RESOLVED_CAPACITY_DISKS}${RESOLVED_CAPACITY_DISKS:+ }$RESOLVED_DISK"
+done
+
+write_resolved_disks
+log "vSAN storage preflight completed"

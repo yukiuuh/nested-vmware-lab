@@ -26,6 +26,11 @@
   text-align: left;
 }
 
+.template-option:focus-visible {
+  outline: 0.12rem solid var(--clr-color-action-600);
+  outline-offset: 0.08rem;
+}
+
 .template-option:hover,
 .template-option-selected {
   border-color: var(--clr-color-action-600);
@@ -41,6 +46,43 @@
   color: var(--clr-color-neutral-600);
   font-size: 0.55rem;
   line-height: 1.35;
+}
+
+.wizard-description {
+  color: var(--clr-color-neutral-700);
+  font-size: 0.6rem;
+  line-height: 1.45;
+  margin: 0.5rem 0 0;
+}
+
+.wizard-status-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: space-between;
+}
+
+.wizard-status-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.wizard-issue-list {
+  background: var(--clr-color-warning-50);
+  border-left: 0.16rem solid var(--clr-color-warning-600);
+  color: var(--clr-color-neutral-900);
+  display: grid;
+  font-size: 0.55rem;
+  gap: 0.15rem;
+  margin: 0 0 0.6rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.wizard-issue-list p {
+  margin: 0;
 }
 
 .wizard-section {
@@ -63,6 +105,11 @@
 
 .wide-field {
   grid-column: 1 / -1;
+}
+
+.wizard-inline-actions {
+  align-items: end;
+  display: flex;
 }
 
 .copy-toolbar {

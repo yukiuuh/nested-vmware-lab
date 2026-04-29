@@ -1,0 +1,174 @@
+---
+- name: Build vSAN bootstrap preparation paths
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_vsan_guest_log_path: >-
+      {{
+        "/var/tmp/deployment_v2_prepare_"
+        ~ deployment_v2_vcenter_item.key
+        ~ "_vsan_"
+        ~ deployment_v2_vcenter_prepare_vsan_host.hostname
+        ~ "_"
+        ~ deployment_v2_vcenter_prepare_storage_run_id
+        ~ ".log"
+      }}
+    deployment_v2_vcenter_prepare_vsan_local_log_path: >-
+      {{
+        "/tmp/deployment_v2_prepare_"
+        ~ inventory_hostname
+        ~ "_"
+        ~ deployment_v2_vcenter_item.key
+        ~ "_vsan_"
+        ~ deployment_v2_vcenter_prepare_vsan_host.hostname
+        ~ "_"
+        ~ deployment_v2_vcenter_prepare_storage_run_id
+        ~ ".log"
+      }}
+    deployment_v2_vcenter_prepare_vsan_local_script_path: >-
+      {{
+        "/tmp/deployment_v2_prepare_"
+        ~ inventory_hostname
+        ~ "_"
+        ~ deployment_v2_vcenter_item.key
+        ~ "_vsan_"
+        ~ deployment_v2_vcenter_prepare_vsan_host.hostname
+        ~ "_"
+        ~ deployment_v2_vcenter_prepare_storage_run_id
+        ~ ".sh"
+      }}
+
+- name: Render vSAN bootstrap storage preparation script locally for {{ deployment_v2_vcenter_prepare_vsan_host.fqdn }}
+  ansible.builtin.template:
+    src: vsan_storage_prepare.sh.j2
+    dest: "{{ deployment_v2_vcenter_prepare_vsan_local_script_path }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+
+- name: Wait for ESXi SSH from Router for vSAN preparation on {{ deployment_v2_vcenter_prepare_vsan_host.fqdn }}
+  ansible.builtin.wait_for:
+    host: "{{ deployment_v2_vcenter_prepare_vsan_host.ip }}"
+    port: 22
+    timeout: 300
+    connect_timeout: 5
+    sleep: 5
+    state: started
+  delegate_to: "{{ inventory_hostname }}"
+  become: false
+
+- name: Run vSAN storage preparation over ESXi SSH via Router for {{ deployment_v2_vcenter_prepare_vsan_host.fqdn }}
+  ansible.builtin.script:
+    cmd: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_vsan_local_script_path }}"
+    executable: /bin/sh
+  vars:
+    ansible_user: "{{ deployment_v2_vcenter_prepare_vsan_host.ansible.user | default('root', true) }}"
+    ansible_password: >-
+      {{
+        deployment_v2_vcenter_prepare_vsan_host.ansible.password
+        | default(hostvars[inventory_hostname].deployment_v2.credentials.vm_admin_password, true)
+      }}
+    ansible_ssh_common_args: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_esxi_ssh_common_args }}"
+    ansible_remote_tmp: /var/tmp/.ansible-root/tmp
+    ansible_ssh_transfer_method: piped
+  register: deployment_v2_vcenter_prepare_vsan_prepare
+  changed_when: true
+  failed_when: false
+  delegate_to: "{{ deployment_v2_vcenter_prepare_vsan_host.ip }}"
+  become: false
+
+- name: Fetch resolved vSAN bootstrap disk names for {{ deployment_v2_vcenter_prepare_vsan_host.fqdn }}
+  ansible.builtin.raw: "cat {{ (hostvars[inventory_hostname].deployment_v2_vcenter_prepare_vsan_guest_log_path ~ '.resolved.json') | quote }}"
+  vars:
+    ansible_user: "{{ deployment_v2_vcenter_prepare_vsan_host.ansible.user | default('root', true) }}"
+    ansible_password: >-
+      {{
+        deployment_v2_vcenter_prepare_vsan_host.ansible.password
+        | default(hostvars[inventory_hostname].deployment_v2.credentials.vm_admin_password, true)
+      }}
+    ansible_ssh_common_args: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_esxi_ssh_common_args }}"
+    ansible_remote_tmp: /var/tmp/.ansible-root/tmp
+  register: deployment_v2_vcenter_prepare_vsan_resolved_fetch
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ deployment_v2_vcenter_prepare_vsan_host.ip }}"
+  become: false
+  when:
+    - (deployment_v2_vcenter_prepare_vsan_prepare.rc | default(1)) == 0
+
+- name: Record resolved vSAN bootstrap disk names for {{ deployment_v2_vcenter_item.key }}
+  ansible.builtin.set_fact:
+    deployment_v2_vcenter_prepare_resolved_vsan_disks: >-
+      {{
+        (deployment_v2_vcenter_prepare_resolved_vsan_disks | default({}))
+        | combine({
+            deployment_v2_vcenter_item.key: (
+              deployment_v2_vcenter_prepare_vsan_resolved_fetch.stdout | from_json
+            )
+          }, recursive=True)
+      }}
+  when:
+    - (deployment_v2_vcenter_prepare_vsan_prepare.rc | default(1)) == 0
+    - (deployment_v2_vcenter_prepare_vsan_resolved_fetch.rc | default(1)) == 0
+    - deployment_v2_vcenter_prepare_vsan_resolved_fetch.stdout | default('', true) | length > 0
+
+- name: Fetch failed vSAN storage preparation log over ESXi SSH via Router for {{ deployment_v2_vcenter_prepare_vsan_host.fqdn }}
+  ansible.builtin.raw: "cat {{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_vsan_guest_log_path | quote }}"
+  vars:
+    ansible_user: "{{ deployment_v2_vcenter_prepare_vsan_host.ansible.user | default('root', true) }}"
+    ansible_password: >-
+      {{
+        deployment_v2_vcenter_prepare_vsan_host.ansible.password
+        | default(hostvars[inventory_hostname].deployment_v2.credentials.vm_admin_password, true)
+      }}
+    ansible_ssh_common_args: "{{ hostvars[inventory_hostname].deployment_v2_vcenter_prepare_esxi_ssh_common_args }}"
+    ansible_remote_tmp: /var/tmp/.ansible-root/tmp
+  register: deployment_v2_vcenter_prepare_vsan_log_fetch
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ deployment_v2_vcenter_prepare_vsan_host.ip }}"
+  become: false
+  when:
+    - (deployment_v2_vcenter_prepare_vsan_prepare.rc | default(1)) != 0
+
+- name: Write failed vSAN storage preparation log locally for {{ deployment_v2_vcenter_prepare_vsan_host.fqdn }}
+  ansible.builtin.copy:
+    dest: "{{ deployment_v2_vcenter_prepare_vsan_local_log_path }}"
+    content: |-
+      {{ deployment_v2_vcenter_prepare_vsan_log_fetch.stdout | default('') }}
+      {% if (deployment_v2_vcenter_prepare_vsan_log_fetch.stderr | default('') | length) > 0 %}
+
+      === ssh log fetch stderr ===
+      {{ deployment_v2_vcenter_prepare_vsan_log_fetch.stderr }}
+      {% endif %}
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  when:
+    - (deployment_v2_vcenter_prepare_vsan_prepare.rc | default(1)) != 0
+
+- name: Fail with vSAN storage preparation log for {{ deployment_v2_vcenter_prepare_vsan_host.fqdn }}
+  ansible.builtin.fail:
+    msg: |-
+      vSAN storage preparation failed for {{ deployment_v2_vcenter_item.key }}.
+      exit_code={{ deployment_v2_vcenter_prepare_vsan_prepare.rc | default('unknown') }}
+      prepare_failed={{ deployment_v2_vcenter_prepare_vsan_prepare.failed | default(false) }}
+      prepare_msg={{ deployment_v2_vcenter_prepare_vsan_prepare.msg | default('') }}
+      execution=esxi_ssh_script_via_router
+      esxi_host={{ deployment_v2_vcenter_prepare_vsan_host.ip }}({{ deployment_v2_vcenter_prepare_vsan_host.fqdn }})
+      router={{ inventory_hostname }}({{ hostvars[inventory_hostname].ansible_host }})
+      local_script={{ deployment_v2_vcenter_prepare_vsan_local_script_path }}
+      guest_log={{ deployment_v2_vcenter_prepare_vsan_guest_log_path }}
+      local_log={{ deployment_v2_vcenter_prepare_vsan_local_log_path }}
+      log_fetch_rc={{ deployment_v2_vcenter_prepare_vsan_log_fetch.rc | default('unknown') }}
+
+      === prepare stdout ===
+      {{ deployment_v2_vcenter_prepare_vsan_prepare.stdout | default('') }}
+      === prepare stderr ===
+      {{ deployment_v2_vcenter_prepare_vsan_prepare.stderr | default('') }}
+      === fetched guest log ===
+      {{ lookup('ansible.builtin.file', deployment_v2_vcenter_prepare_vsan_local_log_path, errors='ignore') | default('log file was not fetched', true) }}
+      {% if deployment_v2_vcenter_prepare_vsan_prepare.rc is not defined %}
+
+      prepare_module_result={{ deployment_v2_vcenter_prepare_vsan_prepare | to_nice_json }}
+      {% endif %}
+  when:
+    - (deployment_v2_vcenter_prepare_vsan_prepare.rc | default(1)) != 0

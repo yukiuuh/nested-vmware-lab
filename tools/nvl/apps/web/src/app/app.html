@@ -61,30 +61,32 @@
       />
 
       <div class="screen-toolbar">
-        <div class="sample-controls">
-          <div class="btn-group btn-sm btn-outline-primary">
-            <button
-              type="button"
-              class="btn"
-              [class.btn-primary]="activeDocument() === 'deployment'"
-              (click)="loadSample('deployment')"
-            >
-              <cds-icon shape="cluster"></cds-icon>
-              Deployment
-            </button>
-            <button
-              type="button"
-              class="btn"
-              [class.btn-primary]="activeDocument() === 'seed'"
-              (click)="loadSample('seed')"
-            >
-              <cds-icon shape="tree-view"></cds-icon>
-              Seed
-            </button>
-          </div>
+        <div class="document-status">
+          <span class="label" [class.label-warning]="dirty()" [class.label-info]="!dirty()">
+            {{ dirty() ? 'Modified' : 'Saved locally' }}
+          </span>
+          @if (hasCredentialWarnings()) {
+            <span class="label label-warning" [title]="credentialWarnings()[0].message">
+              Explicit credentials
+            </span>
+          }
         </div>
         <div class="toolbar-actions">
           @if (activePanel() === 'document') {
+            <div class="sample-controls" aria-label="Load sample document">
+              <button
+                type="button"
+                class="btn btn-sm btn-outline"
+                (click)="loadSample('deployment')"
+              >
+                <cds-icon shape="cluster"></cds-icon>
+                Load Deployment Sample
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" (click)="loadSample('seed')">
+                <cds-icon shape="tree-view"></cds-icon>
+                Load Seed Sample
+              </button>
+            </div>
             <button
               type="button"
               class="btn btn-sm btn-primary"
@@ -101,24 +103,33 @@
               <cds-icon shape="copy"></cds-icon>
               {{ copiedTarget() === 'document' ? 'Copied JSON' : 'Copy JSON' }}
             </button>
+            <label class="btn btn-sm btn-outline" for="nvl-file-input">
+              <cds-icon shape="upload"></cds-icon>
+              Load JSON
+            </label>
+            <input
+              id="nvl-file-input"
+              type="file"
+              accept=".json,application/json"
+              class="clr-sr-only"
+              aria-label="Load JSON file"
+              (change)="loadFile($event)"
+            />
           }
-          <label class="btn btn-sm btn-outline" for="nvl-file-input">
-            <cds-icon shape="upload"></cds-icon>
-            Load JSON
-          </label>
-          <input
-            id="nvl-file-input"
-            type="file"
-            accept=".json,application/json"
-            class="clr-sr-only"
-            (change)="loadFile($event)"
-          />
           <button type="button" class="btn btn-sm btn-outline" (click)="downloadDocument()">
             <cds-icon shape="download"></cds-icon>
             Save JSON
           </button>
         </div>
       </div>
+
+      @if (fileLoadError()) {
+        <clr-alert [clrAlertType]="'danger'" [clrAlertClosable]="false">
+          <clr-alert-item>
+            <span class="alert-text">{{ fileLoadError() }}</span>
+          </clr-alert-item>
+        </clr-alert>
+      }
 
       @if (activePanel() === 'document') {
         <section class="panel-section">
@@ -159,7 +170,7 @@
                 spellcheck="false"
                 rows="34"
                 [ngModel]="documentText()"
-                (ngModelChange)="documentText.set($event)"
+                (ngModelChange)="updateDocumentText($event)"
                 aria-label="NVL JSON document"
               ></textarea>
             </section>
@@ -193,10 +204,24 @@
               </clr-alert-item>
             </clr-alert>
           } @else {
-            @for (message of validation().messages; track message) {
+            @for (issue of validation().issues; track issue.message + issue.path) {
               <clr-alert [clrAlertType]="'danger'" [clrAlertClosable]="false">
                 <clr-alert-item>
-                  <span class="alert-text">{{ message }}</span>
+                  <span class="alert-text validation-alert-content">
+                    <span>
+                      @if (issue.path) {
+                        <code>{{ issue.path }}</code>
+                      }
+                      {{ issue.message }}
+                    </span>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-link validation-jump-action"
+                      (click)="goToValidationIssue(issue)"
+                    >
+                      {{ validationIssueActionLabel(issue) }}
+                    </button>
+                  </span>
                 </clr-alert-item>
               </clr-alert>
             }
@@ -230,6 +255,7 @@
             <clr-dg-column>From</clr-dg-column>
             <clr-dg-column>Relation</clr-dg-column>
             <clr-dg-column>To</clr-dg-column>
+            <clr-dg-placeholder>No references found.</clr-dg-placeholder>
             @for (edge of graph().edges; track edge.from + edge.to + edge.label) {
               <clr-dg-row>
                 <clr-dg-cell>{{ edge.from }}</clr-dg-cell>
@@ -252,12 +278,14 @@
             <span class="label label-info">{{ previewLabel() }}</span>
           </div>
           <div class="preview-actions">
-            <div class="preview-mode-controls btn-group btn-sm btn-outline-primary">
+            <div class="preview-mode-controls btn-group btn-sm" aria-label="Preview output mode">
               @for (option of previewOptions(); track option.mode) {
                 <button
                   type="button"
                   class="btn"
                   [class.btn-primary]="effectivePreviewMode() === option.mode"
+                  [class.btn-outline]="effectivePreviewMode() !== option.mode"
+                  [attr.aria-pressed]="effectivePreviewMode() === option.mode"
                   (click)="previewMode.set(option.mode)"
                 >
                   {{ option.label }}
@@ -268,6 +296,16 @@
               <cds-icon shape="copy"></cds-icon>
               {{ copiedTarget() === 'preview' ? 'Copied Output' : 'Copy Output' }}
             </button>
+            <button type="button" class="btn btn-sm btn-outline" (click)="downloadPreview()">
+              <cds-icon shape="download"></cds-icon>
+              Download Output
+            </button>
+            @if (previewCommand()) {
+              <button type="button" class="btn btn-sm btn-outline" (click)="copyPreviewCommand()">
+                <cds-icon shape="copy"></cds-icon>
+                {{ copiedTarget() === 'preview-command' ? 'Copied Command' : 'Copy Command' }}
+              </button>
+            }
           </div>
           <textarea
             class="preview-output copy-output"

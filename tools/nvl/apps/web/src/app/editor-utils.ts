@@ -1,8 +1,4 @@
-import {
-  checkSeedCapabilities,
-  documentKind,
-  validateDocument,
-} from '@nvl/core';
+import { checkSeedCapabilities, documentKind, validateDocument } from '@nvl/core';
 
 export interface GraphNode {
   id: string;
@@ -28,6 +24,7 @@ export interface HostnameEntry {
 export interface HostnameIssue {
   severity: 'error' | 'warning';
   message: string;
+  path?: string;
 }
 
 export interface HostnameInventory {
@@ -38,7 +35,33 @@ export interface HostnameInventory {
 export interface EditorValidation {
   valid: boolean;
   kind: string;
+  issues: EditorValidationIssue[];
   messages: string[];
+}
+
+export interface EditorValidationIssue {
+  message: string;
+  path?: string;
+  source: 'capability' | 'hostname' | 'parse' | 'schema';
+}
+
+export interface CredentialWarning {
+  path: string;
+  message: string;
+}
+
+export interface PreviewTrace {
+  kind: 'DeploymentPreviewTrace';
+  deployment: string;
+  entries: PreviewTraceEntry[];
+  notes: string[];
+}
+
+export interface PreviewTraceEntry {
+  output: string;
+  source: string;
+  value: unknown;
+  note?: string;
 }
 
 export const SAMPLE_DEPLOYMENT = {
@@ -77,7 +100,7 @@ export const SAMPLE_DEPLOYMENT = {
       type: 'http_ovf',
       url: 'https://repo.example.local/ova/router/nvl-unified.ova',
     },
-    esxi_8u3_installer: {
+    esxi_installer: {
       type: 'http_iso',
       url: 'https://repo.example.local/iso/VMware-VMvisor-Installer-8.0U3.iso',
     },
@@ -118,7 +141,7 @@ export const SAMPLE_DEPLOYMENT = {
       install: {
         method: 'ansible_router_pxe',
         source: {
-          install_source: 'esxi_8u3_installer',
+          install_source: 'esxi_installer',
         },
         kickstart: {
           template: 'esxi-8.0',
@@ -215,18 +238,49 @@ export const SAMPLE_SEED = {
   vcenters: {},
 };
 
-export function validateEditorDocument(value: unknown, hostnameIssues: HostnameIssue[] = []): EditorValidation {
+export function validateEditorDocument(
+  value: unknown,
+  hostnameIssues: HostnameIssue[] = [],
+): EditorValidation {
   const schemaResult = validateDocument(value);
-  const messages = [...schemaResult.messages];
+  const issues: EditorValidationIssue[] =
+    schemaResult.errors.length > 0
+      ? schemaResult.errors.map((error, index) => ({
+          message: error.message ?? schemaResult.messages[index] ?? 'Document is invalid.',
+          path: pathForSchemaError(error),
+          source: 'schema',
+        }))
+      : schemaResult.messages.map((message) => ({
+          message,
+          path: pathFromValidationMessage(message),
+          source: 'schema',
+        }));
+
   if (schemaResult.valid && schemaResult.kind === 'AnsibleSeed') {
-    messages.push(...checkSeedCapabilities(value).errors);
+    issues.push(
+      ...checkSeedCapabilities(value).errors.map((message) => ({
+        message,
+        path: pathFromValidationMessage(message),
+        source: 'capability' as const,
+      })),
+    );
   }
-  messages.push(...hostnameIssues.filter((issue) => issue.severity === 'error').map((issue) => issue.message));
+
+  issues.push(
+    ...hostnameIssues
+      .filter((issue) => issue.severity === 'error')
+      .map((issue) => ({
+        message: issue.message,
+        path: issue.path ?? pathFromValidationMessage(issue.message),
+        source: 'hostname' as const,
+      })),
+  );
 
   return {
-    valid: schemaResult.valid && messages.length === 0,
+    valid: schemaResult.valid && issues.length === 0,
     kind: schemaResult.kind ?? '',
-    messages,
+    issues,
+    messages: issues.map((issue) => issue.message),
   };
 }
 
@@ -300,6 +354,185 @@ export function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+export function explicitCredentialWarnings(value: unknown): CredentialWarning[] {
+  const document = asRecord(value);
+  if (!document) {
+    return [];
+  }
+
+  const warnings: CredentialWarning[] = [];
+  const providers = asRecord(document['providers']) ?? {};
+  for (const [providerName, providerValue] of Object.entries(providers)) {
+    const credentials = asRecord(asRecord(providerValue)?.['credentials']) ?? {};
+    if (hasExplicitValue(credentials['password'])) {
+      warnings.push({
+        path: `providers.${providerName}.credentials.password`,
+        message: `Explicit provider password at providers.${providerName}.credentials.password`,
+      });
+    }
+  }
+
+  const ansibleCredentials = asRecord(asRecord(document['credentials'])?.['ansible']) ?? {};
+  if (hasExplicitValue(ansibleCredentials['password'])) {
+    warnings.push({
+      path: 'credentials.ansible.password',
+      message: 'Explicit Ansible SSH password at credentials.ansible.password',
+    });
+  }
+  if (hasExplicitValue(ansibleCredentials['private_key_file'])) {
+    warnings.push({
+      path: 'credentials.ansible.private_key_file',
+      message: 'Controller private key path at credentials.ansible.private_key_file',
+    });
+  }
+
+  return warnings;
+}
+
+export function buildPreviewTrace(value: unknown): PreviewTrace {
+  const document = asRecord(value) ?? {};
+  const deployment = coerceString(document['name']) || 'deployment';
+  const entries: PreviewTraceEntry[] = [];
+
+  addTrace(entries, 'tfvars.name_prefix', 'name', document['name']);
+  addTrace(entries, 'ansible_seed.deployment', 'name', document['name']);
+
+  const providers = asRecord(document['providers']) ?? {};
+  for (const [providerName, providerValue] of Object.entries(providers)) {
+    const provider = asRecord(providerValue) ?? {};
+    const providerPath = `providers.${providerName}`;
+    const outputBase = `tfvars.providers.${providerName}`;
+    addTrace(entries, `${outputBase}.kind`, `${providerPath}.kind`, provider['kind']);
+
+    const credentials = asRecord(provider['credentials']) ?? {};
+    for (const key of ['server', 'server_env', 'user', 'user_env', 'password', 'password_env']) {
+      addTrace(
+        entries,
+        `${outputBase}.credentials.${key}`,
+        `${providerPath}.credentials.${key}`,
+        credentials[key],
+      );
+    }
+
+    const placement = asRecord(provider['placement_defaults']) ?? {};
+    addTrace(
+      entries,
+      `${outputBase}.placement.datacenter`,
+      `${providerPath}.placement_defaults.datacenter`,
+      placement['datacenter'],
+    );
+    addTrace(
+      entries,
+      `${outputBase}.placement.resource_pool`,
+      `${providerPath}.placement_defaults.resource_pool`,
+      placement['resource_pool'],
+    );
+    addTrace(
+      entries,
+      `${outputBase}.placement.compute_host`,
+      `${providerPath}.placement_defaults.compute_host`,
+      placement['compute_host'],
+    );
+    addTrace(
+      entries,
+      `${outputBase}.placement.datastore`,
+      `${providerPath}.placement_defaults.datastore`,
+      placement['datastore'],
+    );
+
+    const networks = asRecord(placement['networks']) ?? {};
+    for (const [networkKey, networkValue] of Object.entries(networks)) {
+      addTrace(
+        entries,
+        `${outputBase}.placement.networks.${networkKey}`,
+        `${providerPath}.placement_defaults.networks.${networkKey}`,
+        networkValue,
+      );
+    }
+  }
+
+  const installSources = asRecord(document['install_sources']) ?? {};
+  for (const [sourceName, sourceValue] of Object.entries(installSources)) {
+    const source = asRecord(sourceValue) ?? {};
+    traceObjectKeys(
+      entries,
+      `tfvars.install_sources.${sourceName}`,
+      `install_sources.${sourceName}`,
+      source,
+      ['type', 'url', 'datastore', 'path'],
+    );
+  }
+
+  traceDeploymentMap(entries, document, 'routers', 'tfvars.routers', [
+    'source.install_source',
+    'placement.kind',
+    'placement.provider',
+    'networks.wan.network_name',
+    'networks.wan.ip',
+    'networks.lan.network_name',
+    'networks.lan.network',
+    'networks.lan.gateway',
+    'networks.lan.domain_name',
+    'runtime.http_root',
+    'runtime.tftp_root',
+  ]);
+  traceDeploymentMap(entries, document, 'esxi_groups', 'tfvars.esxi_groups', [
+    'router',
+    'placement.kind',
+    'placement.provider',
+    'count',
+    'hostname_prefix',
+    'starting_ip',
+    'domain_name',
+    'install.method',
+    'install.source.install_source',
+    'resources.num_cpus',
+    'resources.mem_gb',
+    'resources.nic_count',
+    'resources.boot_disk_gb',
+  ]);
+  traceDeploymentMap(entries, document, 'storages', 'tfvars.storages', [
+    'router',
+    'placement.kind',
+    'placement.provider',
+    'hostname',
+    'ip',
+    'domain_name',
+    'storage1_ip',
+    'storage2_ip',
+    'storage1_vlan',
+    'storage2_vlan',
+    'nested_datastore_name',
+    'storage_disk_gb',
+    'num_cpus',
+    'mem_gb',
+  ]);
+  traceDeploymentMap(entries, document, 'vcenters', 'tfvars.vcenters', [
+    'router',
+    'placement.kind',
+    'placement.provider',
+    'placement.esxi_group',
+    'placement.host',
+    'hostname',
+    'ip',
+    'source.install_source',
+    'manages',
+    'datacenter',
+    'cluster',
+    'datastore',
+  ]);
+
+  return {
+    kind: 'DeploymentPreviewTrace',
+    deployment,
+    entries,
+    notes: [
+      'Trace output is for UI troubleshooting only; copy/download of generated artifacts stays unchanged.',
+      'Terraform-derived AnsibleSeed runtime values, such as provider-facing IPs and observed MAC addresses, are resolved after apply.',
+    ],
+  };
+}
+
 function collectDeploymentHostnames(
   document: Record<string, unknown>,
   entries: HostnameEntry[],
@@ -328,7 +561,11 @@ function collectDeploymentHostnames(
   for (const [name, value] of Object.entries(groups)) {
     const group = asRecord(value) ?? {};
     const routerName = coerceString(group['router']);
-    const domainName = defaultString(group['domain_name'], routerDomains.get(routerName), 'localdomain');
+    const domainName = defaultString(
+      group['domain_name'],
+      routerDomains.get(routerName),
+      'localdomain',
+    );
     const prefix = defaultString(group['hostname_prefix'], name);
     const count = Math.max(0, Math.trunc(numberValue(group['count'], 0)));
     const startingIp = coerceString(group['starting_ip']);
@@ -350,7 +587,11 @@ function collectDeploymentHostnames(
   for (const [name, value] of Object.entries(storages)) {
     const storage = asRecord(value) ?? {};
     const routerName = coerceString(storage['router']);
-    const domainName = defaultString(storage['domain_name'], routerDomains.get(routerName), 'localdomain');
+    const domainName = defaultString(
+      storage['domain_name'],
+      routerDomains.get(routerName),
+      'localdomain',
+    );
     entries.push({
       kind: 'Storage',
       name,
@@ -394,15 +635,19 @@ function addNestedVcenterPlacementIssue(
   if (!groupName || !hostRef) {
     issues.push({
       severity: 'error',
+      path: `vcenters.${vcenterName}.placement`,
       message: `vcenters.${vcenterName}.placement must set esxi_group and host for nested_vsphere`,
     });
     return;
   }
 
-  const candidates = entries.filter((entry) => entry.kind === 'ESXi' && entry.source.startsWith(`esxi_groups.${groupName}[`));
+  const candidates = entries.filter(
+    (entry) => entry.kind === 'ESXi' && entry.source.startsWith(`esxi_groups.${groupName}[`),
+  );
   if (candidates.length === 0) {
     issues.push({
       severity: 'error',
+      path: `vcenters.${vcenterName}.placement.esxi_group`,
       message: `vcenters.${vcenterName}.placement.esxi_group does not match an ESXi group: ${groupName}`,
     });
     return;
@@ -411,6 +656,7 @@ function addNestedVcenterPlacementIssue(
   if (!candidates.some((entry) => matchesHostRef(entry, hostRef))) {
     issues.push({
       severity: 'error',
+      path: `vcenters.${vcenterName}.placement.host`,
       message: `vcenters.${vcenterName}.placement.host does not match a rendered host in ${groupName}: ${hostRef}`,
     });
   }
@@ -504,6 +750,7 @@ function addDuplicateHostnameIssues(entries: HostnameEntry[], issues: HostnameIs
     }
     issues.push({
       severity: 'error',
+      path: pathForHostnameEntry(duplicates[0]),
       message: `duplicate hostname ${fqdn}: ${duplicates.map((entry) => entry.source).join(', ')}`,
     });
   }
@@ -514,6 +761,7 @@ function addDnsLabelIssues(entries: HostnameEntry[], issues: HostnameIssue[]): v
     if (entry.hostname && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i.test(entry.hostname)) {
       issues.push({
         severity: 'warning',
+        path: pathForHostnameEntry(entry),
         message: `${entry.source} hostname is not a DNS label: ${entry.hostname}`,
       });
     }
@@ -521,11 +769,17 @@ function addDnsLabelIssues(entries: HostnameEntry[], issues: HostnameIssue[]): v
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function coerceString(value: unknown): string {
-  return typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
+  return typeof value === 'string'
+    ? value
+    : typeof value === 'number' || typeof value === 'boolean'
+      ? String(value)
+      : '';
 }
 
 function defaultString(...values: unknown[]): string {
@@ -539,12 +793,159 @@ function defaultString(...values: unknown[]): string {
 }
 
 function numberValue(value: unknown, fallback: number): number {
-  const number = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  const number =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== ''
+        ? Number(value)
+        : NaN;
   return Number.isFinite(number) ? number : fallback;
 }
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : [];
+}
+
+function hasExplicitValue(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+  return value !== undefined && value !== null;
+}
+
+function pathForSchemaError(error: {
+  instancePath?: string;
+  keyword?: string;
+  params?: Record<string, unknown>;
+}): string | undefined {
+  const basePath = jsonPointerToPath(error.instancePath ?? '');
+  if (error.keyword === 'required' && typeof error.params?.['missingProperty'] === 'string') {
+    return joinPath(basePath, error.params['missingProperty']);
+  }
+  if (
+    error.keyword === 'additionalProperties' &&
+    typeof error.params?.['additionalProperty'] === 'string'
+  ) {
+    return joinPath(basePath, error.params['additionalProperty']);
+  }
+  return basePath || undefined;
+}
+
+function pathFromValidationMessage(message: string): string | undefined {
+  const pointerMatch = message.match(/^(\/\S*)\s/);
+  if (pointerMatch) {
+    return jsonPointerToPath(pointerMatch[1]);
+  }
+
+  const dottedPathMatch = message.match(
+    /^([A-Za-z_][A-Za-z0-9_-]*(?:[.[\]A-Za-z0-9_-]+)*)(?::|\s)/,
+  );
+  if (!dottedPathMatch) {
+    return undefined;
+  }
+  return normalizePath(dottedPathMatch[1]);
+}
+
+function pathForHostnameEntry(entry: HostnameEntry): string | undefined {
+  const source = normalizePath(entry.source);
+  if (entry.kind === 'ESXi') {
+    const groupMatch = source.match(/^(esxi_groups\.[^.]+)/);
+    return groupMatch ? `${groupMatch[1]}.hostname_prefix` : source;
+  }
+  if (entry.kind === 'Router') {
+    return `${source}.networks.lan.domain_name`;
+  }
+  if (entry.kind === 'Storage') {
+    return `${source}.hostname`;
+  }
+  if (entry.kind === 'vCenter') {
+    return `${source}.hostname`;
+  }
+  return source || undefined;
+}
+
+function jsonPointerToPath(pointer: string): string | undefined {
+  if (!pointer || pointer === '/') {
+    return undefined;
+  }
+  return normalizePath(
+    pointer
+      .replace(/^\//, '')
+      .split('/')
+      .map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~'))
+      .join('.'),
+  );
+}
+
+function normalizePath(path: string): string {
+  return path.replace(/\[(\d+)\]/g, '.$1').replace(/^\.+|\.+$/g, '');
+}
+
+function joinPath(basePath: string | undefined, key: string): string {
+  return basePath ? `${basePath}.${key}` : key;
+}
+
+function traceDeploymentMap(
+  entries: PreviewTraceEntry[],
+  document: Record<string, unknown>,
+  mapKey: string,
+  outputPrefix: string,
+  relativePaths: string[],
+): void {
+  const items = asRecord(document[mapKey]) ?? {};
+  for (const [itemName, itemValue] of Object.entries(items)) {
+    const item = asRecord(itemValue) ?? {};
+    for (const relativePath of relativePaths) {
+      addTrace(
+        entries,
+        `${outputPrefix}.${itemName}.${relativePath}`,
+        `${mapKey}.${itemName}.${relativePath}`,
+        valueAtPath(item, relativePath),
+      );
+    }
+  }
+}
+
+function traceObjectKeys(
+  entries: PreviewTraceEntry[],
+  outputPrefix: string,
+  sourcePrefix: string,
+  value: Record<string, unknown>,
+  keys: string[],
+): void {
+  for (const key of keys) {
+    addTrace(entries, `${outputPrefix}.${key}`, `${sourcePrefix}.${key}`, value[key]);
+  }
+}
+
+function addTrace(
+  entries: PreviewTraceEntry[],
+  output: string,
+  source: string,
+  value: unknown,
+  note?: string,
+): void {
+  if (value === undefined) {
+    return;
+  }
+  entries.push({
+    output,
+    source,
+    value: redactedTraceValue(source, value),
+    ...(note ? { note } : {}),
+  });
+}
+
+function redactedTraceValue(source: string, value: unknown): unknown {
+  const key = source.split('.').at(-1) ?? '';
+  if (key === 'password' || key === 'private_key_file') {
+    return hasExplicitValue(value) ? '<set>' : value;
+  }
+  return value;
+}
+
+function valueAtPath(value: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((current, key) => asRecord(current)?.[key], value);
 }
 
 function firstLabel(fqdn: string): string {
@@ -557,11 +958,14 @@ function withDomain(hostname: string, domainName: string): string {
 
 function incrementIpv4(ip: string, offset: number): string {
   const octets = ip.split('.').map((part) => Number(part));
-  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+  if (
+    octets.length !== 4 ||
+    octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
+  ) {
     return offset === 0 ? ip : '';
   }
 
-  const value = (((octets[0] * 256 + octets[1]) * 256 + octets[2]) * 256 + octets[3]) + offset;
+  const value = ((octets[0] * 256 + octets[1]) * 256 + octets[2]) * 256 + octets[3] + offset;
   if (value < 0 || value > 0xffffffff) {
     return '';
   }

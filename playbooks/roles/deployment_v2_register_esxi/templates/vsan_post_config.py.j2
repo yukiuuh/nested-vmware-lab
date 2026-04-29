@@ -1,0 +1,406 @@
+#!/usr/bin/env python3
+import atexit
+import copy
+import json
+import re
+import ssl
+import sys
+
+from pyVim.connect import Disconnect, SmartConnect
+from pyVim.task import WaitForTask
+from pyVmomi import pbm, vim, vmodl
+from pyVim.connect import SoapStubAdapter
+from vsanapiutils import ConvertVsanTaskToVcTask, GetVsanVcMos, WaitForTasks
+
+
+CONFIG = json.loads({{ ({
+  "hostname": deployment_v2_register_esxi_vcenter_host,
+  "username": deployment_v2_register_esxi_vcenter_user,
+  "password": deployment_v2.credentials.vm_admin_password,
+  "validate_certs": deployment_v2_register_esxi_validate_certs,
+  "datacenter": deployment_v2_register_esxi_datacenter,
+  "cluster": deployment_v2_register_esxi_cluster,
+  "hosts": deployment_v2_register_esxi_hosts,
+  "cache_disks": deployment_v2_register_esxi_vsan.cache_disks | default([]),
+  "capacity_disks": deployment_v2_register_esxi_vsan.capacity_disks | default([]),
+  "ftt0_policy_name": deployment_v2_register_esxi_vsan_ftt0_policy_name
+} | to_json) | to_json }})
+
+CURRENT_STAGE = "startup"
+
+
+def set_stage(stage):
+    global CURRENT_STAGE
+    CURRENT_STAGE = stage
+
+
+def fail(message, **details):
+    result = {"changed": False, "failed": True, "stage": CURRENT_STAGE, "msg": message}
+    result.update(details)
+    print(json.dumps(result), file=sys.stderr)
+    sys.exit(1)
+
+
+def version_tuple(version):
+    match = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", version or "")
+    if not match:
+        return None
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3) or 0),
+    )
+
+
+def assert_7u2_or_later(label, version):
+    parsed = version_tuple(version)
+    if parsed is None:
+        fail(f"could not detect {label} version from {version!r}")
+    if parsed[0] > 7:
+        return
+    if parsed[0] == 7 and parsed[1] > 0:
+        return
+    if parsed[0] == 7 and parsed[1] == 0 and parsed[2] >= 2:
+        return
+    fail(f"{label} version {version} is unsupported; vSAN deployment requires 7.0 U2 or later")
+
+
+def get_view(content, root, vim_type):
+    return content.viewManager.CreateContainerView(root, [vim_type], True)
+
+
+def find_object(content, root, vim_type, name):
+    view = get_view(content, root, vim_type)
+    try:
+        for obj in view.view:
+            if obj.name == name:
+                return obj
+    finally:
+        view.Destroy()
+    return None
+
+
+def wait(task):
+    return WaitForTask(task)
+
+
+def wait_vsan(si, task):
+    vc_task = ConvertVsanTaskToVcTask(task, si._GetStub())
+    return WaitForTasks([vc_task], si)
+
+
+def connect_vcenter():
+    context = None
+    if not CONFIG["validate_certs"]:
+        context = ssl._create_unverified_context()
+    si = SmartConnect(
+        host=CONFIG["hostname"],
+        user=CONFIG["username"],
+        pwd=CONFIG["password"],
+        sslContext=context,
+    )
+    atexit.register(Disconnect, si)
+    return si
+
+
+def vsan_ssl_context():
+    if CONFIG["validate_certs"]:
+        return None
+    return ssl._create_unverified_context()
+
+
+def skip_quickstart(cluster, changes):
+    in_hci = getattr(cluster.configurationEx, "inHciWorkflow", None)
+    if in_hci is not True:
+        return
+
+    try:
+        cluster.AbandonHciWorkflow()
+        changes.append("quickstart_skipped")
+    except Exception as exc:
+        message = str(exc)
+        already_done_markers = [
+            "not in hci workflow",
+            "not in hci",
+            "already",
+            "not enabled",
+            "not supported",
+        ]
+        if not any(marker in message.lower() for marker in already_done_markers):
+            raise
+
+
+def ensure_cluster_vsan_enabled(cluster, changes):
+    vsan_config = getattr(cluster.configurationEx, "vsanConfigInfo", None)
+    enabled = bool(getattr(vsan_config, "enabled", False))
+    default_config = getattr(vsan_config, "defaultConfig", None)
+    auto_claim = getattr(default_config, "autoClaimStorage", None)
+    in_hci = getattr(cluster.configurationEx, "inHciWorkflow", None)
+
+    if enabled and auto_claim is False:
+        return
+
+    spec = vim.cluster.ConfigSpecEx()
+    spec.vsanConfig = vim.vsan.cluster.ConfigInfo(enabled=True)
+    spec.vsanConfig.defaultConfig = vim.vsan.cluster.ConfigInfo.HostDefaultInfo(
+        autoClaimStorage=False
+    )
+    if in_hci is True:
+        spec.inHciWorkflow = False
+    wait(cluster.ReconfigureComputeResource_Task(spec=spec, modify=True))
+    changes.append("vsan_cluster_enabled")
+
+
+def normalize_host_refs():
+    refs = []
+    for host in CONFIG["hosts"]:
+        for key in ("fqdn", "hostname", "ip", "name"):
+            value = host.get(key)
+            if value:
+                refs.append(value.lower())
+    return set(refs)
+
+
+def selected_hosts(cluster):
+    wanted = normalize_host_refs()
+    found = []
+    for host in cluster.host:
+        management_server_ip = getattr(host.summary, "managementServerIp", None)
+        names = {
+            host.name.lower(),
+            getattr(host.summary.config, "name", "").lower(),
+            getattr(management_server_ip, "ipAddress", "").lower(),
+        }
+        if names & wanted:
+            found.append(host)
+    # IPs and short hostnames may not be the managed-object name; only fail when no
+    # selected host matched an inventory entry.
+    if len(found) != len(CONFIG["hosts"]):
+        fail(
+            "could not match all managed ESXi hosts in vCenter cluster "
+            f"{CONFIG['cluster']}; matched={[host.name for host in found]}, refs={sorted(wanted)}"
+        )
+    return found
+
+
+def disk_by_selector(host):
+    disks = {}
+    disks_by_key = {}
+    for lun in host.config.storageDevice.scsiLun:
+        if isinstance(lun, vim.host.ScsiDisk):
+            disks[lun.canonicalName] = lun
+            disks_by_key[lun.key] = lun
+    multipath_info = getattr(host.config.storageDevice, "multipathInfo", None)
+    for multipath_lun in getattr(multipath_info, "lun", []) or []:
+        disk = disks_by_key.get(getattr(multipath_lun, "lun", None))
+        if disk is None:
+            continue
+        for path in getattr(multipath_lun, "path", []) or []:
+            path_name = getattr(path, "name", None)
+            if path_name:
+                disks[path_name] = disk
+    return disks
+
+
+def resolve_requested_disk_names(host, requested_names, disks):
+    resolved = []
+    missing = []
+    for name in requested_names:
+        disk = disks.get(name)
+        if disk is None:
+            missing.append(name)
+        else:
+            resolved.append(disk.canonicalName)
+    if missing:
+        available = sorted(disks.keys())
+        fail(
+            f"host {host.name} does not expose requested vSAN disk selectors: {missing}; "
+            f"available_selectors={available}"
+        )
+    return resolved
+
+
+def existing_vsan_disks(host):
+    claimed = set()
+    mappings = []
+    storage_info = getattr(host.config.vsanHostConfig, "storageInfo", None)
+    for mapping in getattr(storage_info, "diskMapping", []) or []:
+        cache = getattr(mapping, "ssd", None)
+        capacities = list(getattr(mapping, "nonSsd", []) or [])
+        if cache is not None:
+            claimed.add(cache.canonicalName)
+        for disk in capacities:
+            claimed.add(disk.canonicalName)
+        mappings.append((cache.canonicalName if cache else None, [d.canonicalName for d in capacities]))
+    return claimed, mappings
+
+
+def claim_disk_group(si, disk_mgmt_system, host, changes):
+    cache_disks = CONFIG["cache_disks"]
+    capacity_disks = CONFIG["capacity_disks"]
+    if len(cache_disks) != 1:
+        fail(
+            "deployment_v2 vSAN disk group claim currently expects exactly one "
+            f"cache disk per host; got {cache_disks}"
+        )
+    disks = disk_by_selector(host)
+    resolved_cache_disks = resolve_requested_disk_names(host, cache_disks, disks)
+    resolved_capacity_disks = resolve_requested_disk_names(host, capacity_disks, disks)
+    cache_name = resolved_cache_disks[0]
+    requested = set(resolved_cache_disks + resolved_capacity_disks)
+    claimed, mappings = existing_vsan_disks(host)
+    if requested <= claimed:
+        return
+    if requested & claimed:
+        fail(
+            f"host {host.name} has a partial vSAN disk claim for requested disks; "
+            f"requested={sorted(requested)} claimed={sorted(requested & claimed)} mappings={mappings}"
+        )
+
+    cache_disk = disks[cache_name]
+    capacity_disk_objects = [disks[name] for name in resolved_capacity_disks]
+    if not getattr(cache_disk, "ssd", False):
+        fail(f"host {host.name} cache disk {cache_name} is not marked as SSD")
+    non_ssd_cache = [disk.canonicalName for disk in capacity_disk_objects if not getattr(disk, "ssd", False)]
+    if non_ssd_cache:
+        fail(f"host {host.name} capacity disks are not marked as SSD: {non_ssd_cache}")
+
+    spec = vim.vsan.host.DiskMappingCreationSpec()
+    spec.host = host
+    spec.cacheDisks = [cache_disk]
+    spec.capacityDisks = capacity_disk_objects
+    spec.creationType = vim.vsan.host.DiskMappingCreationType.allFlash
+    wait_vsan(si, disk_mgmt_system.InitializeDiskMappings(spec=spec))
+    changes.append(f"vsan_disk_group_claimed:{host.name}")
+
+
+def pbm_connection(si):
+    client_stub = si._GetStub()
+    try:
+        session_cookie = client_stub.cookie.split('"')[1]
+    except IndexError:
+        fail("failed to get vCenter session cookie for SPBM")
+    ssl_context = client_stub.schemeArgs.get("context")
+    stub = SoapStubAdapter(
+        host=CONFIG["hostname"],
+        path="/pbm/sdk",
+        version="pbm.version.version2",
+        sslContext=ssl_context,
+        requestContext={"vcSessionCookie": session_cookie},
+    )
+    pbm_si = pbm.ServiceInstance("ServiceInstance", stub)
+    return pbm_si.PbmRetrieveServiceContent().profileManager
+
+
+def storage_policies(profile_manager):
+    ids = profile_manager.PbmQueryProfile(
+        resourceType=pbm.profile.ResourceType(resourceType="STORAGE"),
+        profileCategory="REQUIREMENT",
+    )
+    if not ids:
+        return []
+    return profile_manager.PbmRetrieveContent(profileIds=ids)
+
+
+def ftt_value(constraints):
+    for subprofile in getattr(constraints, "subProfiles", []) or []:
+        for capability in getattr(subprofile, "capability", []) or []:
+            for constraint in getattr(capability, "constraint", []) or []:
+                for prop in getattr(constraint, "propertyInstance", []) or []:
+                    if prop.id == "hostFailuresToTolerate":
+                        return prop.value
+    return None
+
+
+def constraints_with_ftt0(source_constraints):
+    constraints = copy.deepcopy(source_constraints)
+    updated = False
+    for subprofile in getattr(constraints, "subProfiles", []) or []:
+        for capability in getattr(subprofile, "capability", []) or []:
+            for constraint in getattr(capability, "constraint", []) or []:
+                for prop in getattr(constraint, "propertyInstance", []) or []:
+                    if prop.id == "hostFailuresToTolerate":
+                        prop.value = 0
+                        updated = True
+    if not updated:
+        fail("could not derive vSAN FTT0 policy because no hostFailuresToTolerate rule was found")
+    return constraints
+
+
+def ensure_ftt0_policy(si, changes):
+    profile_manager = pbm_connection(si)
+    policies = storage_policies(profile_manager)
+    target = next((policy for policy in policies if policy.name == CONFIG["ftt0_policy_name"]), None)
+    source = target
+    if source is None or ftt_value(source.constraints) is None:
+        source = next((policy for policy in policies if policy.name == "vSAN Default Storage Policy"), None)
+    if source is None or ftt_value(source.constraints) is None:
+        source = next((policy for policy in policies if ftt_value(policy.constraints) is not None), None)
+    if source is None:
+        fail("could not find an existing vSAN storage policy to derive the FTT0 policy from")
+
+    desired_constraints = constraints_with_ftt0(source.constraints)
+    description = "deployment_v2 vSAN policy with host failures to tolerate set to 0"
+    if target is None:
+        create_spec = pbm.profile.CapabilityBasedProfileCreateSpec(
+            name=CONFIG["ftt0_policy_name"],
+            description=description,
+            resourceType=pbm.profile.ResourceType(resourceType="STORAGE"),
+            category="REQUIREMENT",
+            constraints=desired_constraints,
+        )
+        profile_manager.PbmCreate(createSpec=create_spec)
+        changes.append("ftt0_policy_created")
+        return
+
+    if ftt_value(target.constraints) != 0 or target.description != description:
+        update_spec = pbm.profile.CapabilityBasedProfileUpdateSpec(
+            description=description,
+            constraints=desired_constraints,
+        )
+        profile_manager.PbmUpdate(profileId=target.profileId, updateSpec=update_spec)
+        changes.append("ftt0_policy_updated")
+
+
+def main():
+    changes = []
+    set_stage("connect_vcenter")
+    si = connect_vcenter()
+    content = si.RetrieveContent()
+    vsan_mos = GetVsanVcMos(si._GetStub(), context=vsan_ssl_context())
+    disk_mgmt_system = vsan_mos["vsan-disk-management-system"]
+    set_stage("validate_vcenter_version")
+    assert_7u2_or_later("vCenter", content.about.version)
+
+    set_stage("find_inventory")
+    datacenter = find_object(content, content.rootFolder, vim.Datacenter, CONFIG["datacenter"])
+    if datacenter is None:
+        fail(f"datacenter {CONFIG['datacenter']} was not found")
+    cluster = find_object(content, datacenter.hostFolder, vim.ClusterComputeResource, CONFIG["cluster"])
+    if cluster is None:
+        fail(f"cluster {CONFIG['cluster']} was not found in datacenter {CONFIG['datacenter']}")
+
+    hosts = selected_hosts(cluster)
+    for host in hosts:
+        set_stage(f"validate_esxi_version:{host.name}")
+        assert_7u2_or_later(f"ESXi host {host.name}", host.summary.config.product.version)
+
+    set_stage("skip_quickstart")
+    skip_quickstart(cluster, changes)
+    set_stage("ensure_cluster_vsan_enabled")
+    ensure_cluster_vsan_enabled(cluster, changes)
+    for host in hosts:
+        set_stage(f"claim_disk_group:{host.name}")
+        claim_disk_group(si, disk_mgmt_system, host, changes)
+    set_stage("ensure_ftt0_policy")
+    ensure_ftt0_policy(si, changes)
+
+    print(json.dumps({"changed": bool(changes), "changes": changes}))
+
+
+try:
+    main()
+except vmodl.MethodFault as exc:
+    fail(exc.msg or str(exc), fault=exc.__class__.__name__)
+except Exception as exc:
+    fail(str(exc), exception=exc.__class__.__name__)

@@ -13,6 +13,7 @@
 }
 
 .sample-controls,
+.document-status,
 .toolbar-actions {
   align-items: center;
   display: flex;
@@ -22,6 +23,10 @@
 
 .toolbar-actions {
   justify-content: flex-end;
+}
+
+.document-status {
+  min-height: 1.2rem;
 }
 
 .btn cds-icon,
@@ -119,6 +124,29 @@
   flex-wrap: wrap;
   gap: 0.25rem;
   margin-bottom: 0.6rem;
+}
+
+.validation-alert-content {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.validation-alert-content code {
+  background: var(--clr-color-neutral-100);
+  border-radius: 0.12rem;
+  color: var(--clr-color-neutral-900);
+  font-size: 0.52rem;
+  margin-right: 0.25rem;
+  padding: 0.05rem 0.18rem;
+}
+
+.validation-jump-action {
+  margin: 0;
+  min-width: max-content;
 }
 
 @media (max-width: 900px) {

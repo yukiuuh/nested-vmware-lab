@@ -113,21 +113,37 @@ locals {
 
   esxi_group_vmkernel_adapter_refs = flatten([
     for group_name, group in local.esxi_groups : [
-      for idx, adapter in coalesce(try(group.vmkernel_adapters, null), []) : {
-        group                     = group_name
-        index                     = idx
-        id                        = "${group_name}[${idx}]"
-        router                    = try(group.router, "")
-        group_count               = try(tonumber(group.count), null)
-        nic_count                 = try(tonumber(group.shape.nic_count), null)
-        router_vlan_start         = try(tonumber(local.routers[group.router].networks.lan.vlan_starts_with), null)
-        router_vlan_count         = try(tonumber(local.routers[group.router].networks.lan.vlan_network_count), null)
-        router_mtu                = try(tonumber(local.routers[group.router].networks.lan.mtu), null)
-        name                      = trimspace(try(tostring(adapter.name), ""))
-        purpose                   = trimspace(try(tostring(adapter.purpose), ""))
-        vswitch                   = trimspace(try(tostring(adapter.vswitch), ""))
-        portgroup                 = trimspace(try(tostring(adapter.portgroup), ""))
-        uplink                    = trimspace(try(tostring(adapter.uplink), ""))
+      for idx, adapter in try(group.vmkernel_adapters, []) : {
+        group             = group_name
+        index             = idx
+        id                = "${group_name}[${idx}]"
+        router            = try(group.router, "")
+        group_count       = try(tonumber(group.count), null)
+        nic_count         = try(tonumber(group.shape.nic_count), null)
+        router_vlan_start = try(tonumber(local.routers[group.router].networks.lan.vlan_starts_with), null)
+        router_vlan_count = try(tonumber(local.routers[group.router].networks.lan.vlan_network_count), null)
+        router_mtu        = try(tonumber(local.routers[group.router].networks.lan.mtu), null)
+        name              = trimspace(try(tostring(adapter.name), ""))
+        purpose           = trimspace(try(tostring(adapter.purpose), ""))
+        vswitch           = trimspace(try(tostring(adapter.vswitch), ""))
+        portgroup         = trimspace(try(tostring(adapter.portgroup), ""))
+        uplink            = trimspace(try(tostring(adapter.uplink), ""))
+        active_uplinks = distinct(compact(concat(
+          trimspace(try(tostring(adapter.uplink), "")) != "" ? [trimspace(try(tostring(adapter.uplink), ""))] : [],
+          try([for uplink in adapter.active_uplinks : trimspace(tostring(uplink))], [])
+        )))
+        standby_uplinks = distinct(compact(try([
+          for uplink in adapter.standby_uplinks : trimspace(tostring(uplink))
+        ], [])))
+        unused_uplinks = distinct(compact(try([
+          for uplink in adapter.unused_uplinks : trimspace(tostring(uplink))
+        ], [])))
+        all_uplinks = distinct(compact(concat(
+          trimspace(try(tostring(adapter.uplink), "")) != "" ? [trimspace(try(tostring(adapter.uplink), ""))] : [],
+          try([for uplink in adapter.active_uplinks : trimspace(tostring(uplink))], []),
+          try([for uplink in adapter.standby_uplinks : trimspace(tostring(uplink))], []),
+          try([for uplink in adapter.unused_uplinks : trimspace(tostring(uplink))], [])
+        )))
         vlan                      = try(tonumber(adapter.vlan), null)
         vlan_raw                  = try(tostring(adapter.vlan), "")
         mtu                       = try(tonumber(adapter.mtu), try(tonumber(local.routers[group.router].networks.lan.mtu), null))
@@ -135,6 +151,10 @@ locals {
         subnet                    = trimspace(try(tostring(adapter.subnet), ""))
         ip                        = trimspace(try(tostring(adapter.ip), ""))
         ip_offset_from_management = coalesce(try(adapter.ip_offset_from_management, null), true)
+        services = distinct(compact(concat(
+          try([for service in adapter.services : lower(trimspace(tostring(service)))], []),
+          contains(["vmotion", "vsan"], lower(trimspace(try(tostring(adapter.purpose), "")))) ? [lower(trimspace(tostring(adapter.purpose)))] : []
+        )))
       }
     ]
   ])
@@ -145,7 +165,7 @@ locals {
     || ref.purpose == ""
     || ref.vswitch == ""
     || ref.portgroup == ""
-    || ref.uplink == ""
+    || length(ref.active_uplinks) == 0
     || ref.vlan_raw == ""
     || ref.subnet == ""
   ]
@@ -158,10 +178,10 @@ locals {
   esxi_groups_vmkernel_adapters_duplicate_names = flatten([
     for group_name, group in local.esxi_groups : [
       for name in distinct(compact([
-        for adapter in coalesce(try(group.vmkernel_adapters, null), []) : trimspace(try(tostring(adapter.name), ""))
+        for adapter in try(group.vmkernel_adapters, []) : trimspace(try(tostring(adapter.name), ""))
       ])) : "${group_name}:${name}"
       if length([
-        for adapter in coalesce(try(group.vmkernel_adapters, null), []) : adapter
+        for adapter in try(group.vmkernel_adapters, []) : adapter
         if trimspace(try(tostring(adapter.name), "")) == name
       ]) > 1
     ]
@@ -170,10 +190,10 @@ locals {
   esxi_groups_vmkernel_adapters_duplicate_purposes = flatten([
     for group_name, group in local.esxi_groups : [
       for purpose in distinct(compact([
-        for adapter in coalesce(try(group.vmkernel_adapters, null), []) : trimspace(try(tostring(adapter.purpose), ""))
+        for adapter in try(group.vmkernel_adapters, []) : trimspace(try(tostring(adapter.purpose), ""))
       ])) : "${group_name}:${purpose}"
       if length([
-        for adapter in coalesce(try(group.vmkernel_adapters, null), []) : adapter
+        for adapter in try(group.vmkernel_adapters, []) : adapter
         if trimspace(try(tostring(adapter.purpose), "")) == purpose
       ]) > 1
     ]
@@ -204,9 +224,34 @@ locals {
   ]
 
   esxi_groups_vmkernel_adapters_invalid_uplinks = [
-    for ref in local.esxi_group_vmkernel_adapter_refs : "${ref.id}:${ref.uplink}"
-    if !can(regex("^vmnic[0-9]+$", ref.uplink))
-    || try(tonumber(replace(ref.uplink, "vmnic", "")) >= ref.nic_count, true)
+    for item in flatten([
+      for ref in local.esxi_group_vmkernel_adapter_refs : [
+        for uplink in ref.all_uplinks : {
+          id        = ref.id
+          uplink    = uplink
+          nic_count = ref.nic_count
+        }
+      ]
+    ]) : "${item.id}:${item.uplink}"
+    if !can(regex("^vmnic[0-9]+$", item.uplink))
+    || try(tonumber(replace(item.uplink, "vmnic", "")) >= item.nic_count, true)
+  ]
+
+  esxi_groups_vmkernel_adapters_duplicate_uplink_roles = [
+    for ref in local.esxi_group_vmkernel_adapter_refs : ref.id
+    if length(ref.active_uplinks) + length(ref.standby_uplinks) + length(ref.unused_uplinks) != length(ref.all_uplinks)
+  ]
+
+  esxi_groups_vmkernel_adapters_invalid_services = [
+    for item in flatten([
+      for ref in local.esxi_group_vmkernel_adapter_refs : [
+        for service in ref.services : {
+          id      = ref.id
+          service = service
+        }
+      ]
+    ]) : "${item.id}:${item.service}"
+    if !contains(local.supported_vmkernel_adapter_services, item.service)
   ]
 
   esxi_groups_vmkernel_adapters_invalid_mtu = [
@@ -414,7 +459,7 @@ locals {
   vcenters_unknown_iscsi_vmkernel_purposes = [
     for ref in local.vcenter_iscsi_vmkernel_purpose_refs : "${ref.vcenter}:${ref.esxi_group}:${ref.purpose}"
     if !contains([
-      for adapter in coalesce(try(local.esxi_groups[ref.esxi_group].vmkernel_adapters, null), []) :
+      for adapter in try(local.esxi_groups[ref.esxi_group].vmkernel_adapters, []) :
       trimspace(try(tostring(adapter.purpose), ""))
     ], ref.purpose)
   ]
@@ -425,7 +470,7 @@ locals {
     && try(vcenter.placement.storage.mode, "existing_datastore") == "iscsi_datastore"
     && coalesce(try(vcenter.placement.storage.port_binding, null), false)
     && length(distinct(compact([
-      for adapter in coalesce(try(local.esxi_groups[vcenter.placement.esxi_group].vmkernel_adapters, null), []) :
+      for adapter in try(local.esxi_groups[vcenter.placement.esxi_group].vmkernel_adapters, []) :
       trimspace(try(tostring(adapter.subnet), ""))
       if contains(
         try(vcenter.placement.storage.vmkernel_purposes, []),
@@ -469,6 +514,46 @@ locals {
     && try(length(vcenter.placement.storage.vsan.capacity_disks), 0) == 0
   ]
 
+  vcenters_vsan_multiple_cache_disks = [
+    for name, vcenter in local.vcenters : name
+    if try(vcenter.placement.kind, "") == "nested_vsphere"
+    && try(vcenter.placement.storage.mode, "existing_datastore") == "vsan_bootstrap"
+    && try(length(vcenter.placement.storage.vsan.cache_disks), 0) > 1
+  ]
+
+  vcenters_vsan_overlapping_disks = [
+    for name, vcenter in local.vcenters : name
+    if try(vcenter.placement.kind, "") == "nested_vsphere"
+    && try(vcenter.placement.storage.mode, "existing_datastore") == "vsan_bootstrap"
+    && length(setintersection(
+      toset(try(vcenter.placement.storage.vsan.cache_disks, [])),
+      toset(try(vcenter.placement.storage.vsan.capacity_disks, []))
+    )) > 0
+  ]
+
+  vcenters_vsan_invalid_mpx_runtime_paths = flatten([
+    for name, vcenter in local.vcenters : [
+      for disk in concat(
+        try(vcenter.placement.storage.vsan.cache_disks, []),
+        try(vcenter.placement.storage.vsan.capacity_disks, [])
+      ) : "${name}:${disk}"
+      if try(vcenter.placement.kind, "") == "nested_vsphere"
+      && try(vcenter.placement.storage.mode, "existing_datastore") == "vsan_bootstrap"
+      && can(regex("^mpx\\.vmhba", tostring(disk)))
+    ]
+  ])
+
+  vcenters_vsan_insufficient_esxi_disks = [
+    for name, vcenter in local.vcenters : "${name}:${try(vcenter.placement.esxi_group, "")}"
+    if try(vcenter.placement.kind, "") == "nested_vsphere"
+    && try(vcenter.placement.storage.mode, "existing_datastore") == "vsan_bootstrap"
+    && try(length(local.esxi_groups[vcenter.placement.esxi_group].shape.disks), 0) < (
+      1
+      + try(length(vcenter.placement.storage.vsan.cache_disks), 0)
+      + try(length(vcenter.placement.storage.vsan.capacity_disks), 0)
+    )
+  ]
+
   vcenters_invalid_vsan_compression_mode = [
     for name, vcenter in local.vcenters : name
     if try(vcenter.placement.kind, "") == "nested_vsphere"
@@ -494,6 +579,15 @@ locals {
     && contains(keys(local.install_sources), local.vcenter_source_refs[name])
     && local.install_source_vcenter_versions[local.vcenter_source_refs[name]].detected
     && !local.install_source_supports_vsan_bootstrap[local.vcenter_source_refs[name]]
+  ]
+
+  vcenters_vcsa9_missing_depots = [
+    for name, vcenter in local.vcenters : "${name}:${local.vcenter_source_refs[name]}:${local.install_source_vcenter_versions[local.vcenter_source_refs[name]].label}"
+    if local.vcenter_source_refs[name] != null
+    && contains(keys(local.install_sources), local.vcenter_source_refs[name])
+    && local.install_source_vcenter_versions[local.vcenter_source_refs[name]].detected
+    && local.install_source_vcenter_versions[local.vcenter_source_refs[name]].major >= 9
+    && try(length(vcenter.depots), 0) == 0
   ]
 
   vcenters_empty_manages = [
@@ -654,7 +748,7 @@ resource "terraform_data" "validate_esxi_group_inputs" {
 
     precondition {
       condition     = length(local.esxi_groups_vmkernel_adapters_missing_fields) == 0
-      error_message = "Each esxi_group vmkernel_adapters entry must define name, purpose, vswitch, portgroup, uplink, vlan, and subnet. Invalid: ${join(", ", local.esxi_groups_vmkernel_adapters_missing_fields)}"
+      error_message = "Each esxi_group vmkernel_adapters entry must define name, purpose, vswitch, portgroup, at least one active uplink through uplink or active_uplinks, vlan, and subnet. Invalid: ${join(", ", local.esxi_groups_vmkernel_adapters_missing_fields)}"
     }
 
     precondition {
@@ -695,6 +789,16 @@ resource "terraform_data" "validate_esxi_group_inputs" {
     precondition {
       condition     = length(local.esxi_groups_vmkernel_adapters_invalid_uplinks) == 0
       error_message = "Each esxi_group vmkernel_adapters uplink must match vmnic<index> and fit within shape.nic_count. Invalid: ${join(", ", local.esxi_groups_vmkernel_adapters_invalid_uplinks)}"
+    }
+
+    precondition {
+      condition     = length(local.esxi_groups_vmkernel_adapters_duplicate_uplink_roles) == 0
+      error_message = "Each vmkernel_adapters uplink may appear in only one of active_uplinks, standby_uplinks, or unused_uplinks for the same portgroup. Invalid: ${join(", ", local.esxi_groups_vmkernel_adapters_duplicate_uplink_roles)}"
+    }
+
+    precondition {
+      condition     = length(local.esxi_groups_vmkernel_adapters_invalid_services) == 0
+      error_message = "Each vmkernel_adapters services entry must be one of vmotion or vsan. Invalid: ${join(", ", local.esxi_groups_vmkernel_adapters_invalid_services)}"
     }
 
     precondition {
@@ -894,6 +998,26 @@ resource "terraform_data" "validate_vcenter_inputs" {
     }
 
     precondition {
+      condition     = length(local.vcenters_vsan_multiple_cache_disks) == 0
+      error_message = "nested_vsphere vCenter vsan_bootstrap currently supports exactly one cache disk per host. Invalid: ${join(", ", local.vcenters_vsan_multiple_cache_disks)}"
+    }
+
+    precondition {
+      condition     = length(local.vcenters_vsan_overlapping_disks) == 0
+      error_message = "nested_vsphere vCenter vsan_bootstrap cache_disks and capacity_disks must not overlap. Invalid: ${join(", ", local.vcenters_vsan_overlapping_disks)}"
+    }
+
+    precondition {
+      condition     = length(local.vcenters_vsan_invalid_mpx_runtime_paths) == 0
+      error_message = "nested_vsphere vCenter vsan_bootstrap disk selectors must be canonical naa.* device names or vmhba runtime paths such as vmhba0:C0:T1:L0; do not prefix vmhba paths with mpx. Invalid: ${join(", ", local.vcenters_vsan_invalid_mpx_runtime_paths)}"
+    }
+
+    precondition {
+      condition     = length(local.vcenters_vsan_insufficient_esxi_disks) == 0
+      error_message = "nested_vsphere vCenter vsan_bootstrap requires the target ESXi group shape.disks to include boot disk plus the requested cache/capacity disks. Invalid: ${join(", ", local.vcenters_vsan_insufficient_esxi_disks)}"
+    }
+
+    precondition {
       condition     = length(local.vcenters_invalid_vsan_compression_mode) == 0
       error_message = "nested_vsphere vCenter vsan_bootstrap must not set both compression_only and deduplication_and_compression. Invalid: ${join(", ", local.vcenters_invalid_vsan_compression_mode)}"
     }
@@ -906,6 +1030,11 @@ resource "terraform_data" "validate_vcenter_inputs" {
     precondition {
       condition     = length(local.vcenters_vsan_bootstrap_unsupported_vcsa_version) == 0
       error_message = "nested_vsphere vCenter vsan_bootstrap requires VCSA installer 7.0 U2 or later. Unsupported: ${join(", ", local.vcenters_vsan_bootstrap_unsupported_vcsa_version)}"
+    }
+
+    precondition {
+      condition     = length(local.vcenters_vcsa9_missing_depots) == 0
+      error_message = "vCenter 9.0 or later requires at least one vCenter Lifecycle Manager online depot before ESXi registration. Define vcenters[*].depots. Missing: ${join(", ", local.vcenters_vcsa9_missing_depots)}"
     }
 
     precondition {

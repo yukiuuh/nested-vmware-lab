@@ -62,6 +62,8 @@
       - "{{ deployment_v2_register_esxi_python_vendor_archive }}"
       - pyVmomi
       - pyVim
+      - vsanapiutils.py
+      - vsanmgmtObjects.py
   changed_when: false
   delegate_to: localhost
   become: false
@@ -85,7 +87,7 @@
     argv:
       - python3
       - -c
-      - "import pyVmomi, pyVim"
+      - "import pyVmomi, pyVim, vsanapiutils, vsanmgmtObjects"
   environment:
     PYTHONPATH: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
   changed_when: false

@@ -174,7 +174,7 @@ const providerAdapters: Record<ProviderKind, ProviderAdapterSummary> = {
       vcenter_deploy_target: ["vc", "esxi"],
     },
     notes: [
-      "Generates deployment_v2 Terraform tfvars.",
+      "Generates deployment_v2 Terraform tfvars as a vSphere provider spec artifact.",
       "Normalizes Terraform ansible_inventory_seed output into AnsibleSeed.",
     ],
   },
@@ -288,13 +288,15 @@ export function validateDocument(document: unknown): ValidationResult {
   const validator = validatorFor(kind);
   const valid = validator(document) === true;
   const errors = [...(validator.errors ?? [])];
+  const semanticMessages =
+    valid && kind === "Deployment" ? deploymentSemanticValidationMessages(document as Deployment) : [];
 
   return {
-    valid,
+    valid: valid && semanticMessages.length === 0,
     apiVersion,
     kind,
     errors,
-    messages: formatValidationErrors(errors),
+    messages: [...formatValidationErrors(errors), ...semanticMessages],
   };
 }
 
@@ -321,6 +323,159 @@ export function formatValidationErrors(errors: ErrorObject[]): string[] {
     const path = error.instancePath || "/";
     return `${path} ${error.message ?? "is invalid"}`;
   });
+}
+
+function deploymentSemanticValidationMessages(deployment: Deployment): string[] {
+  return [
+    ...deploymentVcenterDepotMessages(deployment),
+    ...deploymentVsanBootstrapMessages(deployment),
+  ];
+}
+
+function deploymentVcenterDepotMessages(deployment: Deployment): string[] {
+  const messages: string[] = [];
+  const installSources = asRecord(deployment.install_sources) ?? {};
+
+  for (const [name, value] of Object.entries(deployment.vcenters ?? {})) {
+    const vcenter = asRecord(value) ?? {};
+    const sourceRef = vcenterSourceRef(vcenter);
+    const source = sourceRef ? asRecord(installSources[sourceRef]) : undefined;
+    if (!source || !vcsaSourceRequiresDepot(source)) {
+      continue;
+    }
+    if (hasDepotEntries(vcenter.depots)) {
+      continue;
+    }
+    messages.push(
+      `vcenters.${name}.depots must define at least one vLCM online depot when the VCSA installer source is vCenter 9.0 or later`,
+    );
+  }
+
+  return messages;
+}
+
+function deploymentVsanBootstrapMessages(deployment: Deployment): string[] {
+  const messages: string[] = [];
+  const installSources = asRecord(deployment.install_sources) ?? {};
+  const esxiGroups = asRecord(deployment.esxi_groups) ?? {};
+
+  for (const [name, value] of Object.entries(deployment.vcenters ?? {})) {
+    const vcenter = asRecord(value) ?? {};
+    const placement = asRecord(vcenter.placement) ?? {};
+    const storage = asRecord(placement.storage) ?? {};
+    if (storage.mode !== "vsan_bootstrap") {
+      continue;
+    }
+
+    const sourceRef = vcenterSourceRef(vcenter);
+    const source = sourceRef ? asRecord(installSources[sourceRef]) : undefined;
+    const version = source ? detectVersionFromSource(source) : undefined;
+    if (!version) {
+      messages.push(
+        `vcenters.${name}.placement.storage.mode=vsan_bootstrap requires a VCSA installer URL/path with a detectable 7.0 U2 or later version`,
+      );
+    } else if (!versionSupportsVsanBootstrap(version)) {
+      messages.push(
+        `vcenters.${name}.placement.storage.mode=vsan_bootstrap requires VCSA installer 7.0 U2 or later`,
+      );
+    }
+
+    const vsan = asRecord(storage.vsan) ?? {};
+    const cacheDisks = defaultStringArray(vsan.cache_disks, []);
+    const capacityDisks = defaultStringArray(vsan.capacity_disks, []);
+    if (cacheDisks.length !== 1) {
+      messages.push(`vcenters.${name}.placement.storage.vsan.cache_disks must contain exactly one disk`);
+    }
+    if (capacityDisks.length === 0) {
+      messages.push(`vcenters.${name}.placement.storage.vsan.capacity_disks must contain at least one disk`);
+    }
+    const overlap = cacheDisks.filter((disk) => capacityDisks.includes(disk));
+    if (overlap.length > 0) {
+      messages.push(
+        `vcenters.${name}.placement.storage.vsan cache_disks and capacity_disks must not overlap: ${[
+          ...new Set(overlap),
+        ].join(", ")}`,
+      );
+    }
+    const invalidMpxRuntimePaths = [...cacheDisks, ...capacityDisks].filter((disk) => disk.startsWith("mpx.vmhba"));
+    if (invalidMpxRuntimePaths.length > 0) {
+      messages.push(
+        `vcenters.${name}.placement.storage.vsan disk selectors must be canonical naa.* device names or vmhba runtime paths; do not prefix vmhba paths with mpx: ${invalidMpxRuntimePaths.join(", ")}`,
+      );
+    }
+
+    const esxiGroupName = stringOrUndefined(placement.esxi_group);
+    const esxiGroup = esxiGroupName ? asRecord(esxiGroups[esxiGroupName]) : undefined;
+    const shape = asRecord(esxiGroup?.shape) ?? {};
+    const shapeDisks = Array.isArray(shape.disks) ? shape.disks : [];
+    const requiredDiskCount = 1 + cacheDisks.length + capacityDisks.length;
+    if (shapeDisks.length < requiredDiskCount) {
+      messages.push(
+        `vcenters.${name}.placement.storage.mode=vsan_bootstrap requires esxi_groups.${esxiGroupName ?? "<missing>"}.shape.disks to include boot disk plus requested cache/capacity disks`,
+      );
+    }
+  }
+
+  return messages;
+}
+
+function vcenterSourceRef(vcenter: Record<string, unknown>): string | undefined {
+  const source = asRecord(vcenter.source);
+  return stringOrUndefined(source?.install_source) ?? stringOrUndefined(vcenter.install_source);
+}
+
+function vcsaSourceRequiresDepot(source: Record<string, unknown>): boolean {
+  const version = detectVersionFromSource(source);
+  return version !== undefined && version.major >= 9;
+}
+
+function versionSupportsVsanBootstrap(version: { major: number; minor: number; patch: number }): boolean {
+  return version.major > 7 || (version.major === 7 && (version.minor > 0 || version.patch >= 2));
+}
+
+function detectVersionFromSource(source: Record<string, unknown>): { major: number; minor: number; patch: number } | undefined {
+  const text = [source.url, source.path]
+    .map((value) => stringOrUndefined(value))
+    .filter((value): value is string => value !== undefined)
+    .map((value) => basename(value).toLowerCase())
+    .join(" ");
+  return detectVersion(text);
+}
+
+function detectVersion(text: string): { major: number; minor: number; patch: number } | undefined {
+  const semver = text.match(/([0-9]+)\.([0-9]+)\.([0-9]+)/);
+  if (semver) {
+    return {
+      major: Number(semver[1]),
+      minor: Number(semver[2]),
+      patch: Number(semver[3]),
+    };
+  }
+  const update = text.match(/([0-9]+)\.([0-9]+)[._ -]*u([0-9]+)/i);
+  if (update) {
+    return {
+      major: Number(update[1]),
+      minor: Number(update[2]),
+      patch: Number(update[3]),
+    };
+  }
+  const majorMinor = text.match(/([0-9]+)\.([0-9]+)/);
+  if (majorMinor) {
+    return {
+      major: Number(majorMinor[1]),
+      minor: Number(majorMinor[2]),
+      patch: 0,
+    };
+  }
+  return undefined;
+}
+
+function basename(value: string): string {
+  return value.split(/[\\/]/).at(-1) ?? value;
+}
+
+function hasDepotEntries(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
 }
 
 export function checkSeedCapabilities(document: unknown): CapabilityCheckResult {
@@ -373,7 +528,7 @@ export function generateVsphereTfvars(document: unknown): VsphereTfvars {
   const tfvars: VsphereTfvars = {
     name_prefix: deployment.name,
     provider_config: providerConfig,
-    install_sources: deployment.install_sources,
+    install_sources: mapNamedObjects(deployment.install_sources, (source) => normalizeInstallSourceTfvars(source)),
     routers: mapNamedObjects(deployment.routers, (router) => normalizeRouter(router, defaultNetworks)),
     esxi_groups: mapNamedObjects(deployment.esxi_groups, (group) => normalizeEsxiTfvarsGroup(group)),
     storages: mapNamedObjects(deployment.storages, (storage) => normalizeStorageTfvars(storage)),
@@ -921,6 +1076,18 @@ function buildVsphereProviderConfig(
   return providerConfig;
 }
 
+function normalizeInstallSourceTfvars(source: Record<string, unknown>): Record<string, unknown> {
+  const type = stringOrUndefined(source.type);
+  const normalized = { ...source };
+
+  if (type === "datastore_iso") {
+    normalized.path = defaultString(source.path, source.url);
+    delete normalized.url;
+  }
+
+  return normalized;
+}
+
 function normalizeRouter(
   router: Record<string, unknown>,
   defaultNetworks: Record<string, unknown>,
@@ -960,24 +1127,27 @@ function normalizeRouter(
 
 function normalizeEsxiTfvarsGroup(group: Record<string, unknown>): Record<string, unknown> {
   const normalized = normalizeProviderPlacement(group);
+  const shape = asRecord(normalized.shape) ?? {};
   normalized.gateway = defaultString(normalized.gateway, "10.0.0.1");
   normalized.nameservers = defaultStringArray(normalized.nameservers, ["10.0.0.1"]);
   normalized.ntp_servers = defaultStringArray(normalized.ntp_servers, ["10.0.0.1"]);
   normalized.subnet_mask = defaultString(normalized.subnet_mask, "255.255.255.0");
   normalized.shape = {
-    num_cpus: 16,
-    mem_gb: 32,
-    nic_count: 8,
-    tpm_enabled: false,
-    nvme_enabled: false,
-    disks: [
-      {
-        label: "disk0",
-        size_gb: 32,
-        unit_number: 0,
-      },
-    ],
-    ...(asRecord(normalized.shape) ?? {}),
+    ...shape,
+    num_cpus: defaultNumber(shape.num_cpus, normalized.num_cpus, 16),
+    mem_gb: defaultNumber(shape.mem_gb, normalized.mem_gb, 32),
+    nic_count: defaultNumber(shape.nic_count, normalized.nic_count, 8),
+    tpm_enabled: typeof shape.tpm_enabled === "boolean" ? shape.tpm_enabled : false,
+    nvme_enabled: typeof shape.nvme_enabled === "boolean" ? shape.nvme_enabled : false,
+    disks: Array.isArray(shape.disks)
+      ? shape.disks
+      : [
+        {
+          label: "disk0",
+          size_gb: 32,
+          unit_number: 0,
+        },
+      ],
   };
   return normalized;
 }
@@ -1272,8 +1442,20 @@ function defaultStringArray(value: unknown, fallback: string[]): string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : fallback;
 }
 
-function defaultNumber(value: unknown, fallback: number): number {
-  return typeof value === "number" ? value : fallback;
+function defaultNumber(...values: unknown[]): number {
+  const fallback = values[values.length - 1];
+  for (const value of values) {
+    const number =
+      typeof value === "number"
+        ? value
+        : typeof value === "string" && value.trim() !== ""
+          ? Number(value)
+          : NaN;
+    if (Number.isFinite(number)) {
+      return number;
+    }
+  }
+  return typeof fallback === "number" ? fallback : 0;
 }
 
 function mergeObject(

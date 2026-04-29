@@ -8,4 +8,5 @@ validate_certs: false
 # Depot settings
 vsphere_host_depot_fqdn: ""
 vsphere_host_depot_download_token: ""
+vsphere_override_new_depots: []
 vsphere_host_depot_action: "update"

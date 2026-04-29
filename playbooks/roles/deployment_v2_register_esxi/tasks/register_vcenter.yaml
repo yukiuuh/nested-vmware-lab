@@ -18,6 +18,103 @@
         | default(deployment_v2_register_esxi_default_cluster, true)
       }}
     deployment_v2_register_esxi_hosts: "{{ deployment_v2_register_esxi_vcenter_item.value.managed_hosts | default([]) }}"
+    deployment_v2_register_esxi_is_vsan_bootstrap: >-
+      {{
+        deployment_v2_register_esxi_vcenter_item.value.target.kind | default('') == 'esxi'
+        and deployment_v2_register_esxi_vcenter_item.value.target.storage.mode | default('existing_datastore') == 'vsan_bootstrap'
+      }}
+    deployment_v2_register_esxi_bootstrap_host_refs: >-
+      {{
+        [
+          deployment_v2_register_esxi_vcenter_item.value.target.esxi_host.fqdn | default('', true),
+          deployment_v2_register_esxi_vcenter_item.value.target.esxi_host.hostname | default('', true),
+          deployment_v2_register_esxi_vcenter_item.value.target.esxi_host.ip | default('', true),
+          deployment_v2_register_esxi_vcenter_item.value.target.host | default('', true),
+          deployment_v2_register_esxi_vcenter_item.value.target.hostname | default('', true)
+        ]
+        | reject('equalto', '')
+        | map('lower')
+        | list
+      }}
+    deployment_v2_register_esxi_vsan: >-
+      {{
+        deployment_v2_register_esxi_vcenter_item.value.target.storage.vsan | default({})
+      }}
+    deployment_v2_register_esxi_new_depots: >-
+      {{
+        deployment_v2_register_esxi_override_new_depots
+        if (deployment_v2_register_esxi_override_new_depots | default([]) | length > 0)
+        else (
+          vsphere_override_new_depots
+          if (vsphere_override_new_depots | default([]) | length > 0)
+          else (deployment_v2_register_esxi_vcenter_item.value.depots | default([]))
+        )
+      }}
+    deployment_v2_register_esxi_vcsa_major: >-
+      {{
+        deployment_v2_register_esxi_vcenter_item.value.install.vcsa_version.major
+        | default(0, true)
+        | int
+      }}
+    deployment_v2_register_esxi_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}"
+    deployment_v2_register_esxi_router_proxy_ssh_prefix: >-
+      {{
+        (
+          "ssh -i "
+          ~ (hostvars[inventory_hostname].ansible_ssh_private_key_file | quote)
+          ~ " -o IdentitiesOnly=yes"
+        )
+        if hostvars[inventory_hostname].ansible_ssh_private_key_file | default('', true) | length > 0
+        else (
+          "sshpass -p "
+          ~ (hostvars[inventory_hostname].ansible_password | quote)
+          ~ " ssh"
+        )
+        if hostvars[inventory_hostname].ansible_password | default('', true) | length > 0
+        else "ssh"
+      }}
+
+- name: Build deployment_v2 ESXi registration host list for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.set_fact:
+    deployment_v2_register_esxi_hosts_to_register: >-
+      {{
+        []
+        if deployment_v2_register_esxi_is_vsan_bootstrap | bool
+        else deployment_v2_register_esxi_hosts
+      }}
+
+- name: Add non-bootstrap ESXi hosts to deployment_v2 registration list for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.set_fact:
+    deployment_v2_register_esxi_hosts_to_register: >-
+      {{
+        deployment_v2_register_esxi_hosts_to_register
+        + [deployment_v2_register_esxi_host_item]
+      }}
+  vars:
+    deployment_v2_register_esxi_host_refs: >-
+      {{
+        [
+          deployment_v2_register_esxi_host_item.fqdn | default('', true),
+          deployment_v2_register_esxi_host_item.hostname | default('', true),
+          deployment_v2_register_esxi_host_item.ip | default('', true),
+          deployment_v2_register_esxi_host_item.name | default('', true)
+        ]
+        | reject('equalto', '')
+        | map('lower')
+        | list
+      }}
+  loop: "{{ deployment_v2_register_esxi_hosts }}"
+  loop_control:
+    loop_var: deployment_v2_register_esxi_host_item
+    label: "{{ deployment_v2_register_esxi_host_item.fqdn }}"
+  when:
+    - deployment_v2_register_esxi_is_vsan_bootstrap | bool
+    - >-
+      (
+        deployment_v2_register_esxi_host_refs
+        | intersect(deployment_v2_register_esxi_bootstrap_host_refs)
+        | length
+      ) == 0
 
 - name: Validate deployment_v2 ESXi registration metadata for {{ deployment_v2_register_esxi_current_name }}
   ansible.builtin.assert:
@@ -39,6 +136,39 @@
       deployment_v2 ESXi registration metadata is incomplete for
       {{ deployment_v2_register_esxi_current_name }}.
 
+- name: Report deployment_v2 vSAN bootstrap host registration skip for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.debug:
+    msg: >-
+      vSAN bootstrap vCenter {{ deployment_v2_register_esxi_current_name }} was
+      deployed by the VCSA CLI installer onto
+      {{ deployment_v2_register_esxi_bootstrap_host_refs | join(', ') }}; skipping
+      that already-registered bootstrap host and registering
+      {{ deployment_v2_register_esxi_hosts_to_register | map(attribute='fqdn') | list | to_json }}.
+  when: deployment_v2_register_esxi_is_vsan_bootstrap | bool
+
+- name: Validate deployment_v2 vCenter depot requirements for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.assert:
+    that:
+      - deployment_v2_register_esxi_vcsa_major | int < 9
+        or deployment_v2_register_esxi_new_depots | length > 0
+    fail_msg: >-
+      {{ deployment_v2_register_esxi_current_name }} uses vCenter
+      {{ deployment_v2_register_esxi_vcsa_major }}.x or later. vCenter 9.0+
+      requires at least one vCenter Lifecycle Manager online depot before ESXi
+      registration. Define vcenters.{{ deployment_v2_register_esxi_current_name
+      }}.depots or set vsphere_override_new_depots.
+
+- name: Build deployment_v2 ESXi SSH proxy args for vSAN post-registration work on {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.set_fact:
+    deployment_v2_register_esxi_esxi_ssh_common_args: >-
+      -F /dev/null
+      -o StrictHostKeyChecking=no
+      -o UserKnownHostsFile=/dev/null
+      -o ProxyCommand="{{ deployment_v2_register_esxi_router_proxy_ssh_prefix }}
+      -F /dev/null -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+      -W %h:%p {{ hostvars[inventory_hostname].ansible_user }}@{{ hostvars[inventory_hostname].ansible_host }}"
+  when: deployment_v2_register_esxi_is_vsan_bootstrap | bool
+
 - name: Wait for deployment_v2 vCenter API before ESXi registration for {{ deployment_v2_register_esxi_current_name }}
   ansible.builtin.wait_for:
     host: "{{ deployment_v2_register_esxi_vcenter_host }}"
@@ -47,6 +177,19 @@
     connect_timeout: "{{ deployment_v2_register_esxi_connect_timeout | int }}"
     sleep: 10
     state: started
+
+- name: Configure deployment_v2 vCenter online depots before ESXi registration for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.include_role:
+    name: vsphere_host_depot_change
+  vars:
+    vsphere_host_depot_vcenter_address: "{{ deployment_v2_register_esxi_vcenter_host }}"
+    vsphere_host_depot_user: "{{ deployment_v2_register_esxi_vcenter_user }}"
+    vsphere_host_depot_password: "{{ deployment_v2.credentials.vm_admin_password }}"
+    vsphere_host_depot_action: update
+    vsphere_override_new_depots: "{{ deployment_v2_register_esxi_new_depots }}"
+  when:
+    - deployment_v2_register_esxi_configure_depots | bool
+    - deployment_v2_register_esxi_new_depots | length > 0
 
 - name: Ensure deployment_v2 vCenter datacenter exists for {{ deployment_v2_register_esxi_current_name }}
   community.vmware.vmware_datacenter:
@@ -63,6 +206,7 @@
   become: false
   environment:
     PYTHONPATH: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+  when: not (deployment_v2_register_esxi_is_vsan_bootstrap | bool)
 
 - name: Ensure deployment_v2 vCenter cluster exists for {{ deployment_v2_register_esxi_current_name }}
   vmware.vmware.cluster:
@@ -80,6 +224,7 @@
   become: false
   environment:
     PYTHONPATH: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+  when: not (deployment_v2_register_esxi_is_vsan_bootstrap | bool)
 
 - name: Register deployment_v2 ESXi hosts into {{ deployment_v2_register_esxi_current_name }}
   vmware.vmware.esxi_host:
@@ -93,7 +238,7 @@
     esxi_username: root
     esxi_password: "{{ deployment_v2.credentials.vm_admin_password }}"
     state: present
-  loop: "{{ deployment_v2_register_esxi_hosts }}"
+  loop: "{{ deployment_v2_register_esxi_hosts_to_register }}"
   loop_control:
     label: "{{ item.fqdn }}"
   register: deployment_v2_register_esxi_host_results
@@ -103,6 +248,21 @@
   become: false
   environment:
     PYTHONPATH: "{{ deployment_v2_register_esxi_python_vendor_dir }}"
+  when: deployment_v2_register_esxi_hosts_to_register | length > 0
+
+- name: Mark deployment_v2 vSAN disks as SSD before disk group claim for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.include_tasks: prepare_vsan_host.yaml
+  vars:
+    deployment_v2_register_esxi_vsan_host: "{{ deployment_v2_register_esxi_vsan_host_item }}"
+  loop: "{{ deployment_v2_register_esxi_hosts }}"
+  loop_control:
+    loop_var: deployment_v2_register_esxi_vsan_host_item
+    label: "{{ deployment_v2_register_esxi_vsan_host_item.fqdn }}"
+  when: deployment_v2_register_esxi_is_vsan_bootstrap | bool
+
+- name: Configure deployment_v2 vSAN cluster after ESXi registration for {{ deployment_v2_register_esxi_current_name }}
+  ansible.builtin.include_tasks: vsan_post_config.yaml
+  when: deployment_v2_register_esxi_is_vsan_bootstrap | bool
 
 - name: Record deployment_v2 ESXi registration state for {{ deployment_v2_register_esxi_current_name }}
   ansible.builtin.copy:

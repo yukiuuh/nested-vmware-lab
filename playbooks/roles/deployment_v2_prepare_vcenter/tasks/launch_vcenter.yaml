@@ -1,7 +1,31 @@
 ---
 - name: Build deployment_v2 vCenter deployment paths for {{ deployment_v2_vcenter_item.key }}
   ansible.builtin.set_fact:
-    deployment_v2_vcenter_prepare_current: "{{ deployment_v2_vcenter_item.value }}"
+    deployment_v2_vcenter_prepare_current: >-
+      {{
+        deployment_v2_vcenter_item.value
+        | combine(
+            {
+              "target": {
+                "storage": {
+                  "vsan": (
+                    deployment_v2_vcenter_prepare_resolved_vsan_disks
+                    | default({})
+                  ).get(deployment_v2_vcenter_item.key, {})
+                }
+              }
+            }
+            if (
+              (
+                deployment_v2_vcenter_prepare_resolved_vsan_disks
+                | default({})
+              ).get(deployment_v2_vcenter_item.key, {})
+              | length
+            ) > 0
+            else {},
+            recursive=True
+          )
+      }}
     deployment_v2_vcenter_prepare_source_mount_path: >-
       {{ deployment_v2_vcenter_prepare_mount_root }}/{{ deployment_v2_vcenter_item.value.install.install_source }}/mounted
     deployment_v2_vcenter_prepare_work_dir: >-

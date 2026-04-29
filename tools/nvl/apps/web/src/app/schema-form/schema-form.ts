@@ -1,5 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  EventEmitter,
+  HostListener,
+  Input,
+  Output,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ClarityModule } from '@clr/angular';
 import { cloneJson, formatJson } from '../editor-utils';
@@ -18,6 +26,8 @@ export interface JsonSchema {
   items?: JsonSchema;
   additionalProperties?: JsonSchema | boolean;
   minLength?: number;
+  minimum?: number;
+  maximum?: number;
   pattern?: string;
 }
 
@@ -27,6 +37,8 @@ export interface SchemaUiField {
   widget?: SchemaWidget;
   description?: string;
   order?: number;
+  wide?: boolean;
+  entryPrefix?: string;
 }
 
 export interface SchemaFormUi {
@@ -57,6 +69,8 @@ interface SchemaField {
   required: boolean;
   description: string;
   order: number;
+  wide: boolean;
+  entryPrefix: string;
 }
 
 interface MapEntry {
@@ -80,6 +94,81 @@ export class SchemaFormComponent {
   protected readonly jsonErrors = signal<Record<string, string>>({});
   protected readonly newEntryNames = signal<Record<string, string>>({});
   protected readonly newFreeformKeys = signal<Record<string, string>>({});
+  protected readonly collapsedSections = signal<Record<string, boolean>>({});
+
+  public constructor(private readonly elementRef: ElementRef<HTMLElement>) {}
+
+  @HostListener('window:nvl-schema-form:reveal-path', ['$event'])
+  protected revealPath(event: Event): void {
+    const path = (event as CustomEvent<{ path?: string }>).detail?.path;
+    if (path) {
+      this.expandPath(path);
+    }
+  }
+
+  protected sectionNavigation(): SchemaField[] {
+    return this.fieldsFor(this.schema, '').filter((field) =>
+      ['array-json', 'array-object', 'freeform-map', 'map', 'object'].includes(field.widget),
+    );
+  }
+
+  protected goToSection(path: string): void {
+    this.expandPath(path);
+    const target = this.findPathElement(path);
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    target.classList.add('schema-jump-highlight');
+    window.setTimeout(() => target.classList.remove('schema-jump-highlight'), 1800);
+
+    const focusTarget = target.querySelector('input, select, textarea, button');
+    if (focusTarget instanceof HTMLElement) {
+      focusTarget.focus({ preventScroll: true });
+    }
+  }
+
+  protected isSectionCollapsed(path: string): boolean {
+    return this.collapsedSections()[path] === true;
+  }
+
+  protected setSectionOpen(path: string, open: boolean): void {
+    this.collapsedSections.update((current) => ({
+      ...current,
+      [path]: !open,
+    }));
+  }
+
+  protected sectionIssueCount(field: SchemaField): number {
+    let count = this.fieldErrors(field).length;
+    if (field.widget === 'object') {
+      count += this.countErrorsForNode(field.schema, field.path);
+    }
+    if (field.widget === 'map') {
+      for (const entry of this.mapEntries(field)) {
+        count += this.countErrorsForNode(this.mapValueSchema(field), entry.path);
+      }
+    }
+    if (field.widget === 'array-object') {
+      for (const entry of this.arrayEntries(field)) {
+        count += this.countErrorsForNode(this.arrayItemSchema(field), entry.path);
+      }
+    }
+    return count;
+  }
+
+  protected mapEntryIssueCount(field: SchemaField, path: string): number {
+    return this.countErrorsForNode(this.mapValueSchema(field), path);
+  }
+
+  protected arrayEntryIssueCount(field: SchemaField, path: string): number {
+    return this.countErrorsForNode(this.arrayItemSchema(field), path);
+  }
+
+  protected issueCountLabel(count: number): string {
+    return `${count} ${count === 1 ? 'issue' : 'issues'}`;
+  }
 
   protected fieldsFor(schema: JsonSchema, basePath: string): SchemaField[] {
     const properties = schema.properties ?? {};
@@ -100,6 +189,8 @@ export class SchemaFormComponent {
           required: required.has(key),
           description: uiField?.description ?? propertySchema.description ?? '',
           order: uiField?.order ?? order.indexOf(key),
+          wide: uiField?.wide ?? isWideFieldPath(path, key),
+          entryPrefix: uiField?.entryPrefix ?? entryPrefixForPath(path),
         };
       })
       .sort((a, b) => normalizedOrder(a.order) - normalizedOrder(b.order));
@@ -110,23 +201,23 @@ export class SchemaFormComponent {
   }
 
   protected textValue(field: SchemaField): string {
-    const value = this.fieldValue(field);
+    const value = this.displayValue(field);
     return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
       ? String(value)
       : '';
   }
 
   protected checkedValue(field: SchemaField): boolean {
-    return this.fieldValue(field) === true;
+    return this.displayValue(field) === true;
   }
 
   protected jsonValue(field: SchemaField): string {
-    const value = this.fieldValue(field);
+    const value = this.displayValue(field);
     return formatJson(value ?? defaultValueForSchema(field.schema));
   }
 
   protected stringListValue(field: SchemaField): string {
-    const value = this.fieldValue(field);
+    const value = this.displayValue(field);
     return Array.isArray(value) ? value.join('\n') : '';
   }
 
@@ -159,13 +250,56 @@ export class SchemaFormComponent {
   }
 
   protected helperText(field: SchemaField, fallback = ''): string {
-    return [field.description, fallback, field.required ? 'Required by schema.' : '']
+    return [field.description, fallback, this.defaultHelperText(field)]
       .filter((part) => part.length > 0)
       .join(' ');
   }
 
   protected hasHelperText(field: SchemaField, fallback = ''): boolean {
     return this.helperText(field, fallback).length > 0;
+  }
+
+  protected hasFieldErrors(field: SchemaField): boolean {
+    return this.fieldErrors(field).length > 0;
+  }
+
+  protected fieldErrorText(field: SchemaField): string {
+    return this.fieldErrors(field).join(' ');
+  }
+
+  protected fieldInputId(field: SchemaField): string {
+    return `schema-field-${pathId(field.path)}`;
+  }
+
+  protected fieldHelperId(field: SchemaField): string {
+    return `schema-field-${pathId(field.path)}-helper`;
+  }
+
+  protected fieldErrorId(field: SchemaField): string {
+    return `schema-field-${pathId(field.path)}-error`;
+  }
+
+  protected fieldDescribedBy(field: SchemaField, fallback = ''): string {
+    const ids: string[] = [];
+    if (this.hasHelperText(field, fallback)) {
+      ids.push(this.fieldHelperId(field));
+    }
+    if (this.hasFieldErrors(field)) {
+      ids.push(this.fieldErrorId(field));
+    }
+    return ids.join(' ');
+  }
+
+  protected isWideField(field: SchemaField): boolean {
+    return field.wide;
+  }
+
+  protected removeMapEntryLabel(field: SchemaField, key: string): string {
+    return `Remove ${field.label} entry ${key}`;
+  }
+
+  protected removeArrayItemLabel(field: SchemaField, index: string): string {
+    return `Remove ${field.label} ${this.arrayEntryLabel(index)}`;
   }
 
   protected addArrayItem(field: SchemaField): void {
@@ -191,7 +325,8 @@ export class SchemaFormComponent {
 
   protected newEntryName(path: string): string {
     return (
-      this.newEntryNames()[path] ?? nextEntryName(this.fieldValue({ path } as SchemaField), 'item')
+      this.newEntryNames()[path] ??
+      nextEntryName(this.fieldValue({ path } as SchemaField), entryPrefixForPath(path))
     );
   }
 
@@ -213,7 +348,7 @@ export class SchemaFormComponent {
     this.emitPathUpdate(field.path, record);
     this.newEntryNames.update((current) => ({
       ...current,
-      [field.path]: nextEntryName(record, 'item'),
+      [field.path]: nextEntryName(record, field.entryPrefix),
     }));
   }
 
@@ -330,10 +465,346 @@ export class SchemaFormComponent {
   private emitPathUpdate(path: string, value: unknown): void {
     this.modelChange.emit(setValueAtPath(this.model, path, value));
   }
+
+  private expandPath(path: string): void {
+    this.collapsedSections.update((current) => {
+      const next = { ...current };
+      for (const sectionPath of Object.keys(next)) {
+        if (path === sectionPath || path.startsWith(`${sectionPath}.`)) {
+          delete next[sectionPath];
+        }
+      }
+      return next;
+    });
+  }
+
+  private findPathElement(path: string): HTMLElement | undefined {
+    return Array.from(
+      this.elementRef.nativeElement.querySelectorAll<HTMLElement>('[data-schema-path]'),
+    ).find((item) => item.dataset['schemaPath'] === path);
+  }
+
+  private countErrorsForNode(schema: JsonSchema, basePath: string): number {
+    let count = 0;
+    for (const field of this.fieldsFor(schema, basePath)) {
+      count += this.fieldErrors(field).length;
+      if (field.widget === 'object') {
+        count += this.countErrorsForNode(field.schema, field.path);
+      }
+      if (field.widget === 'map') {
+        for (const entry of this.mapEntries(field)) {
+          count += this.countErrorsForNode(this.mapValueSchema(field), entry.path);
+        }
+      }
+      if (field.widget === 'array-object') {
+        for (const entry of this.arrayEntries(field)) {
+          count += this.countErrorsForNode(this.arrayItemSchema(field), entry.path);
+        }
+      }
+    }
+    return count;
+  }
+
+  private displayValue(field: SchemaField): unknown {
+    const value = this.fieldValue(field);
+    if (value !== undefined) {
+      return value;
+    }
+    return schemaDisplayDefault(field.schema);
+  }
+
+  private defaultHelperText(field: SchemaField): string {
+    if (this.fieldValue(field) !== undefined || !hasSchemaDisplayDefault(field.schema)) {
+      return '';
+    }
+    return `Using default: ${defaultText(schemaDisplayDefault(field.schema))}.`;
+  }
+
+  private fieldErrors(field: SchemaField): string[] {
+    const errors: string[] = [];
+    const jsonError = this.jsonErrors()[field.path];
+    if (jsonError) {
+      errors.push(jsonError);
+    }
+
+    const value = this.displayValue(field);
+    if (field.required && isEmptyFormValue(value)) {
+      errors.push(`${field.label} is required.`);
+    }
+
+    if (field.schema.minLength !== undefined && typeof value === 'string') {
+      if (value.length < field.schema.minLength) {
+        errors.push(`${field.label} must be at least ${field.schema.minLength} characters.`);
+      }
+    }
+
+    if (field.schema.pattern && typeof value === 'string' && value.length > 0) {
+      try {
+        if (!new RegExp(field.schema.pattern).test(value)) {
+          errors.push(`${field.label} does not match the required format.`);
+        }
+      } catch {
+        // Ignore invalid schema patterns in the UI; full schema validation still reports them.
+      }
+    }
+
+    if (
+      (field.schema.minimum !== undefined || field.schema.maximum !== undefined) &&
+      (typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''))
+    ) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) {
+        errors.push(`${field.label} must be a number.`);
+      } else {
+        if (field.schema.minimum !== undefined && number < field.schema.minimum) {
+          errors.push(`${field.label} must be ${field.schema.minimum} or greater.`);
+        }
+        if (field.schema.maximum !== undefined && number > field.schema.maximum) {
+          errors.push(`${field.label} must be ${field.schema.maximum} or less.`);
+        }
+      }
+    }
+
+    errors.push(...this.infrastructureFormatErrors(field, value));
+    errors.push(...this.conditionalRequirementErrors(field, value));
+
+    return [...new Set(errors)];
+  }
+
+  private infrastructureFormatErrors(field: SchemaField, value: unknown): string[] {
+    if (isEmptyFormValue(value)) {
+      return [];
+    }
+
+    const errors: string[] = [];
+    if (typeof value === 'string') {
+      const text = value.trim();
+      if (text.length === 0) {
+        return [];
+      }
+
+      if (isSubnetMaskField(field) && !isSubnetMask(text)) {
+        errors.push(`${field.label} must be a valid IPv4 subnet mask.`);
+      } else if (isIpv4Field(field) && !isIpv4(text)) {
+        errors.push(`${field.label} must be an IPv4 address.`);
+      }
+
+      if (isHostnameField(field) && !isDnsLabel(text)) {
+        errors.push(`${field.label} must be a DNS label.`);
+      }
+      if (isDomainNameField(field) && !isDnsName(text)) {
+        errors.push(`${field.label} must be a DNS name.`);
+      }
+    }
+
+    if (Array.isArray(value) && isNameserverField(field)) {
+      const invalidNameservers = value
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .filter((item) => !isIpv4(item.trim()));
+      if (invalidNameservers.length > 0) {
+        errors.push(`${field.label} entries must be IPv4 addresses.`);
+      }
+    }
+
+    return errors;
+  }
+
+  private conditionalRequirementErrors(field: SchemaField, value: unknown): string[] {
+    const errors: string[] = [];
+    const installSourceType = this.installSourceTypeForField(field);
+    if (installSourceType) {
+      const text = typeof value === 'string' ? value.trim() : '';
+      if (field.key === 'url' && installSourceTypeRequiresUrl(installSourceType)) {
+        if (!text) {
+          errors.push(`${field.label} is required when source type is ${installSourceType}.`);
+        } else if (installSourceTypeRequiresHttpUrl(installSourceType) && !isHttpUrl(text)) {
+          errors.push(`${field.label} must be an HTTP or HTTPS URL for ${installSourceType}.`);
+        }
+      }
+      if (field.key === 'path' && installSourceTypeRequiresPath(installSourceType) && !text) {
+        errors.push(`${field.label} is required when source type is ${installSourceType}.`);
+      }
+      if (field.key === 'datastore' && installSourceType === 'datastore_iso' && !text) {
+        errors.push(`${field.label} is required when source type is datastore_iso.`);
+      }
+    }
+
+    const credentialPair = providerCredentialPair(field.key);
+    if (credentialPair && this.providerKindForCredentialField(field) === 'vsphere') {
+      const parent = parentPath(field.path);
+      const literal = valueAtPath(this.model, joinPath(parent, credentialPair.literal));
+      const env = valueAtPath(this.model, joinPath(parent, credentialPair.env));
+      if (!hasTextValue(literal) && !hasTextValue(env) && field.key === credentialPair.literal) {
+        errors.push(
+          `Provide ${credentialPair.label} or ${credentialPair.label} Env for vSphere credentials.`,
+        );
+      }
+    }
+
+    return errors;
+  }
+
+  private installSourceTypeForField(field: SchemaField): string | undefined {
+    const parts = field.path.split('.');
+    if (parts[0] !== 'install_sources' || parts.length < 3) {
+      return undefined;
+    }
+
+    const type = valueAtPath(this.model, joinPath(parentPath(field.path), 'type'));
+    return typeof type === 'string' && type.trim() ? type.trim() : 'http_iso';
+  }
+
+  private providerKindForCredentialField(field: SchemaField): string | undefined {
+    const parts = field.path.split('.');
+    if (parts[0] !== 'providers' || parts[2] !== 'credentials' || parts.length < 4) {
+      return undefined;
+    }
+
+    const kind = valueAtPath(this.model, `providers.${parts[1]}.kind`);
+    return typeof kind === 'string' && kind.trim() ? kind.trim() : 'vsphere';
+  }
 }
 
 function normalizedOrder(order: number): number {
   return order === -1 ? Number.MAX_SAFE_INTEGER : order;
+}
+
+function hasSchemaDisplayDefault(schema: JsonSchema): boolean {
+  return 'default' in schema || 'const' in schema;
+}
+
+function schemaDisplayDefault(schema: JsonSchema): unknown {
+  if ('default' in schema) {
+    return cloneJson(schema.default);
+  }
+  if ('const' in schema) {
+    return schema.const;
+  }
+  return undefined;
+}
+
+function defaultText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value.length > 0 ? value : 'empty string';
+  }
+  return formatJson(value);
+}
+
+function isEmptyFormValue(value: unknown): boolean {
+  if (value === undefined || value === null) {
+    return true;
+  }
+  if (typeof value === 'string') {
+    return value.trim().length === 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+  return false;
+}
+
+function isIpv4Field(field: SchemaField): boolean {
+  if (isSubnetMaskField(field)) {
+    return false;
+  }
+  if (field.key === 'ip' || field.key === 'gateway' || field.key === 'starting_ip') {
+    return true;
+  }
+  if (field.key.endsWith('_ip')) {
+    return true;
+  }
+  return field.key === 'network' && /\.networks\.(wan|lan)\.network$/.test(field.path);
+}
+
+function isSubnetMaskField(field: SchemaField): boolean {
+  return field.key === 'subnet_mask' || field.key.endsWith('_subnet_mask');
+}
+
+function isHostnameField(field: SchemaField): boolean {
+  return field.key === 'hostname';
+}
+
+function isDomainNameField(field: SchemaField): boolean {
+  return field.key === 'domain_name' || field.key.endsWith('_domain_name');
+}
+
+function isNameserverField(field: SchemaField): boolean {
+  return field.key === 'nameservers';
+}
+
+function isIpv4(value: string): boolean {
+  const parts = value.split('.');
+  if (parts.length !== 4) {
+    return false;
+  }
+  return parts.every((part) => {
+    if (!/^\d{1,3}$/.test(part)) {
+      return false;
+    }
+    const octet = Number(part);
+    return Number.isInteger(octet) && octet >= 0 && octet <= 255;
+  });
+}
+
+function isSubnetMask(value: string): boolean {
+  if (!isIpv4(value)) {
+    return false;
+  }
+  const bits = value
+    .split('.')
+    .map((part) => Number(part).toString(2).padStart(8, '0'))
+    .join('');
+  return /^1*0*$/.test(bits);
+}
+
+function isDnsLabel(value: string): boolean {
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i.test(value);
+}
+
+function isDnsName(value: string): boolean {
+  return (
+    value.length <= 253 &&
+    value
+      .replace(/\.$/, '')
+      .split('.')
+      .every((label) => isDnsLabel(label))
+  );
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function installSourceTypeRequiresUrl(type: string): boolean {
+  return ['http_ovf', 'http_iso', 'rclone_iso'].includes(type);
+}
+
+function installSourceTypeRequiresHttpUrl(type: string): boolean {
+  return ['http_ovf', 'http_iso'].includes(type);
+}
+
+function installSourceTypeRequiresPath(type: string): boolean {
+  return ['local_ovf', 'datastore_iso'].includes(type);
+}
+
+function providerCredentialPair(
+  key: string,
+): { literal: string; env: string; label: string } | undefined {
+  const pairs: Record<string, { literal: string; env: string; label: string }> = {
+    server: { literal: 'server', env: 'server_env', label: 'Server' },
+    user: { literal: 'user', env: 'user_env', label: 'User' },
+    password: { literal: 'password', env: 'password_env', label: 'Password' },
+  };
+  return pairs[key];
+}
+
+function hasTextValue(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function widgetForSchema(schema: JsonSchema): SchemaWidget {
@@ -371,6 +842,36 @@ function widgetForSchema(schema: JsonSchema): SchemaWidget {
     return 'text';
   }
   return 'json';
+}
+
+function isWideFieldPath(path: string, key: string): boolean {
+  if (path.endsWith('.credentials.password') || key === 'password') {
+    return false;
+  }
+  return [
+    /(^|_)(url|path|file|remote)$/,
+    /(^|_)(server|endpoint)$/,
+    /(^|_)(compute_host)$/,
+    /(^|_)(http_root|tftp_root)$/,
+    /(^|_)(ssh_common_args)$/,
+  ].some((pattern) => pattern.test(key));
+}
+
+function entryPrefixForPath(path: string): string {
+  const key = path.split('.').at(-1) ?? '';
+  const prefixes: Record<string, string> = {
+    providers: 'provider',
+    install_sources: 'source',
+    routers: 'router',
+    storages: 'storage',
+    esxi_groups: 'esxi_group',
+    vcenters: 'vcenter',
+    networks: 'network',
+    luns: 'lun',
+    disks: 'disk',
+    vmkernel_adapters: 'vmkernel',
+  };
+  return prefixes[key] ?? 'item';
 }
 
 function defaultValueForSchema(schema: JsonSchema): unknown {
@@ -469,6 +970,10 @@ function joinPath(basePath: string, key: string): string {
   return basePath ? `${basePath}.${key}` : key;
 }
 
+function parentPath(path: string): string {
+  return path.includes('.') ? path.slice(0, path.lastIndexOf('.')) : '';
+}
+
 function labelFromPath(path: string): string {
   return (
     path
@@ -507,4 +1012,8 @@ function sanitizeKey(value: unknown): string {
   return String(value ?? '')
     .trim()
     .replace(/\s+/g, '_');
+}
+
+function pathId(path: string): string {
+  return path.replace(/[^A-Za-z0-9_-]+/g, '-');
 }
