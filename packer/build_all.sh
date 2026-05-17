@@ -44,7 +44,7 @@ PRODUCT_SECTION=$'    <ProductSection>
 
 for BUILD in "${BUILDS[@]}"; do
     echo "Building $BUILD..."
-    # packer build -force -only="$BUILD.vsphere-iso.$BUILD" -var "vm_name=$BUILD" -var-file variables.json .
+    packer build -force -only="$BUILD.vsphere-iso.$BUILD" -var "vm_name=$BUILD" -var-file variables.json .
     
     # Determine OVF name based on build name (mapped in build.pkr.hcl)
     case $BUILD in

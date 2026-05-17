@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ensure_kernel_module() {
+  local module="$1"
+  local package="$${2:-}"
+
+  if modprobe "$module"; then
+    return 0
+  fi
+
+  if [[ -n "$package" ]] && command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    if apt-get update && apt-get install -y "$package"; then
+      depmod -a
+
+      if modprobe "$module"; then
+        return 0
+      fi
+    else
+      echo "Failed to install $package for kernel module '$module'." >&2
+    fi
+  fi
+
+  echo "Required kernel module '$module' is unavailable. Install $${package:-the matching linux-modules-extra package}, then restart nvl-evpn.service." >&2
+  return 1
+}
+
+KERNEL_MODULES_EXTRA_PACKAGE="linux-modules-extra-$(uname -r)"
+
+ensure_kernel_module vrf "$KERNEL_MODULES_EXTRA_PACKAGE"
+ensure_kernel_module vxlan "$KERNEL_MODULES_EXTRA_PACKAGE"
+
+sysctl -w net.ipv4.conf.all.rp_filter=0
+sysctl -w net.ipv4.conf.default.rp_filter=0
+sysctl -w net.ipv4.tcp_l3mdev_accept=1
+sysctl -w net.ipv4.udp_l3mdev_accept=1
+
+UNDERLAY_IF="vlan.${underlay_vlan}"
+MTU="${mtu}"
+
+ip link set "$UNDERLAY_IF" mtu "$MTU"
+ip link set "$UNDERLAY_IF" up
+
+%{ for _, tenant in tenants ~}
+if ! ip link show "${tenant.vrf_name}" >/dev/null 2>&1; then
+  ip link add "${tenant.vrf_name}" type vrf table ${tenant.vrf_table}
+fi
+ip link set "${tenant.vrf_name}" up
+
+if ! ip link show "${tenant.bridge_interface}" >/dev/null 2>&1; then
+  ip link add "${tenant.bridge_interface}" type bridge
+fi
+ip link set "${tenant.bridge_interface}" mtu "$MTU" || true
+ip link set "${tenant.bridge_interface}" addrgenmode none || true
+ip link set "${tenant.bridge_interface}" master "${tenant.vrf_name}"
+ip link set "${tenant.bridge_interface}" up
+
+if ! ip link show "${tenant.vxlan_interface}" >/dev/null 2>&1; then
+  ip link add "${tenant.vxlan_interface}" type vxlan id ${tenant.l3_vni} local ${vtep_ip} dev "$UNDERLAY_IF" dstport 4789 nolearning
+fi
+ip link set "${tenant.vxlan_interface}" mtu "$MTU" || true
+ip link set "${tenant.vxlan_interface}" addrgenmode none || true
+ip link set "${tenant.vxlan_interface}" master "${tenant.bridge_interface}"
+ip link set "${tenant.vxlan_interface}" type bridge_slave neigh_suppress on learning off || true
+ip link set "${tenant.vxlan_interface}" up
+
+%{ if tenant.test_gateway_cidr != null && tenant.test_gateway_cidr != "" ~}
+if ! ip link show "${tenant.test_interface}" >/dev/null 2>&1; then
+  ip link add "${tenant.test_interface}" type dummy
+fi
+ip link set "${tenant.test_interface}" master "${tenant.vrf_name}"
+ip address replace ${tenant.test_gateway_cidr} dev "${tenant.test_interface}"
+ip link set "${tenant.test_interface}" up
+
+%{ endif ~}
+%{ endfor ~}

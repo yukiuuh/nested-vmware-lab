@@ -65,6 +65,7 @@ autoinstall:
     - curtin in-target --target=/target -- chmod 440 /etc/sudoers.d/${ssh_username}
     - curtin in-target --target=/target -- bash -c "add-apt-repository ppa:deadsnakes/ppa -y"
     - curtin in-target --target=/target -- apt-get update
+    - curtin in-target --target=/target -- bash -c 'kernel="$(ls -1 /lib/modules | sort -V | tail -n 1)"; apt-get install -y "linux-modules-extra-$kernel"'
     - curtin in-target --target=/target -- apt-get install -y python3.11 python3.11-venv
     - curtin in-target --target=/target -- sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*$/GRUB_CMDLINE_LINUX_DEFAULT=""/' /etc/default/grub
     - curtin in-target --target=/target -- update-grub

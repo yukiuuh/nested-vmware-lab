@@ -99,6 +99,7 @@ module "router" {
   ssh_authorized_keys = concat([tls_private_key.ed25519.public_key_openssh], var.ssh_authorized_keys)
   nested_network      = local.lab_network
   http_proxy_port     = var.router_http_proxy_port
+  evpn                = var.router_evpn
 }
 
 module "vrli_cluster" {

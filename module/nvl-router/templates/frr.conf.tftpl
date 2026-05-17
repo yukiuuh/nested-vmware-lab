@@ -1,7 +1,18 @@
 log syslog informational
 
+%{ if evpn_enabled ~}
+%{ for _, tenant in evpn_tenants ~}
+vrf ${tenant.vrf_name}
+ vni ${tenant.l3_vni}
+exit-vrf
+!
+%{ endfor ~}
+%{ endif ~}
 !
 router bgp ${router_asn}
+%{ if evpn_enabled ~}
+ no bgp ebgp-requires-policy
+%{ endif ~}
  default-information originate
  bgp router-id ${cidrhost(management_network_address, 1)}
 %{ for i in range(2, 10) ~}
@@ -24,9 +35,54 @@ router bgp ${router_asn}
  neighbor ${cidrhost(bgp_network4_address, i)} route-map INBOUND_POLICY in
  neighbor ${cidrhost(bgp_network4_address, i)} route-map OUTBOUND_POLICY out
 %{ endfor ~}
+%{ if evpn_enabled ~}
+%{ for peer in evpn_route_controller_peers ~}
+ neighbor ${peer} remote-as ${evpn_route_controller_asn}
+%{ if evpn_route_controller_update_source != null && evpn_route_controller_update_source != "" ~}
+ neighbor ${peer} update-source ${evpn_route_controller_update_source}
+%{ endif ~}
+%{ if evpn_route_controller_maxhop > 1 ~}
+ neighbor ${peer} ebgp-multihop ${evpn_route_controller_maxhop}
+%{ endif ~}
+%{ if evpn_route_controller_password != null && evpn_route_controller_password != "" ~}
+ neighbor ${peer} password ${evpn_route_controller_password}
+%{ endif ~}
+%{ endfor ~}
  network 0.0.0.0
+ address-family ipv4 unicast
+%{ for peer in evpn_route_controller_peers ~}
+  no neighbor ${peer} activate
+%{ endfor ~}
+ exit-address-family
+ address-family l2vpn evpn
+%{ for peer in evpn_route_controller_peers ~}
+  neighbor ${peer} activate
+%{ endfor ~}
+  advertise-all-vni
+ exit-address-family
+%{ else ~}
+ network 0.0.0.0
+%{ endif ~}
 exit
 !
+
+%{ if evpn_enabled ~}
+%{ for _, tenant in evpn_tenants ~}
+router bgp ${router_asn} vrf ${tenant.vrf_name}
+ bgp router-id ${evpn_vtep_ip}
+ address-family ipv4 unicast
+  redistribute connected
+ exit-address-family
+ address-family l2vpn evpn
+  advertise ipv4 unicast
+  rd ${tenant.rd}
+  route-target import ${tenant.import_rt}
+  route-target export ${tenant.export_rt}
+ exit-address-family
+exit
+!
+%{ endfor ~}
+%{ endif ~}
 
 # Route-maps
 route-map INBOUND_POLICY permit 10

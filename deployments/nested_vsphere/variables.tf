@@ -207,6 +207,12 @@ variable "router_http_proxy_port" {
   type     = number
 }
 
+variable "router_evpn" {
+  description = "Optional EVPN-VXLAN gateway overrides passed to nvl-router."
+  type        = any
+  default     = {}
+}
+
 variable "nsx" {
   nullable = true
   default  = null

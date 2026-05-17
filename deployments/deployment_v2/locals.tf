@@ -877,6 +877,7 @@ locals {
       networks               = router.networks
       services               = router.services
       runtime                = router.runtime
+      evpn                   = module.routers[name].evpn
       install_source         = local.router_source_refs[name]
       install_source_devices = local.router_datastore_iso_source_devices[name]
       ansible                = merge(router.ansible, { host = module.routers[name].wan_ip })

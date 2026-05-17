@@ -39,6 +39,7 @@ Current implementation notes:
 - Router placement overrides are not implemented yet; Router placement currently resolves from `provider_config`
 - Router install media currently supports `install_sources` of type `http_ovf` or `local_ovf`
 - Router definitions may use `source.install_source`; `template` is accepted as a compatibility alias during the transition
+- Router EVPN-VXLAN gateway support is enabled by default for NSX Route Controller testing. Defaults use VLAN `1014`, underlay `10.0.14.1/24`, MTU `8000`, Router AS `200`, Route Controller AS `500`, Route Controller peers `["10.0.10.10"]`, and Red/Blue tenant VRFs with L3VNIs `50001` and `50002`; override these under `routers[*].evpn`, add multiple Route Controller floating IPs with `routers[*].evpn.bgp.route_controller_peers`, or set `routers[*].evpn.enabled = false`. Router images keep `linux-virtual` and install only the matching `linux-modules-extra-<kernel>` package required for VRF/VXLAN kernel modules.
 - storage service creation currently supports `placement.kind = "provider_vsphere"` only
 - storage placement overrides are not implemented yet; storage placement currently resolves from `provider_config`
 - storage install media currently supports `install_sources` of type `http_ovf` or `local_ovf`

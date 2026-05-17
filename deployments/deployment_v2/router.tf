@@ -16,6 +16,7 @@ module "routers" {
   ssh_authorized_keys = local.ssh_authorized_keys
   wan_network_name    = each.value.networks.wan.network_name
   network_name        = each.value.networks.lan.network_name
+  evpn                = try(each.value.evpn, {})
 
   ubuntu_ovf_url = each.value.install_source.type == "http_ovf" ? each.value.install_source.url : null
   local_ovf_path = each.value.install_source.type == "local_ovf" ? each.value.install_source.path : null

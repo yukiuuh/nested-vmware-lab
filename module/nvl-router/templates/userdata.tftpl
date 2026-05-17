@@ -23,6 +23,12 @@ write_files:
       net.ipv4.ip_forward=1
       net.ipv6.conf.all.forwarding=1
       nf_conntrack_max=131072
+%{ if evpn_enabled ~}
+      net.ipv4.conf.all.rp_filter=0
+      net.ipv4.conf.default.rp_filter=0
+      net.ipv4.tcp_l3mdev_accept=1
+      net.ipv4.udp_l3mdev_accept=1
+%{ endif ~}
     path: /etc/sysctl.d/99-routing.conf
   - content: |
       network:
@@ -45,7 +51,7 @@ write_files:
 %{ endfor ~}
 %{ endif ~}
           ens224:
-            mtu: ${vlan_mtu}
+            mtu: ${lan_mtu}
             dhcp4: false
             dhcp6: false
             addresses: [ "${cidrhost(management_network_address, 1)}/24" ]
@@ -56,7 +62,7 @@ write_files:
             link: ens224
             dhcp6: false
             addresses: [ "${cidrhost(vlan_network.address,1)}/24" ]
-            mtu: ${vlan_mtu}
+            mtu: ${vlan_network.mtu}
 %{ endfor ~}
     path: /etc/netplan/99-static.yaml
     permissions: '0600'
@@ -125,6 +131,26 @@ write_files:
   - content: |
       PasswordAuthentication yes
     path: /etc/ssh/sshd_config.d/00-allow-password.conf
+%{ if evpn_enabled ~}
+  - content: ${evpn_setup_base64}
+    encoding: b64
+    path: /usr/local/sbin/nvl-evpn-setup
+    permissions: '0755'
+  - content: |
+      [Unit]
+      Description=Configure NVL EVPN VXLAN tenant interfaces
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/nvl-evpn-setup
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+    path: /etc/systemd/system/nvl-evpn.service
+%{ endif ~}
 
 runcmd:
   - systemctl restart ssh
@@ -143,6 +169,10 @@ runcmd:
   - iptables-restore < /etc/iptables/rules.v4
   - sysctl -p
   - modprobe nf_conntrack
+%{ if evpn_enabled ~}
+  - systemctl daemon-reload
+  - systemctl enable --now nvl-evpn.service
+%{ endif ~}
   #DNS
   - ln -fs /run/systemd/resolve/resolv.conf /etc/resolv.conf
   - systemctl stop systemd-resolved
@@ -152,7 +182,7 @@ runcmd:
   # NTP
   - systemctl enable chrony
   - systemctl start chrony
-  - sed -i.org 's/bgpd=no/bgpd=yes/' /etc/frr/daemons
+  - sed -i.org -e 's/^zebra=.*/zebra=yes/' -e 's/^bgpd=.*/bgpd=yes/' /etc/frr/daemons
   - cp /tmp/frr.conf /etc/frr/frr.conf
   - chmod 640 /etc/frr/frr.conf
   - chown frr:frr /etc/frr/frr.conf

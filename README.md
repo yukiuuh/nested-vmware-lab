@@ -103,6 +103,7 @@ terraform destroy
 | 10.0.11.1/24 | 1011 | BGP Uplink2 | |
 | 10.0.12.1/24 | 1012 | BGP Uplink3 | |
 | 10.0.13.1/24 | 1013 | BGP Uplink4 | |
+| 10.0.14.1/24 | 1014 | EVPN VXLAN Underlay | Route Controller distributed VXLAN testing |
 
 #### BGP
 | Router ASN | Router Address | Edge ASN | Edge Uplink Address| 
@@ -111,6 +112,22 @@ terraform destroy
 | 200 | 10.0.11.1 | 300 | 10.0.11.2 - 10.0.11.9 |
 | 200 | 10.0.12.1 | 400| 10.0.12.2 - 10.0.12.9 |
 | 200 | 10.0.13.1 | 400| 10.0.13.2 - 10.0.13.9 |
+
+#### EVPN Route Controller
+
+`nvl-router` enables EVPN-VXLAN gateway support by default for Route Controller testing. The default Route Controller AS is `500`, and the default peer list is `["10.0.10.10"]`, which should be the Route Controller BGP Floating IP. To peer with multiple Route Controller clusters, set `router_evpn.bgp.route_controller_peers`:
+
+```hcl
+router_evpn = {
+  bgp = {
+    route_controller_asn = 500
+    route_controller_peers = [
+      "10.0.10.10",
+      "10.0.10.20",
+    ]
+  }
+}
+```
 
 ## Tips
 

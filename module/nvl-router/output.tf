@@ -10,6 +10,10 @@ output "management_network" {
   value = local.management_network_address
 }
 
+output "evpn" {
+  value = local.evpn_output
+}
+
 # output "vlan_networks" {
 #   value = [for vlan_network in local.vlan_networks : {
 #     vlan    = vlan_network.vlan
